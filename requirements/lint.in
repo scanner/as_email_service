@@ -1,13 +1,12 @@
 black
 coverage
-flake8-black
-flake8
 isort
 mypy
 pip-tools
 pre-commit
-pylint
+ruff
+types-cachetools
 types-pytz
 types-requests
 types-setuptools
-types-cachetools
+django-stubs[compatible-mypy]

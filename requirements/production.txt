@@ -6,11 +6,11 @@
 #
 aiosmtpd==1.4.4.post2
     # via -r production.in
-anyio==3.6.2
+anyio==3.7.0
     # via httpcore
-asgiref==3.6.0
+asgiref==3.7.2
     # via django
-atpublic==3.1.1
+atpublic==4.0
     # via aiosmtpd
 attrs==23.1.0
     # via aiosmtpd
@@ -19,19 +19,25 @@ certifi==2023.5.7
     #   httpcore
     #   httpx
     #   influxdb-client
-coverage[toml]==7.2.5
+coverage[toml]==7.2.7
     # via pytest-cov
-django==4.2.1
-    # via -r production.in
+django==4.2.2
+    # via
+    #   -r production.in
+    #   django-polymorphic
 django-environ==0.10.0
     # via -r production.in
+django-polymorphic==3.1.0
+    # via -r production.in
 exceptiongroup==1.1.1
-    # via pytest
+    # via
+    #   anyio
+    #   pytest
 h11==0.14.0
     # via httpcore
-httpcore==0.17.0
+httpcore==0.17.2
     # via httpx
-httpx==0.24.0
+httpx==0.24.1
     # via -r production.in
 idna==3.4
     # via
@@ -41,7 +47,7 @@ influxdb-client==1.36.1
     # via -r production.in
 iniconfig==2.0.0
     # via pytest
-markdown-it-py==2.2.0
+markdown-it-py==3.0.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
@@ -51,12 +57,12 @@ pluggy==1.0.0
     # via pytest
 pygments==2.15.1
     # via rich
-pytest==7.3.1
+pytest==7.3.2
     # via
     #   -r production.in
     #   pytest-cov
     #   pytest-django
-pytest-cov==4.0.0
+pytest-cov==4.1.0
     # via pytest-cover
 pytest-cover==3.0.0
     # via pytest-coverage
@@ -72,7 +78,7 @@ pyyaml==6.0
     # via -r production.in
 reactivex==4.0.4
     # via influxdb-client
-rich==13.3.5
+rich==13.4.2
     # via -r production.in
 six==1.16.0
     # via python-dateutil
@@ -87,9 +93,11 @@ tomli==2.0.1
     # via
     #   coverage
     #   pytest
-typing-extensions==4.5.0
-    # via reactivex
-urllib3==2.0.2
+typing-extensions==4.6.3
+    # via
+    #   asgiref
+    #   reactivex
+urllib3==2.0.3
     # via influxdb-client
 
 # The following packages are considered to be unsafe in a requirements file:

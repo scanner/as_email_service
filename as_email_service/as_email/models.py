@@ -10,7 +10,6 @@ mostly custom for the service I use: postmark.
 
 # 3rd party imports
 #
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 from polymorphic.models import PolymorphicModel

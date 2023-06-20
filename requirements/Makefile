@@ -22,4 +22,3 @@ clean:
 	@rm -rf venv_req
 
 .PHONY: all clean
-

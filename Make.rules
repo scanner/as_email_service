@@ -18,8 +18,14 @@ clean::
 	@rm -rf venv
 	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
 
+requirements/production.txt: requirements/production.in
+	@make -C requirements/ production.txt
+requirements/lint.txt: requirements/lint.in
+	@make -C requirements/ lint.txt
+requirements/development.txt: requirements/development.in requirements/lint.txt requirements/production.txt
+	@make -C requirements/ development.txt
+
 requirements: requirements/development.txt
-	@make -c requirements/ all
 
 $(ROOT_DIR)/venv: requirements/development.txt
 	@if [ -d "$@" ] ; then \
