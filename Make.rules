@@ -44,19 +44,19 @@ venv:: $(ROOT_DIR)/venv
 # linting and formatting commands directly. It also runs mypy.
 #
 squeegee: venv isort black mypy
-	@$(ACTIVATE) ruff as_email_service/
+	@$(ACTIVATE) ruff app/
 
 lint: venv .git/hooks/pre-commit
 	@$(ACTIVATE) pre-commit run -a
 
 # NOTE: copier template project name
-PY_FILES=$(shell find as_email_service/ -type f -name '*.py')
+PY_FILES=$(shell find app/ -type f -name '*.py')
 .blackened: $(PY_FILES) venv
-	@$(ACTIVATE) black as_email_service/
+	@$(ACTIVATE) black app/
 	@touch .blackened
 
 .isorted: $(PY_FILES) venv
-	@$(ACTIVATE) isort as_email_service/
+	@$(ACTIVATE) isort app/
 	@touch .isorted
 
 formatting: isort black
@@ -64,6 +64,6 @@ isort: .isorted
 black: .blackened
 
 mypy: venv
-	$(ACTIVATE) mypy --install-types --non-interactive as_email_service/
+	$(ACTIVATE) mypy --install-types --non-interactive --no-namespace-packages app/
 
 .PHONY: requirements formatting lint squeegee isort black mypy
