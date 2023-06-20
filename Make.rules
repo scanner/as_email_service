@@ -1,6 +1,7 @@
 # -*- Mode: Makefile -*-
 
 ACTIVATE := source $(ROOT_DIR)/venv/bin/activate &&
+PYTHON ?= python
 
 .git/hooks/pre-commit .git/hooks/pre-push: venv
 	@$(ACTIVATE) pre-commit install
@@ -10,13 +11,16 @@ ACTIVATE := source $(ROOT_DIR)/venv/bin/activate &&
 clean::
 	@find $(ROOT_DIR) -name \*~ -exec rm '{}' +
 	@find $(ROOT_DIR) -name \*.pyc -exec rm '{}' +
-	@find $(ROOT_DIR) -name __pycache__ -prune -exec rm -vfr '{}' +
+	@find $(ROOT_DIR) -name __pycache__ -prune -exec rm -fr '{}' +
+	@find $(ROOT_DIR) -name .mypy_cache -prune -exec rm -fr '{}' +
 	@rm -rf build bdist cover dist sdist distribute-* *.egg *.egg-info
 	@rm -rf node_modules
 	@rm -rf *.tar.gz junit.xml coverage.xml .cache
-	@rm -rf .tox .eggs .blackened .isorted
-	@rm -rf venv
+	@rm -rf .tox .eggs .blackened .isorted .ruff_cache
+	@rm -rf venv*
 	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
+	@make -C requirements/ clean
+	@mkdir .mypy_cache
 
 requirements/production.txt: requirements/production.in
 	@make -C requirements/ production.txt
@@ -31,7 +35,7 @@ $(ROOT_DIR)/venv: requirements/development.txt
 	@if [ -d "$@" ] ; then \
 	  $(ACTIVATE) pip-sync $(ROOT_DIR)/requirements/development.txt ; \
         else \
-	  python -m venv $@ ; \
+	  $(PYTHON) -m venv $@ ; \
 	  $(ACTIVATE) pip install -U pip ; \
 	  $(ACTIVATE) pip install -r $(ROOT_DIR)/requirements/development.txt ; \
         fi
@@ -44,19 +48,18 @@ venv:: $(ROOT_DIR)/venv
 # linting and formatting commands directly. It also runs mypy.
 #
 squeegee: venv isort black mypy
-	@$(ACTIVATE) ruff app/
+	@$(ACTIVATE) ruff $(ROOT_DIR)/app/
 
 lint: venv .git/hooks/pre-commit
 	@$(ACTIVATE) pre-commit run -a
 
-# NOTE: copier template project name
-PY_FILES=$(shell find app/ -type f -name '*.py')
+PY_FILES=$(shell find $(ROOT_DIR)/app/ -type f -name '*.py')
 .blackened: $(PY_FILES) venv
-	@$(ACTIVATE) black app/
+	@$(ACTIVATE) black $(ROOT_DIR)/app/
 	@touch .blackened
 
 .isorted: $(PY_FILES) venv
-	@$(ACTIVATE) isort app/
+	@$(ACTIVATE) isort $(ROOT_DIR)/app/
 	@touch .isorted
 
 formatting: isort black
@@ -64,6 +67,6 @@ isort: .isorted
 black: .blackened
 
 mypy: venv
-	$(ACTIVATE) mypy --install-types --non-interactive --no-namespace-packages app/
+	$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/
 
 .PHONY: requirements formatting lint squeegee isort black mypy

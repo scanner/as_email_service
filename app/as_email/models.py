@@ -25,7 +25,9 @@ User = get_user_model()
 class Provider(models.Model):
     name = models.CharField(unique=True)
     token_env_name = models.CharField(
-        help=("The name of the env. var that has the API key for this Provider")
+        help_text=(
+            "The name of the env. var that has the API key for this Provider"
+        )
     )
     endpoint_url = models.URLField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -38,12 +40,12 @@ class Provider(models.Model):
 class Server(models.Model):
     domain_name = models.CharField(max_length=200, unique=True)
     token_env_name = models.CharField(
-        help=(
+        help_text=(
             "The name of the env. var that has the API token for this "
             "Server (postmark 'server')"
         )
     )
-    provider = models.ForeignKey(Provider)
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -62,7 +64,7 @@ class Address(PolymorphicModel):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     address = models.EmailField(unique=True)
-    server = models.ForeignKey(Server)
+    server = models.ForeignKey(Server, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -95,14 +97,14 @@ class Account(Address):
 
     mail_dir = models.CharField(max_length=1000)
     password = models.CharField(
-        help=("Password for SMTP and IMAP auth for this account"),
+        help_text=("Password for SMTP and IMAP auth for this account"),
     )
     handle_blocked_messages = models.CharField(
         max_length=2, choices=BLOCK_CHOICES, default=DELIVER
     )
     blocked_messages_delivery_folder = models.CharField(
         default="Junk",
-        help=(
+        help_text=(
             "If `blocked_messages` is set to `Deliver` then this is the mail "
             "folder that they are delivered to."
         ),
@@ -124,7 +126,7 @@ class Alias(Address):
           same django user, though.
     """
 
-    account = models.ForeignKey(Account)
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
 
 
 ########################################################################
@@ -146,7 +148,7 @@ class Forward(Address):
     deactivated = models.BooleanField(default=True)
     num_bounces = models.IntegerField(default=0)
     deactivated_reason = models.TextField(
-        help=("If this forward is deactivated this indicates why")
+        help_text=("If this forward is deactivated this indicates why")
     )
 
     class Meta:
@@ -170,7 +172,7 @@ class BlockedMessage(models.Model):
     huey job will delete all blocked email's that are older than that.
     """
 
-    address = models.ForeignKey(Address)
+    address = models.ForeignKey(Address, on_delete=models.CASCADE)
     message_id = models.IntegerField()
     status = models.CharField()
     created_at = models.DateTimeField(auto_now_add=True)
