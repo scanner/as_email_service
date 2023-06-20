@@ -1,0 +1,12 @@
+aiosmtpd
+django
+django-environ
+django-polymorphic
+httpx
+influxdb-client
+pytest
+pytest-coverage
+pytest-django
+python-dotenv
+pyyaml
+rich

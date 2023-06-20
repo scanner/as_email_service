@@ -1,0 +1,18 @@
+version: '3'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      8000:11578
+    command: /app/scripts/start_web.sh
+
+  smtpd:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      19246:586
+    command: /app/scripts/start_smtpd.sh

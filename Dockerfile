@@ -1,0 +1,9 @@
+FROM python3.11 as build
+
+WORKDIR /app
+FROM python3.11-slim as prod
+
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
+
+FROM prod as dev

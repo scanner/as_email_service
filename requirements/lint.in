@@ -1,0 +1,13 @@
+black
+coverage
+flake8-black
+flake8
+isort
+mypy
+pip-tools
+pre-commit
+pylint
+types-pytz
+types-requests
+types-setuptools
+types-cachetools
