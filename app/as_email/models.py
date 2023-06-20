@@ -62,11 +62,18 @@ class Address(PolymorphicModel):
     that the 'mail address' is unique.
     """
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    address = models.EmailField(unique=True)
-    server = models.ForeignKey(Server, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-    modified_at = models.DateTimeField(auto_now=True)
+    # NOTE: Was unable to work around django-stubs, mypy, django-polymorphic
+    #       declaring these fields as needing type annotations so that is why
+    #       these have type declarations when models.Model based classes do not
+    #       need them.
+    #
+    user: models.ForeignKey = models.ForeignKey(User, on_delete=models.CASCADE)
+    address: models.EmailField = models.EmailField(unique=True)
+    server: models.ForeignKey = models.ForeignKey(
+        Server, on_delete=models.CASCADE
+    )
+    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
+    modified_at: models.DateTimeField = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [models.Index(fields=["address"])]
@@ -95,14 +102,14 @@ class Account(Address):
     maps to an email address that can receive and store email.
     """
 
-    mail_dir = models.CharField(max_length=1000)
-    password = models.CharField(
+    mail_dir: models.CharField = models.CharField(max_length=1000)
+    password: models.CharField = models.CharField(
         help_text=("Password for SMTP and IMAP auth for this account"),
     )
-    handle_blocked_messages = models.CharField(
+    handle_blocked_messages: models.CharField = models.CharField(
         max_length=2, choices=BLOCK_CHOICES, default=DELIVER
     )
-    blocked_messages_delivery_folder = models.CharField(
+    blocked_messages_delivery_folder: models.CharField = models.CharField(
         default="Junk",
         help_text=(
             "If `blocked_messages` is set to `Deliver` then this is the mail "
@@ -126,7 +133,9 @@ class Alias(Address):
           same django user, though.
     """
 
-    account = models.ForeignKey(Account, on_delete=models.CASCADE)
+    account: models.ForeignKey = models.ForeignKey(
+        Account, on_delete=models.CASCADE
+    )
 
 
 ########################################################################
@@ -141,13 +150,13 @@ class Forward(Address):
     messages will not be delivered at all.
     """
 
-    blocked_messages = models.CharField(
+    blocked_messages: models.CharField = models.CharField(
         max_length=2, choices=BLOCK_CHOICES, default=DELIVER
     )
-    forward_address = models.EmailField()
-    deactivated = models.BooleanField(default=True)
-    num_bounces = models.IntegerField(default=0)
-    deactivated_reason = models.TextField(
+    forward_address: models.EmailField = models.EmailField()
+    deactivated: models.BooleanField = models.BooleanField(default=True)
+    num_bounces: models.IntegerField = models.IntegerField(default=0)
+    deactivated_reason: models.TextField = models.TextField(
         help_text=("If this forward is deactivated this indicates why")
     )
 
