@@ -23,3 +23,7 @@ plugins = ["mypy_django_plugin.main"]
 
 [tool.django-stubs]
 django_settings_module = "as_email_service.as_email_service.settings"
+ignore_missing_model_attributes = true
+
+[tool.mypy_django_plugin]
+ignore_missing_model_attributes = true
