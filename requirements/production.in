@@ -4,9 +4,12 @@ django-anymail
 django-environ
 django-extensions
 django-polymorphic
+dnspython
 gunicorn
 httpx
+huey
 influxdb-client
+postmarker
 pytest
 pytest-coverage
 pytest-django
@@ -14,4 +17,5 @@ pyyaml
 rich
 uvicorn
 wait-for-it
-huey
+aiofiles
+pytz

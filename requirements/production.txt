@@ -4,6 +4,8 @@
 #
 #    pip-compile --output-file=production.txt --resolver=backtracking production.in
 #
+aiofiles==23.1.0
+    # via -r production.in
 aiosmtpd==1.4.4.post2
     # via -r production.in
 anyio==3.7.0
@@ -42,6 +44,8 @@ django-extensions==3.2.3
     # via -r production.in
 django-polymorphic==3.1.0
     # via -r production.in
+dnspython==2.3.0
+    # via -r production.in
 gunicorn==20.1.0
     # via -r production.in
 h11==0.14.0
@@ -71,6 +75,8 @@ packaging==23.1
     # via pytest
 pluggy==1.0.0
     # via pytest
+postmarker==1.0
+    # via -r production.in
 pygments==2.15.1
     # via rich
 pytest==7.3.2
@@ -88,12 +94,16 @@ pytest-django==4.5.2
     # via -r production.in
 python-dateutil==2.8.2
     # via influxdb-client
+pytz==2023.3
+    # via -r production.in
 pyyaml==6.0
     # via -r production.in
 reactivex==4.0.4
     # via influxdb-client
 requests==2.31.0
-    # via django-anymail
+    # via
+    #   django-anymail
+    #   postmarker
 rich==13.4.2
     # via -r production.in
 six==1.16.0

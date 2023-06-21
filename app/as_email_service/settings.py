@@ -30,6 +30,7 @@ env.read_env(BASE_DIR(".env"))
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env("DEBUG")
+SITE_NAME = env("SITE_NAME")
 
 ALLOWED_HOSTS: List[str] = []
 
@@ -130,7 +131,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 HUEY = {
     "huey_class": "huey.SqliteHuey",
     "name": "as_email_service",
-    "immedate": False,
+    "immediate": False,
     "results": True,  # Store return values of tasks.
     "utc": True,  # Use UTC for all times internally.
     "filename": env("HUEY_DB_FILE"),
@@ -164,3 +165,10 @@ else:
     EMAIL_HOST = env("EMAIL_HOST", default="mailhog")
     # https://docs.djangoproject.com/en/dev/ref/settings/#email-port
     EMAIL_PORT = 1025
+
+# A dict of the tokens for access to the postmark mail 'server's. The
+# key is the name of the server at postmark, and the value is the
+# server token for that server.
+#
+EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
+EMAIL_SPOOL_DIR = env.dict("EMAIL_SPOOL_DIR")

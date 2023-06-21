@@ -30,13 +30,13 @@ shell:
 	@docker compose run --rm web /bin/bash
 
 manage_shell:
-	@docker compose run --rm web python manage.py shell_plus
+	@docker compose run --rm web python /app/manage.py shell_plus
 
 migrate:
-	@docker compose run --rm web python manage.py migrate
+	@docker compose run --rm web python /app/manage.py migrate
 
 makemigrations:
-	@docker compose run --rm web python manage.py makemigrations
+	@docker compose run --rm web python /app/manage.py makemigrations
 
 logs:
 	@docker compose logs -f -t

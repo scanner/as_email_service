@@ -7,12 +7,16 @@ mostly custom for the service I use: postmark.
 """
 # system imports
 #
+from functools import lru_cache
 
 # 3rd party imports
 #
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from polymorphic.models import PolymorphicModel
+from postmarker.core import PostmarkClient
 
 # Various models that belong to a specific user need the User object.
 #
@@ -38,16 +42,39 @@ class Provider(models.Model):
 ########################################################################
 #
 class Server(models.Model):
-    domain_name = models.CharField(max_length=200, unique=True)
-    token_env_name = models.CharField(
+    domain_name = models.CharField(
         help_text=(
-            "The name of the env. var that has the API token for this "
-            "Server (postmark 'server')"
-        )
+            "This is the 'server' within postmark to handle email for the "
+            "specified domain."
+        ),
+        max_length=200,
+        unique=True,
     )
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    ####################################################################
+    #
+    @lru_cache()
+    def client(self) -> PostmarkClient:
+        """
+        Returns a postmark client for this server
+        """
+        return PostmarkClient(
+            server_token=settings.EMAIL_SERVER_TOKENS[self.domain_name]
+        )
+
+    ####################################################################
+    #
+    def send_email(self, message):
+        """
+        Send the given email via this server.
+
+        XXX Be sure to record metrics when we send a message, and how large the
+            message was.
+        """
+        self.client.emails.send(message)
 
 
 ########################################################################
@@ -117,6 +144,47 @@ class Account(Address):
         ),
     )
 
+    # If `forwarding` is true then email is not locally delivered. It is
+    # forwarded to the `forward_address`. If the forward_address is not set the
+    # email is delivered locally (so both must be set.. but once
+    # forward_address is set forwarding can be turned on/off by setting
+    # `forwarding` True or False.)
+    #
+    forwarding: models.BooleanField = models.BooleanField(default=False)
+    forward_address: models.EmailField = models.EmailField(null=True)
+    deactivated: models.BooleanField = models.BooleanField(default=True)
+
+    # If the number of bounces exceeds a certain limit then the account is
+    # temporarily deactivated and not allowed to send new email (it can still
+    # receive email) (maybe it should be some sort of percentage of total
+    # emails sent by this account.)
+    #
+    num_bounces: models.IntegerField = models.IntegerField(default=0)
+    deactivated_reason: models.TextField = models.TextField(
+        help_text=("If this forward is deactivated this indicates why")
+    )
+
+    class Meta:
+        indexes = [models.Index(fields=["forward_address"])]
+
+    ####################################################################
+    #
+    def check_password(self, password: str) -> bool:
+        """
+        Check the password for this account. Used by the aiosmtpd.
+        """
+        return check_password(password, self.password)
+
+    ####################################################################
+    #
+    def set_password(self, raw_password: str):
+        """
+        Keyword Arguments:
+        password --
+        """
+        self.password = make_password(raw_password)
+        self.save(update_fields=["password"])
+
 
 ########################################################################
 ########################################################################
@@ -148,6 +216,12 @@ class Forward(Address):
 
     If a forward bounces too often it will be deactivated and those
     messages will not be delivered at all.
+
+    XXX Yeah.. going to get rid of "Forward" .. you can just set a "forward" on
+        an account and this lets users set their own forwards.
+
+        Once an account is set to forward things like local delivery do not do
+        anything.
     """
 
     blocked_messages: models.CharField = models.CharField(

@@ -33,6 +33,8 @@ services:
     volumes:
       - ./app:/app:z
       - ./dbs:/mnt/db:z
+      - ./spool:/mnt/spool:z
+      - ./ssl:/mnt/ssl:ro
 
   worker:
     <<: *web
@@ -48,6 +50,7 @@ services:
     volumes:
       - ./app:/app:z
       - ./dbs:/mnt/db:z
+      - ./spool:/mnt/spool:z
 
   mailhog:
     image: druidfi/mailhog:1.0.1

@@ -137,3 +137,5 @@ cython_debug/
 .blackened
 .isorted
 dbs/
+ssl/
+spool/

@@ -4,6 +4,8 @@
 #
 #    pip-compile --output-file=development.txt --resolver=backtracking development.in
 #
+aiofiles==23.1.0
+    # via -r production.txt
 aiosmtpd==1.4.4.post2
     # via -r production.txt
 anyio==3.7.0
@@ -92,6 +94,8 @@ django-stubs-ext==4.2.1
     # via
     #   -r lint.txt
     #   django-stubs
+dnspython==2.3.0
+    # via -r production.txt
 executing==1.2.0
     # via stack-data
 filelock==3.12.2
@@ -186,6 +190,8 @@ pluggy==1.0.0
     # via
     #   -r production.txt
     #   pytest
+postmarker==1.0
+    # via -r production.txt
 pre-commit==3.3.3
     # via -r lint.txt
 prompt-toolkit==3.0.38
@@ -224,6 +230,8 @@ python-dateutil==2.8.2
     # via
     #   -r production.txt
     #   influxdb-client
+pytz==2023.3
+    # via -r production.txt
 pyyaml==6.0
     # via
     #   -r lint.txt
@@ -237,6 +245,7 @@ requests==2.31.0
     # via
     #   -r production.txt
     #   django-anymail
+    #   postmarker
 rich==13.4.2
     # via -r production.txt
 ruff==0.0.272
