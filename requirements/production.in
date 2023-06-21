@@ -1,12 +1,16 @@
 aiosmtpd
 django
+django-anymail
 django-environ
+django-extensions
 django-polymorphic
+gunicorn
 httpx
 influxdb-client
 pytest
 pytest-coverage
 pytest-django
-python-dotenv
 pyyaml
 rich
+uvicorn
+wait-for-it

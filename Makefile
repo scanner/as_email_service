@@ -3,9 +3,11 @@
 ROOT_DIR := $(shell git rev-parse --show-toplevel)
 include $(ROOT_DIR)/Make.rules
 
+DOCKER_BUILDKIT := 1
+
 .PHONY: clean lint test mypy logs migrate makemigrations manage_shell shell restart delete stop start build
 
-build:
+build: requirements/production.txt requirements/development.txt
 	@docker compose build
 
 up: build

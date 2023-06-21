@@ -1,18 +1,31 @@
 version: '3'
 
 services:
-  web:
+  web: &web
+    image: as_email_service_app
     build:
       context: .
       dockerfile: ./Dockerfile
     ports:
-      8000:11578
-    command: /app/scripts/start_web.sh
+      - "8000:11578"
+    command: /app/scripts/start_app.sh
+    restart: always
+    env_file: .env
 
   smtpd:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
+    <<: *web
+    image: as_email_service_smtpd
     ports:
-      19246:586
-    command: /app/scripts/start_smtpd.sh
+      - "19246:586"
+    command: wait-for-it --service app:8000 -- /app/scripts/start_smtpd.sh
+    restart: always
+    env_file: .env
+
+  worker:
+    <<: *web
+    image: as_email_service_worker
+    ports:
+      - "19246:586"
+    command: wait-for-it --service app:8000 -- /app/scripts/start_worker.sh
+    restart: always
+    env_file: .env
