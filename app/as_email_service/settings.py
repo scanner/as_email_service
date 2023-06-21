@@ -44,7 +44,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "anymail",
-    "django-extensions",
+    "django_extensions",
     "huey.contrib.djhuey",
     "polymorphic",
 ]
@@ -130,6 +130,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 HUEY = {
     "huey_class": "huey.SqliteHuey",
     "name": "as_email_service",
+    "immedate": False,
     "results": True,  # Store return values of tasks.
     "utc": True,  # Use UTC for all times internally.
     "filename": env("HUEY_DB_FILE"),

@@ -10,7 +10,10 @@ DOCKER_BUILDKIT := 1
 build: requirements/production.txt requirements/development.txt
 	@docker compose build
 
-up: build
+dbs:
+	@mkdir ./dbs
+
+up: build dbs
 	@docker compose up --remove-orphans --detach
 
 down:

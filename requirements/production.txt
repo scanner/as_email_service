@@ -52,6 +52,8 @@ httpcore==0.17.2
     # via httpx
 httpx==0.24.1
     # via -r production.in
+huey==2.4.5
+    # via -r production.in
 idna==3.4
     # via
     #   anyio
