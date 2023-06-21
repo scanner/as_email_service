@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "huey.contrib.djhuey",
     "polymorphic",
     "ordered_model",
+    "as_email",
 ]
 
 MIDDLEWARE = [
@@ -172,4 +173,4 @@ else:
 # server token for that server.
 #
 EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
-EMAIL_SPOOL_DIR = env.dict("EMAIL_SPOOL_DIR")
+EMAIL_SPOOL_DIR = env("EMAIL_SPOOL_DIR")

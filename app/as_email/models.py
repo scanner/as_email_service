@@ -291,7 +291,7 @@ class MessageFilterRule(OrderedModel):
     action = models.CharField(
         max_length=2, choices=ACTION_CHOICES, default=FOLDER
     )
-    folder = models.CharField(default="inbox")
+    folder = models.CharField(blank=True)
     order_with_respect_to = "account"
 
     class Meta:
