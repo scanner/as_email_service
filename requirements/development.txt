@@ -86,6 +86,8 @@ django-environ==0.10.0
     # via -r production.txt
 django-extensions==3.2.3
     # via -r production.txt
+django-ordered-model==3.7.4
+    # via -r production.txt
 django-polymorphic==3.1.0
     # via -r production.txt
 django-stubs[compatible-mypy]==4.2.1

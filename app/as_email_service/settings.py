@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "django_extensions",
     "huey.contrib.djhuey",
     "polymorphic",
+    "ordered_model",
 ]
 
 MIDDLEWARE = [

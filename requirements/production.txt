@@ -42,6 +42,8 @@ django-environ==0.10.0
     # via -r production.in
 django-extensions==3.2.3
     # via -r production.in
+django-ordered-model==3.7.4
+    # via -r production.in
 django-polymorphic==3.1.0
     # via -r production.in
 dnspython==2.3.0

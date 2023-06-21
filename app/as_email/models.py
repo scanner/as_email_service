@@ -15,6 +15,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
+from ordered_model.models import OrderedModel
 from polymorphic.models import PolymorphicModel
 from postmarker.core import PostmarkClient
 
@@ -28,12 +29,6 @@ User = get_user_model()
 #
 class Provider(models.Model):
     name = models.CharField(unique=True)
-    token_env_name = models.CharField(
-        help_text=(
-            "The name of the env. var that has the API key for this Provider"
-        )
-    )
-    endpoint_url = models.URLField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -109,29 +104,23 @@ class Address(PolymorphicModel):
 ########################################################################
 ########################################################################
 #
-# Both Account's and Forward's may choose to 'block' or 'deliver'
-# blocked messages.
-#
-BLOCK = "BL"
-DELIVER = "DE"
-BLOCK_CHOICES = [
-    (BLOCK, "Block"),
-    (DELIVER, "Deliver"),
-]
-
-
-########################################################################
-########################################################################
-#
 class Account(Address):
     """
     User's can have multiple mail accounts. A single mail account
     maps to an email address that can receive and store email.
     """
 
+    BLOCK = "BL"
+    DELIVER = "DE"
+    BLOCK_CHOICES = [
+        (BLOCK, "Block"),
+        (DELIVER, "Deliver"),
+    ]
+
     mail_dir: models.CharField = models.CharField(max_length=1000)
     password: models.CharField = models.CharField(
         help_text=("Password for SMTP and IMAP auth for this account"),
+        default="XXX",
     )
     handle_blocked_messages: models.CharField = models.CharField(
         max_length=2, choices=BLOCK_CHOICES, default=DELIVER
@@ -152,6 +141,14 @@ class Account(Address):
     #
     forwarding: models.BooleanField = models.BooleanField(default=False)
     forward_address: models.EmailField = models.EmailField(null=True)
+
+    # If an account is deactivated it can still receive email. However it is no
+    # longer allowed to send email.
+    #
+    # (and if an account does not exist the email will be dropped, again we
+    # need to add logging and metrics for when we receive emails for accounts
+    # that do not exist.)
+    #
     deactivated: models.BooleanField = models.BooleanField(default=True)
 
     # If the number of bounces exceeds a certain limit then the account is
@@ -161,7 +158,8 @@ class Account(Address):
     #
     num_bounces: models.IntegerField = models.IntegerField(default=0)
     deactivated_reason: models.TextField = models.TextField(
-        help_text=("If this forward is deactivated this indicates why")
+        help_text=("If this forward is deactivated this indicates why"),
+        null=True,
     )
 
     class Meta:
@@ -205,37 +203,8 @@ class Alias(Address):
         Account, on_delete=models.CASCADE
     )
 
-
-########################################################################
-########################################################################
-#
-class Forward(Address):
-    """
-    Forward messages to an email address that is not handled by
-    this system (ie; to external systems)
-
-    If a forward bounces too often it will be deactivated and those
-    messages will not be delivered at all.
-
-    XXX Yeah.. going to get rid of "Forward" .. you can just set a "forward" on
-        an account and this lets users set their own forwards.
-
-        Once an account is set to forward things like local delivery do not do
-        anything.
-    """
-
-    blocked_messages: models.CharField = models.CharField(
-        max_length=2, choices=BLOCK_CHOICES, default=DELIVER
-    )
-    forward_address: models.EmailField = models.EmailField()
-    deactivated: models.BooleanField = models.BooleanField(default=True)
-    num_bounces: models.IntegerField = models.IntegerField(default=0)
-    deactivated_reason: models.TextField = models.TextField(
-        help_text=("If this forward is deactivated this indicates why")
-    )
-
     class Meta:
-        indexes = [models.Index(fields=["forward_address"])]
+        indexes = [models.Index(fields=["account"])]
 
 
 ########################################################################
@@ -256,7 +225,75 @@ class BlockedMessage(models.Model):
     """
 
     address = models.ForeignKey(Address, on_delete=models.CASCADE)
-    message_id = models.IntegerField()
+    message_id = models.IntegerField(unique=True)
     status = models.CharField()
+    from_address = models.EmailField()
+    subject = models.CharField(blank=True)
+    cc = models.CharField(blank=True)
+    blocked_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["address"])]
+
+
+########################################################################
+########################################################################
+#
+class MessageFilterRule(OrderedModel):
+    # slocal offers "folder", "destroy", "file", "mbox", "mmdf", "pipe",
+    # "qpipe" which offer various actions. We are only supporting 'folder' and
+    # 'destroy' for now.
+    #
+    FOLDER = "FO"
+    DESTROY = "DE"
+    ACTION_CHOICES = [
+        (FOLDER, "folder"),
+        (DESTROY, "destroy"),
+    ]
+
+    # For now just these common headers. Adding more is easy.
+    #
+    # the address that was used to cause delivery to the recipient
+    ADDR = "addr"
+    # this always matches
+    ANY = "*"
+    BCC = "bcc"
+    CC = "cc"
+    # this matches only if the message hasn't been delivered yet
+    DEFAULT = "default"
+    FROM = "from"
+    REPLY_TO = "reply-to"
+    # the out-of-band sender information
+    SOURCE = "source"
+    SUBJECT = "subject"
+    TO = "to"
+
+    HEADER_CHOICES = [
+        (ADDR, ADDR),
+        (ANY, ANY),
+        (BCC, BCC),
+        (CC, CC),
+        (DEFAULT, DEFAULT),
+        (FROM, FROM),
+        (REPLY_TO, REPLY_TO),
+        (SOURCE, SOURCE),
+        (SUBJECT, SUBJECT),
+        (TO, TO),
+    ]
+
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
+    header = models.CharField(
+        max_length=32, choices=HEADER_CHOICES, default=DEFAULT
+    )
+    pattern = models.CharField(blank=True)
+    action = models.CharField(
+        max_length=2, choices=ACTION_CHOICES, default=FOLDER
+    )
+    folder = models.CharField(default="inbox")
+    order_with_respect_to = "account"
+
+    class Meta:
+        indexes = [models.Index(fields=["account"])]
+        ordering = ("account", "order")
