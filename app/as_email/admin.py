@@ -2,19 +2,12 @@
 #
 from django.contrib import admin
 from ordered_model.admin import OrderedModelAdmin
-from polymorphic.admin import (
-    PolymorphicChildModelAdmin,
-    PolymorphicChildModelFilter,
-    PolymorphicParentModelAdmin,
-)
 
 # Project imports
 #
 from .models import (
-    Account,
-    Address,
-    Alias,
     BlockedMessage,
+    EmailAccount,
     MessageFilterRule,
     Provider,
     Server,
@@ -31,21 +24,9 @@ class ServerAdmin(admin.ModelAdmin):
     pass
 
 
-@admin.register(Address)
-class AddressAdmin(PolymorphicParentModelAdmin):
-    base_model = Address
-    child_models = (Account, Alias)
-    list_filter = (PolymorphicChildModelFilter,)
-
-
-@admin.register(Account)
-class AccountAdmin(PolymorphicChildModelAdmin):
-    base_model = Address
-
-
-@admin.register(Alias)
-class AliasAdmin(PolymorphicChildModelAdmin):
-    base_model = Address
+@admin.register(EmailAccount)
+class EmailAccountAdmin(admin.ModelAdmin):
+    pass
 
 
 @admin.register(BlockedMessage)

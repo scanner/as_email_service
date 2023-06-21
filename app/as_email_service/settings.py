@@ -47,7 +47,6 @@ INSTALLED_APPS = [
     "anymail",
     "django_extensions",
     "huey.contrib.djhuey",
-    "polymorphic",
     "ordered_model",
     "as_email",
 ]

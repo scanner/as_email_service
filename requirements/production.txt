@@ -35,7 +35,6 @@ django==4.2.2
     #   -r production.in
     #   django-anymail
     #   django-extensions
-    #   django-polymorphic
 django-anymail==10.0
     # via -r production.in
 django-environ==0.10.0
@@ -43,8 +42,6 @@ django-environ==0.10.0
 django-extensions==3.2.3
     # via -r production.in
 django-ordered-model==3.7.4
-    # via -r production.in
-django-polymorphic==3.1.0
     # via -r production.in
 dnspython==2.3.0
     # via -r production.in

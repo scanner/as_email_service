@@ -77,7 +77,6 @@ django==4.2.2
     #   -r production.txt
     #   django-anymail
     #   django-extensions
-    #   django-polymorphic
     #   django-stubs
     #   django-stubs-ext
 django-anymail==10.0
@@ -87,8 +86,6 @@ django-environ==0.10.0
 django-extensions==3.2.3
     # via -r production.txt
 django-ordered-model==3.7.4
-    # via -r production.txt
-django-polymorphic==3.1.0
     # via -r production.txt
 django-stubs[compatible-mypy]==4.2.1
     # via -r lint.txt

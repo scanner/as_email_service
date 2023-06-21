@@ -16,7 +16,6 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from ordered_model.models import OrderedModel
-from polymorphic.models import PolymorphicModel
 from postmarker.core import PostmarkClient
 
 # Various models that belong to a specific user need the User object.
@@ -28,7 +27,7 @@ User = get_user_model()
 ########################################################################
 #
 class Provider(models.Model):
-    name = models.CharField(unique=True)
+    name = models.CharField(unique=True, max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -75,39 +74,28 @@ class Server(models.Model):
 ########################################################################
 ########################################################################
 #
-class Address(PolymorphicModel):
-    """
-    The abstract base class for the several different types of
-    accounts that can be the destination for email.
-
-    This lets us collect 'accounts','aliases', and 'forwards' ensuring
-    that the 'mail address' is unique.
-    """
-
-    # NOTE: Was unable to work around django-stubs, mypy, django-polymorphic
-    #       declaring these fields as needing type annotations so that is why
-    #       these have type declarations when models.Model based classes do not
-    #       need them.
-    #
-    user: models.ForeignKey = models.ForeignKey(User, on_delete=models.CASCADE)
-    address: models.EmailField = models.EmailField(unique=True)
-    server: models.ForeignKey = models.ForeignKey(
-        Server, on_delete=models.CASCADE
-    )
-    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
-    modified_at: models.DateTimeField = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        indexes = [models.Index(fields=["address"])]
-
-
-########################################################################
-########################################################################
-#
-class Account(Address):
+class EmailAccount(models.Model):
     """
     User's can have multiple mail accounts. A single mail account
     maps to an email address that can receive and store email.
+
+    NOTE: This class is a bit messy because we actually have three account
+          types: an account, a forward, and an alias.
+
+          If ALIAS then email is delivered to the account indicated by
+          `alias_for`
+
+          If FORWARDING then the message being delivered is sent as a new a new
+          email to the `forward_to` address.
+
+    NOTE: Even if an account is "forwarding" or "alias" you can still connect
+          to the SMTP relay and send email! You can still connect to the IMAP
+          server as well. Just as long as forwarding and aliasing is setup
+          properly no new mail will be delivered to this account.
+
+    NOTE: Forwarding can potentially create bounces. If too many bounces are
+          received the account will be deactivated and messages will be
+          delivered locally instead of being forwarded!
     """
 
     BLOCK = "BL"
@@ -117,8 +105,28 @@ class Account(Address):
         (DELIVER, "Deliver"),
     ]
 
+    # EmailAccount types - account, alias, forwarding
+    #
+    ALIAS = "AL"
+    FORWARDING = "FW"
+    ACCOUNT = "AC"
+    ACCOUNT_TYPE_CHOICES = [
+        (ACCOUNT, "Account"),
+        (ALIAS, "Alias"),
+        (FORWARDING, "Forwarding"),
+    ]
+
+    user: models.ForeignKey = models.ForeignKey(User, on_delete=models.CASCADE)
+    address: models.EmailField = models.EmailField(unique=True)
+    server: models.ForeignKey = models.ForeignKey(
+        Server, on_delete=models.CASCADE
+    )
+    account_type = models.CharField(
+        max_length=2, choices=ACCOUNT_TYPE_CHOICES, default=ACCOUNT
+    )
     mail_dir: models.CharField = models.CharField(max_length=1000)
     password: models.CharField = models.CharField(
+        max_length=200,
         help_text=("Password for SMTP and IMAP auth for this account"),
         default="XXX",
     )
@@ -127,20 +135,26 @@ class Account(Address):
     )
     blocked_messages_delivery_folder: models.CharField = models.CharField(
         default="Junk",
+        max_length=1024,
         help_text=(
             "If `blocked_messages` is set to `Deliver` then this is the mail "
             "folder that they are delivered to."
         ),
     )
 
-    # If `forwarding` is true then email is not locally delivered. It is
-    # forwarded to the `forward_address`. If the forward_address is not set the
-    # email is delivered locally (so both must be set.. but once
-    # forward_address is set forwarding can be turned on/off by setting
-    # `forwarding` True or False.)
+    # If account_type is ALIAS then messages are not delivered to this
+    # account. Instead they are delivered to the accounts in the `alias_for`
+    # attribute. NOTE! This means you can alias across domains.
     #
-    forwarding: models.BooleanField = models.BooleanField(default=False)
-    forward_address: models.EmailField = models.EmailField(null=True)
+    alias_for = models.ManyToManyField(
+        "self", related_name="aliases", related_query_name="alias"
+    )
+
+    # If account_type is FORWARDING then messages are not delivered
+    # locally. Instead a new email message is generated and sent to the
+    # `forward_to` address.
+    #
+    forward_to: models.EmailField = models.EmailField(null=True, blank=True)
 
     # If an account is deactivated it can still receive email. However it is no
     # longer allowed to send email.
@@ -152,18 +166,25 @@ class Account(Address):
     deactivated: models.BooleanField = models.BooleanField(default=True)
 
     # If the number of bounces exceeds a certain limit then the account is
-    # temporarily deactivated and not allowed to send new email (it can still
+    # deactivated and not allowed to send new email (it can still
     # receive email) (maybe it should be some sort of percentage of total
     # emails sent by this account.)
     #
     num_bounces: models.IntegerField = models.IntegerField(default=0)
     deactivated_reason: models.TextField = models.TextField(
-        help_text=("If this forward is deactivated this indicates why"),
+        help_text=("Reason for the account being deactivated"),
         null=True,
     )
 
+    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
+    modified_at: models.DateTimeField = models.DateTimeField(auto_now=True)
+
     class Meta:
-        indexes = [models.Index(fields=["forward_address"])]
+        indexes = [
+            models.Index(fields=["forward_to"]),
+            models.Index(fields=["address"]),
+            models.Index(fields=["user"]),
+        ]
 
     ####################################################################
     #
@@ -187,29 +208,6 @@ class Account(Address):
 ########################################################################
 ########################################################################
 #
-class Alias(Address):
-    """
-    An alias for an account. Lets us specify additional email
-    addresses that will be directly received by a specific account.
-
-    NOTE: The alias does NOT have to be on the same mail server as the
-          account that the alias is for.
-
-    NOTE: We do need to enforce that you can only add aliases to the
-          same django user, though.
-    """
-
-    account: models.ForeignKey = models.ForeignKey(
-        Account, on_delete=models.CASCADE
-    )
-
-    class Meta:
-        indexes = [models.Index(fields=["account"])]
-
-
-########################################################################
-########################################################################
-#
 class BlockedMessage(models.Model):
     """
     we provide our own UI to all of the blocked emails for users
@@ -224,18 +222,18 @@ class BlockedMessage(models.Model):
     huey job will delete all blocked email's that are older than that.
     """
 
-    address = models.ForeignKey(Address, on_delete=models.CASCADE)
+    email_account = models.ForeignKey(EmailAccount, on_delete=models.CASCADE)
     message_id = models.IntegerField(unique=True)
-    status = models.CharField()
-    from_address = models.EmailField()
-    subject = models.CharField(blank=True)
-    cc = models.CharField(blank=True)
-    blocked_reason = models.TextField(blank=True)
+    status = models.CharField(max_length=32)
+    from_address = models.EmailField(max_length=256)
+    subject = models.CharField(blank=True, max_length=1024)
+    cc = models.CharField(blank=True, max_length=1024)
+    blocked_reason = models.TextField(blank=True, max_length=1024)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=["address"])]
+        indexes = [models.Index(fields=["email_account"])]
 
 
 ########################################################################
@@ -283,17 +281,17 @@ class MessageFilterRule(OrderedModel):
         (TO, TO),
     ]
 
-    account = models.ForeignKey(Account, on_delete=models.CASCADE)
+    email_account = models.ForeignKey(EmailAccount, on_delete=models.CASCADE)
     header = models.CharField(
         max_length=32, choices=HEADER_CHOICES, default=DEFAULT
     )
-    pattern = models.CharField(blank=True)
+    pattern = models.CharField(blank=True, max_length=256)
     action = models.CharField(
         max_length=2, choices=ACTION_CHOICES, default=FOLDER
     )
-    folder = models.CharField(blank=True)
-    order_with_respect_to = "account"
+    folder = models.CharField(blank=True, max_length=1024)
+    order_with_respect_to = "email_account"
 
     class Meta:
-        indexes = [models.Index(fields=["account"])]
-        ordering = ("account", "order")
+        indexes = [models.Index(fields=["email_account"])]
+        ordering = ("email_account", "order")

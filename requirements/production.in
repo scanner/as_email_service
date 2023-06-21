@@ -1,9 +1,10 @@
+aiofiles
 aiosmtpd
 django
 django-anymail
 django-environ
 django-extensions
-django-polymorphic
+django-ordered-model
 dnspython
 gunicorn
 httpx
@@ -13,10 +14,8 @@ postmarker
 pytest
 pytest-coverage
 pytest-django
+pytz
 pyyaml
 rich
 uvicorn
 wait-for-it
-aiofiles
-pytz
-django-ordered-model
