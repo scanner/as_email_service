@@ -142,7 +142,24 @@ HUEY = {
     },
 }
 
-ANYMAIL = env.dict("ANYMAIL")
-EMAIL_BACKEND = env("EMAIL_BACKEND")
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
-SERVER_EMAIL = env("SERVER_EMAIL")
+DEFAULT_FROM_EMAIL = env(
+    "DJANGO_DEFAULT_FROM_EMAIL",
+    default="AS Email Service <noreply@apricot.com>",
+)
+# https://docs.djangoproject.com/en/dev/ref/settings/#server-email
+SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+# https://docs.djangoproject.com/en/dev/ref/settings/#email-subject-prefix
+EMAIL_SUBJECT_PREFIX = env(
+    "DJANGO_EMAIL_SUBJECT_PREFIX",
+    default="[AS Email Service]",
+)
+
+# If EMAIL_BACKEND is set, configure anymail. Otherwise use `EMAIL_HOST`
+if "EMAIL_BACKEND" in env:
+    EMAIL_BACKEND = env("EMAIL_BACKEND")
+    ANYMAIL = env.dict("ANYMAIL")
+else:
+    # https://docs.djangoproject.com/en/dev/ref/settings/#email-host
+    EMAIL_HOST = env("EMAIL_HOST", default="mailhog")
+    # https://docs.djangoproject.com/en/dev/ref/settings/#email-port
+    EMAIL_PORT = 1025

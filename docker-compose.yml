@@ -3,9 +3,13 @@ version: '3'
 services:
   web: &web
     image: as_email_service_app
+    container_name: app
     build:
       context: .
       dockerfile: ./Dockerfile
+      target: app
+    depends_on:
+      - mailhog
     ports:
       - "8000:11578"
     command: /app/scripts/start_app.sh
@@ -14,7 +18,10 @@ services:
 
   smtpd:
     <<: *web
+    build:
+      target: smtpd
     image: as_email_service_smtpd
+    container_name: smtpd
     ports:
       - "19246:586"
     command: wait-for-it --service app:8000 -- /app/scripts/start_smtpd.sh
@@ -23,9 +30,18 @@ services:
 
   worker:
     <<: *web
+    build:
+      target: worker
     image: as_email_service_worker
+    container_name: worker
     ports:
       - "19246:586"
     command: wait-for-it --service app:8000 -- /app/scripts/start_worker.sh
     restart: always
     env_file: .env
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.0
+    container_name: mailhog
+    ports:
+      - "8025:8025"

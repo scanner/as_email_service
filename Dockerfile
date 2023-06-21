@@ -6,9 +6,10 @@ FROM python:3.11 as builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
-COPY pyproject.toml requirements ./
+COPY requirements/ /app/requirements/
+COPY pyproject.toml /app/
 RUN python -m venv --copies ${APP_HOME}/venv
-RUN . ${APP_HOME}/venv/bin/activate && pip install -r requirements/production.txt
+RUN . ${APP_HOME}/venv/bin/activate && pip install -r /app/requirements/production.txt
 
 #########################
 #
@@ -35,6 +36,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 # rest of the cruft.
 #
 COPY --from=builder /app/venv /app/venv
+COPY --from=builder /app/pyproject.toml /app/pyproject.toml
 
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
