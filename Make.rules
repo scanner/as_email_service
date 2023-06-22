@@ -53,13 +53,13 @@ squeegee: venv isort black mypy
 lint: venv .git/hooks/pre-commit
 	@$(ACTIVATE) pre-commit run -a
 
-PY_FILES=$(shell find $(ROOT_DIR)/app/ -type f -name '*.py')
+PY_FILES=$(shell find $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/ -type f -name '*.py')
 .blackened: $(PY_FILES) venv
-	@$(ACTIVATE) black $(ROOT_DIR)/app/
+	@$(ACTIVATE) black $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
 	@touch .blackened
 
 .isorted: $(PY_FILES) venv
-	@$(ACTIVATE) isort $(ROOT_DIR)/app/
+	@$(ACTIVATE) isort $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
 	@touch .isorted
 
 formatting: isort black

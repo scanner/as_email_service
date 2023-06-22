@@ -15,11 +15,30 @@ RUN . /venv/bin/activate && pip install -r /app/requirements/production.txt
 #
 # includes the 'development' requirements
 #
-FROM builder as builder-dev
+FROM builder as dev
+
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
+
 RUN . /venv/bin/activate && pip install -r requirements/development.txt
+
+# Puts the venv's python (and other executables) at the front of the
+# PATH so invoking 'python' will activate the venv.
+#
+ENV PATH /venv/bin:$PATH
+
+WORKDIR ${APP_HOME}
+COPY ./app ./
+
+RUN addgroup --system app \
+    && adduser --system --ingroup app app
+
+USER app
+
+CMD ["/app/scripts/start_app.sh"]
 
 #########################
 #

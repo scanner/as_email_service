@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 # System imports
 #
+from pathlib import Path
 from typing import List
 
 # 3rd party imports
@@ -172,4 +173,4 @@ else:
 # server token for that server.
 #
 EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
-EMAIL_SPOOL_DIR = env("EMAIL_SPOOL_DIR")
+EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))

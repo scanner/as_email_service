@@ -14,7 +14,6 @@ import asyncio
 import ssl
 from datetime import datetime
 from functools import lru_cache
-from pathlib import Path
 
 # 3rd party imports
 #
@@ -27,12 +26,11 @@ from aiosmtpd.smtp import AuthResult, LoginPassword
 # Project imports
 #
 from as_email.models import EmailAccount
-from django.confg import settings
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 DEST_PORT = 587
 LISTEN_PORT = 19246
-DEFAULT_SPOOL_DIR = "/mnt/spool"
 
 
 ########################################################################
@@ -49,17 +47,13 @@ class Command(BaseCommand):
     #
     def add_arguments(self, parser):
         parser.add_argument(
-            "listen_port",
-            metavar="p",
+            "--listen_port",
             type=int,
             action="store",
             default=LISTEN_PORT,
         )
-        parser.add_argument("ssl_key", action="store", required=True)
-        parser.add_argument("ssl_cert", action="store", required=True)
-        parser.add_argument(
-            "spool_dir", action="store", default=DEFAULT_SPOOL_DIR
-        )
+        parser.add_argument("--ssl_key", action="store", required=True)
+        parser.add_argument("--ssl_cert", action="store", required=True)
 
     ####################################################################
     #
@@ -67,7 +61,7 @@ class Command(BaseCommand):
         listen_port = options["listen_port"]
         ssl_cert_file = options["ssl_cert"]
         ssl_key_file = options["ssl_key"]
-        spool_dir = Path(options["spool_dir"])
+        spool_dir = settings.EMAIL_SPOOL_DIR
 
         print(
             f"aiosmtpd: Listening on {listen_port}, cert: "
