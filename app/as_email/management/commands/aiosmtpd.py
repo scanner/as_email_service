@@ -26,7 +26,7 @@ from aiosmtpd.smtp import AuthResult, LoginPassword
 
 # Project imports
 #
-from as_email.models import Account
+from as_email.models import EmailAccount
 from django.confg import settings
 from django.core.management.base import BaseCommand
 
@@ -108,8 +108,8 @@ class Authenticator:
         username = auth_data.login
         password = auth_data.password
         try:
-            account = Account.objects.get(address=username)
-        except Account.DoesNotExist:
+            account = EmailAccount.objects.get(address=username)
+        except EmailAccount.DoesNotExist:
             # XXX We need to keep a count of failures for accounts
             #     that do not exist and if we get above a ceratin amount
             #     of them find a cheap way to block that connection for a
@@ -162,7 +162,7 @@ class RelayHandler:
     # .. not sure why their example does not follow that convention.
     #
     async def handle_DATA(self, server, session, envelope):
-        # The as_email.models.Account object instance is passed in via
+        # The as_email.models.EmailAccount object instance is passed in via
         # session.auth_data.
         #
         account = session.auth_data
