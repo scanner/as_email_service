@@ -147,7 +147,10 @@ class EmailAccount(models.Model):
     # attribute. NOTE! This means you can alias across domains.
     #
     alias_for = models.ManyToManyField(
-        "self", related_name="aliases", related_query_name="alias"
+        "self",
+        related_name="aliases",
+        related_query_name="alias",
+        symmetrical=False,
     )
 
     # If account_type is FORWARDING then messages are not delivered

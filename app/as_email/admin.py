@@ -38,7 +38,7 @@ class BlockedMessageAdmin(admin.ModelAdmin):
 class MessageFilterRuleAdmin(OrderedModelAdmin):
     list_display = (
         "move_up_down_links",
-        "account",
+        "email_account",
         "header",
         "pattern",
         "action",
