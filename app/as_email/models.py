@@ -79,6 +79,10 @@ class EmailAccount(models.Model):
     User's can have multiple mail accounts. A single mail account
     maps to an email address that can receive and store email.
 
+    XXX Should "forward" and "alias" be the same thing? ie: you just set an
+        email address and the code figures out if it needs to forward it as
+        email, or just deliver it to a different mail account.
+
     NOTE: This class is a bit messy because we actually have three account
           types: an account, a forward, and an alias.
 
