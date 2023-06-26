@@ -36,6 +36,7 @@ COPY ./app ./
 RUN addgroup --system app \
     && adduser --system --ingroup app app
 
+RUN /venv/bin/python /app/manage.py collectstatic --clear --no-input --verbosity 0
 USER app
 
 CMD ["/app/scripts/start_app.sh"]
@@ -44,7 +45,7 @@ CMD ["/app/scripts/start_app.sh"]
 #
 # `app` - The docker image for the django app web service
 #
-FROM python:3.11-slim as app
+FROM python:3.11-slim as prod
 
 ARG APP_HOME=/app
 
@@ -70,20 +71,7 @@ RUN addgroup --system app \
 
 USER app
 
+RUN /venv/bin/python /app/manage.py collectstatic --clear --no-input --verbosity 0 && \
+    /venv/bin/python /app/manage.py compile_pyc
+
 CMD ["/app/scripts/start_app.sh"]
-
-#########################
-#
-# `worker` - The docker image for the huey worker
-#
-FROM app as worker
-
-CMD ["/app/scripts/start_worker.sh"]
-
-#########################
-#
-# `smtpd` - The docker image for the smtp daemon
-#
-FROM app as smtpd
-
-CMD ["/app/scripts/start_smtpd.sh"]

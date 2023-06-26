@@ -161,6 +161,8 @@ class EmailAccount(models.Model):
     # locally. Instead a new email message is generated and sent to the
     # `forward_to` address.
     #
+    # NOTE: Unlike 'alias' you can only forward to a single address.
+    #
     forward_to: models.EmailField = models.EmailField(null=True, blank=True)
 
     # If an account is deactivated it can still receive email. However it is no

@@ -18,6 +18,7 @@ clean::
 	@rm -rf *.tar.gz junit.xml coverage.xml .cache
 	@rm -rf .tox .eggs .blackened .isorted .ruff_cache
 	@rm -rf venv*
+	@rm -rf ./app/staticfiles
 	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
 	@make -C requirements/ clean
 	@mkdir .mypy_cache

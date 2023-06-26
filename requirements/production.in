@@ -1,9 +1,11 @@
 aiofiles
 aiosmtpd
+coverage
 django
 django-anymail
 django-environ
 django-extensions
+django-mfa2
 django-ordered-model
 dnspython
 gunicorn
@@ -14,6 +16,7 @@ postmarker
 pytest
 pytest-coverage
 pytest-django
+pytest-factoryboy
 pytz
 pyyaml
 rich

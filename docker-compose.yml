@@ -7,7 +7,7 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
-      target: app
+      target: prod
     ports:
       - "8000:11578"
     command: /app/scripts/start_app.sh
@@ -43,7 +43,7 @@ services:
   smtpd:
     <<: *web
     build:
-      target: smtpd
+      target: prod
     image: as_email_service_smtpd
     container_name: smtpd
     ports:
@@ -63,7 +63,7 @@ services:
   worker:
     <<: *web
     build:
-      target: worker
+      target: prod
     image: as_email_service_worker
     container_name: worker
     ports:
