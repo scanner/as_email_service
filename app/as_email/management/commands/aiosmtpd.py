@@ -13,24 +13,58 @@ object.
 import asyncio
 import ssl
 from datetime import datetime
-from functools import lru_cache
+from typing import Dict, List, Optional
 
 # 3rd party imports
 #
 import aiofiles
-import dns.resolver
 import pytz
+from aiologger import Logger
 from aiosmtpd.controller import Controller
-from aiosmtpd.smtp import AuthResult, LoginPassword
+from aiosmtpd.smtp import SMTP as SMTPServer
+from aiosmtpd.smtp import AuthResult
+from aiosmtpd.smtp import Envelope as SMTPEnvelope
+from aiosmtpd.smtp import LoginPassword
+from aiosmtpd.smtp import Session as SMTPSession
 
 # Project imports
 #
 from as_email.models import EmailAccount
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from pydantic import BaseModel
 
 DEST_PORT = 587
 LISTEN_PORT = 19246
+
+
+########################################################################
+########################################################################
+#
+class DenyInfo(BaseModel):
+    """
+    Info for recording failure attempts by a peer.
+
+    NOTE: A peer is what we get back from `peername` for
+
+    https://docs.python.org/3/library/asyncio-protocol.html#asyncio.BaseTransport.get_extra_info
+
+    XXX Will flesh it out later but we want a certain number of auth
+        failures within a certain amount of time to cause them to be
+        denied any further attempts for a certain amount of time.
+    """
+
+    num_fails: int
+    peer_name: str
+    expiry: Optional[datetime]
+
+
+# XXX Maybe this should be a list with a capped size so if we get
+#     connections from millions of hosts we do not consume all memory.
+#
+DENY_PEER_LIST: Dict[str, DenyInfo] = {}
+
+logger = Logger.with_default_handlers(name=__file__)
 
 
 ########################################################################
@@ -63,9 +97,11 @@ class Command(BaseCommand):
         ssl_key_file = options["ssl_key"]
         spool_dir = settings.EMAIL_SPOOL_DIR
 
-        print(
-            f"aiosmtpd: Listening on {listen_port}, cert: "
-            f"{ssl_cert_file}, key: {ssl_key_file}"
+        logger.info(
+            "aiosmtpd: Listening on %d, cert: %s, key: %s",
+            listen_port,
+            ssl_cert_file,
+            ssl_key_file,
         )
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -80,7 +116,7 @@ class Command(BaseCommand):
         try:
             loop.run_forever()
         except KeyboardInterrupt:
-            print("KeyboardInterrupt - Exiting")
+            logger.warn("KeyboardInterrupt - Exiting")
 
 
 ########################################################################
@@ -127,17 +163,6 @@ class Authenticator:
 
 
 ########################################################################
-#
-@lru_cache(maxsize=256)
-def get_mx(domain):
-    records = dns.resolver.resolve(domain, "MX")
-    if not records:
-        return None
-    records = sorted(records, key=lambda r: r.preference)
-    return str(records[0].exchange)
-
-
-########################################################################
 ########################################################################
 #
 class RelayHandler:
@@ -152,10 +177,32 @@ class RelayHandler:
 
     ####################################################################
     #
+    async def handle_EHLO(
+        server, session, envelope, hostname, responses
+    ) -> List[str]:
+        """
+        the primary purpose of having a handler for EHLO is to
+        quickly deny hosts that have suffered repeated authentication failures
+        """
+        # NOTE: We have to at least set session.host_name
+        #
+        session.host_name = hostname
+
+        # XXX here is where our logic for failing a connection because
+        #     it hit our black list.
+        #
+        if session.peer in DENY_PEER_LIST:
+            responses.append("550 Too many failed auth attempts")
+        return responses
+
+    ####################################################################
+    #
     # XXX according to docs this should be `async def handle_DATA`
     # .. not sure why their example does not follow that convention.
     #
-    async def handle_DATA(self, server, session, envelope):
+    async def handle_DATA(
+        self, server: SMTPServer, session: SMTPSession, envelope: SMTPEnvelope
+    ) -> str:
         # The as_email.models.EmailAccount object instance is passed in via
         # session.auth_data.
         #
@@ -168,7 +215,12 @@ class RelayHandler:
             # directory and have a huey worker check for these unsent
             # messages and send it for us.
             #
-            print(f"Failed with exception {e}")
+            # XXX We should handle different kinds of failures
+            #     differently.. for instance we are getting some sort
+            #     of authentication denied message from postmark we
+            #     should return a failure message to our caller.
+            #
+            await logger.exception("Failed with exception %s", e)
             fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
                 "%Y.%m.%d-%H.%M.%S.%f%z"
             )
@@ -176,23 +228,16 @@ class RelayHandler:
             async with aiofiles.open(spool_file, "wb") as f:
                 # XXX need to convert envelope to a binary stream that
                 #     can be read back in without losing data.
+                #
+                # XXX we should create a db object for each email we
+                #     retry so that we can track number of retries and
+                #     how long we have been retrying for and how long
+                #     until the next retry. It is probably best to
+                #     actually makea n ORM object for this metadata
+                #     instead of trying to stick it somewhere else.
+                #
                 await f.write(envelope)
-
-        # mx_rcpt = {}
-        # for rcpt in envelope.rcpt_tos:
-        #     _, _, domain = rcpt.partition("@")
-        #     mx = get_mx(domain)
-        #     if mx is None:
-        #         continue
-        #     mx_rcpt.setdefault(mx, []).append(rcpt)
-
-        # for mx, rcpts in mx_rcpt.items():
-        #     with SMTPCLient(mx, 25) as client:
-        #         client.sendmail(
-        #             from_addr=envelope.mail_from,
-        #             to_addrs=rcpts,
-        #             msg=envelope.original_content,
-        #         )
+        return "250 OK"
 
 
 ########################################################################
@@ -220,3 +265,4 @@ async def amain(
         cont.start()
     finally:
         cont.stop()
+        await logger.shutdown()

@@ -35,3 +35,18 @@ def expire_old_blocked_messages():
     num_deleted, _ = BlockedMessage.objects.filter(created_at__lt=horizon)
     if num_deleted > 0:
         print(f"expired_old_blocked_messages: Deleted {num_deleted}")
+
+
+####################################################################
+#
+@db_periodic_task(crontab(minute="*/5"))
+def send_spooled_email():
+    """
+    Look for email messages in our outgoing spool folder and
+    attempt to send them via the mail provider.
+    If the attempt fails, try again.
+
+    XXX We need to likely record every attempt and slow down our
+        retries. We also need a maximum amount of time we will retry.
+    """
+    pass

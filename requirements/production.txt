@@ -6,6 +6,8 @@
 #
 aiofiles==23.1.0
     # via -r production.in
+aiologger==0.7.0
+    # via -r production.in
 aiosmtpd==1.4.4.post2
     # via -r production.in
 anyio==3.7.0
@@ -28,10 +30,6 @@ click==8.1.3
     # via
     #   uvicorn
     #   wait-for-it
-coverage[toml]==7.2.7
-    # via
-    #   -r production.in
-    #   pytest-cov
 django==4.2.2
     # via
     #   -r production.in
@@ -52,13 +50,7 @@ django-ordered-model==3.7.4
 dnspython==2.3.0
     # via -r production.in
 exceptiongroup==1.1.1
-    # via
-    #   anyio
-    #   pytest
-factory-boy==3.2.1
-    # via pytest-factoryboy
-faker==18.11.1
-    # via factory-boy
+    # via anyio
 gunicorn==20.1.0
     # via -r production.in
 h11==0.14.0
@@ -76,46 +68,22 @@ idna==3.4
     #   anyio
     #   httpx
     #   requests
-inflection==0.5.1
-    # via pytest-factoryboy
 influxdb-client==1.36.1
     # via -r production.in
-iniconfig==2.0.0
-    # via pytest
 jsonfield==3.1.0
     # via django-mfa2
 markdown-it-py==3.0.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-packaging==23.1
-    # via pytest
-pluggy==1.0.0
-    # via pytest
 postmarker==1.0
+    # via -r production.in
+pydantic==1.10.9
     # via -r production.in
 pygments==2.15.1
     # via rich
-pytest==7.3.2
-    # via
-    #   -r production.in
-    #   pytest-cov
-    #   pytest-django
-    #   pytest-factoryboy
-pytest-cov==4.1.0
-    # via pytest-cover
-pytest-cover==3.0.0
-    # via pytest-coverage
-pytest-coverage==0.0
-    # via -r production.in
-pytest-django==4.5.2
-    # via -r production.in
-pytest-factoryboy==2.5.1
-    # via -r production.in
 python-dateutil==2.8.2
-    # via
-    #   faker
-    #   influxdb-client
+    # via influxdb-client
 pytz==2023.3
     # via -r production.in
 pyyaml==6.0
@@ -139,14 +107,10 @@ sniffio==1.3.0
     #   httpx
 sqlparse==0.4.4
     # via django
-tomli==2.0.1
-    # via
-    #   coverage
-    #   pytest
 typing-extensions==4.6.3
     # via
     #   asgiref
-    #   pytest-factoryboy
+    #   pydantic
     #   reactivex
 urllib3==2.0.3
     # via

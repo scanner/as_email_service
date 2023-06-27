@@ -3,3 +3,8 @@
 
 ipython
 pytest-sugar
+pytest
+pytest-coverage
+pytest-django
+pytest-factoryboy
+coverage

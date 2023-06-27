@@ -1,6 +1,6 @@
 aiofiles
+aiologger
 aiosmtpd
-coverage
 django
 django-anymail
 django-environ
@@ -13,10 +13,7 @@ httpx
 huey
 influxdb-client
 postmarker
-pytest
-pytest-coverage
-pytest-django
-pytest-factoryboy
+pydantic
 pytz
 pyyaml
 rich
