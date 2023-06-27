@@ -14,7 +14,9 @@ from functools import lru_cache
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
 
@@ -37,7 +39,7 @@ class Provider(models.Model):
 #
 class Server(models.Model):
     domain_name = models.CharField(
-        help_text=(
+        help_text=_(
             "This is the 'server' within postmark to handle email for the "
             "specified domain."
         ),
@@ -121,9 +123,20 @@ class EmailAccount(models.Model):
     ]
 
     user: models.ForeignKey = models.ForeignKey(User, on_delete=models.CASCADE)
-    address: models.EmailField = models.EmailField(unique=True)
     server: models.ForeignKey = models.ForeignKey(
         Server, on_delete=models.CASCADE
+    )
+    # XXX We should figure out a way to have this still be a validated email
+    #     field, but auto-fill the domain name part from the server attribute.
+    #     For now we are just going to require that the domain name's match.
+    #
+    email_address: models.EmailField = models.EmailField(
+        unique=True,
+        help_text=_(
+            "The email address that will receive emails on this server, "
+            "and the address that will be used as a login to send emails. "
+            "It must have the same domin name as the associated server"
+        ),
     )
     account_type = models.CharField(
         max_length=2, choices=ACCOUNT_TYPE_CHOICES, default=ACCOUNT
@@ -131,7 +144,7 @@ class EmailAccount(models.Model):
     mail_dir: models.CharField = models.CharField(max_length=1000)
     password: models.CharField = models.CharField(
         max_length=200,
-        help_text=("Password for SMTP and IMAP auth for this account"),
+        help_text=_("Password for SMTP and IMAP auth for this account"),
         default="XXX",
     )
     handle_blocked_messages: models.CharField = models.CharField(
@@ -140,7 +153,7 @@ class EmailAccount(models.Model):
     blocked_messages_delivery_folder: models.CharField = models.CharField(
         default="Junk",
         max_length=1024,
-        help_text=(
+        help_text=_(
             "If `blocked_messages` is set to `Deliver` then this is the mail "
             "folder that they are delivered to."
         ),
@@ -181,12 +194,30 @@ class EmailAccount(models.Model):
     #
     num_bounces: models.IntegerField = models.IntegerField(default=0)
     deactivated_reason: models.TextField = models.TextField(
-        help_text=("Reason for the account being deactivated"),
+        help_text=_("Reason for the account being deactivated"),
         null=True,
     )
 
     created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
     modified_at: models.DateTimeField = models.DateTimeField(auto_now=True)
+
+    ####################################################################
+    #
+    def clean(self):
+        """
+        Make sure that the email address is one that is served by the
+        server (domain) associated with this object.
+        """
+        if not self.email_address.endswith(f"@{self.server.domain_name}"):
+            raise ValidationError(
+                {
+                    "email_address": _(
+                        f"email_address '{self.email_address}' must end with "
+                        "the address of teh associated server's domain name: "
+                        f"{self.server.domain_name}"
+                    )
+                }
+            )
 
     class Meta:
         indexes = [

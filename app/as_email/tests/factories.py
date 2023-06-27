@@ -66,7 +66,7 @@ class UserFactory(DjangoModelFactory):
 
     class Meta:
         model = get_user_model()
-        django_get_or_create = ["username"]
+        django_get_or_create = ("username",)
 
 
 ########################################################################
@@ -77,7 +77,7 @@ class ProviderFactory(DjangoModelFactory):
 
     class Meta:
         model = Provider
-        django_get_or_create = ["name"]
+        django_get_or_create = ("name",)
 
 
 ########################################################################
@@ -118,6 +118,7 @@ class EmailAccountFactory(DjangoModelFactory):
 
     class Meta:
         model = EmailAccount
+        django_get_or_create = ()
 
 
 ########################################################################
