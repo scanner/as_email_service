@@ -185,7 +185,7 @@ class EmailAccount(models.Model):
     # need to add logging and metrics for when we receive emails for accounts
     # that do not exist.)
     #
-    deactivated: models.BooleanField = models.BooleanField(default=True)
+    deactivated: models.BooleanField = models.BooleanField(default=False)
 
     # If the number of bounces exceeds a certain limit then the account is
     # deactivated and not allowed to send new email (it can still
@@ -196,6 +196,7 @@ class EmailAccount(models.Model):
     deactivated_reason: models.TextField = models.TextField(
         help_text=_("Reason for the account being deactivated"),
         null=True,
+        blank=True,
     )
 
     created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
@@ -213,7 +214,6 @@ class EmailAccount(models.Model):
                 {
                     "email_address": _(
                         f"email_address '{self.email_address}' must end with "
-                        "the address of teh associated server's domain name: "
                         f"{self.server.domain_name}"
                     )
                 }
