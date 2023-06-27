@@ -5,7 +5,6 @@ Factories for testing all of our models and related code
 """
 # system imports
 #
-import random
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -30,16 +29,6 @@ from ..models import (
 
 User = get_user_model()
 fake = Faker()
-
-
-####################################################################
-#
-def random_string(length: int, character_set: str) -> str:
-    """
-    Generate a random string of from the given character set up to
-    `length` characters long.
-    """
-    return "".join(random.choice(character_set) for _ in range(length))
 
 
 ########################################################################

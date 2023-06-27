@@ -222,7 +222,7 @@ class EmailAccount(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["forward_to"]),
-            models.Index(fields=["address"]),
+            models.Index(fields=["email_address"]),
             models.Index(fields=["user"]),
         ]
 

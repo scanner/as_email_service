@@ -8,7 +8,8 @@ DOCKER_BUILDKIT := 1
 .PHONY: clean lint test mypy logs migrate makemigrations manage_shell shell restart delete down up build dirs
 
 build: requirements/production.txt requirements/development.txt
-	@docker compose build
+	@docker compose --profile prod build
+	@docker compose --profile dev build
 
 dirs: dbs ssl spool
 
@@ -30,10 +31,9 @@ down:
 delete: clean
 	@docker compose --profile dev down  --remove-orphans
 	@docker compose --profile prod down  --remove-orphans
-	# @docker volume prune --force
 
 restart:
-	@docker compose restart
+	@docker compose --profile dev restart
 
 shell:
 	@docker compose run --rm devweb /bin/bash

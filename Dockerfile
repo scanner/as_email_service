@@ -6,7 +6,7 @@ FROM python:3.11 as builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
-COPY requirements/ /app/requirements/
+COPY requirements/production.txt /app/requirements/production.txt
 COPY pyproject.toml /app/
 RUN python -m venv --copies /venv
 RUN . /venv/bin/activate && pip install -r /app/requirements/production.txt
@@ -23,6 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 
+COPY requirements/development.txt /app/requirements/development.txt
 RUN . /venv/bin/activate && pip install -r requirements/development.txt
 
 # Puts the venv's python (and other executables) at the front of the
