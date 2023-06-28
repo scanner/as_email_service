@@ -1,10 +1,11 @@
 -r production.txt
 -r lint.txt
 
+coverage
 ipython
-pytest-sugar
 pytest
 pytest-coverage
 pytest-django
 pytest-factoryboy
-coverage
+pytest-sugar
+trustme

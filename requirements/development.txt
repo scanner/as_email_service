@@ -46,6 +46,8 @@ certifi==2023.5.7
     #   httpx
     #   influxdb-client
     #   requests
+cffi==1.15.1
+    # via cryptography
 cfgv==3.3.1
     # via
     #   -r lint.txt
@@ -67,6 +69,8 @@ coverage[toml]==7.2.7
     #   -r development.in
     #   -r lint.txt
     #   pytest-cov
+cryptography==41.0.1
+    # via trustme
 decorator==5.1.1
     # via ipython
 distlib==0.3.6
@@ -141,6 +145,7 @@ idna==3.4
     #   anyio
     #   httpx
     #   requests
+    #   trustme
 inflection==0.5.1
     # via pytest-factoryboy
 influxdb-client==1.36.1
@@ -216,6 +221,8 @@ ptyprocess==0.7.0
     # via pexpect
 pure-eval==0.2.2
     # via stack-data
+pycparser==2.21
+    # via cffi
 pydantic==1.10.9
     # via -r production.txt
 pygments==2.15.1
@@ -309,6 +316,8 @@ traitlets==5.9.0
     # via
     #   ipython
     #   matplotlib-inline
+trustme==1.0.0
+    # via -r development.in
 types-cachetools==5.3.0.5
     # via -r lint.txt
 types-pytz==2023.3.0.0
