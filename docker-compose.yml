@@ -37,6 +37,10 @@ services:
     volumes:
       - ./app:/app:z
       - ./dbs:/mnt/db:z
+      - type: bind
+        source: ./pyproject.toml
+        target: /app/pyproject.toml
+        read_only: true
     profiles:
       - dev
 
