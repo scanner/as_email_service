@@ -34,10 +34,12 @@ ENV PATH /venv/bin:$PATH
 WORKDIR ${APP_HOME}
 COPY ./app ./
 
+RUN /venv/bin/python \
+    /app/manage.py collectstatic --clear --no-input --verbosity 0
+
 RUN addgroup --system app \
     && adduser --system --ingroup app app
 
-RUN /venv/bin/python /app/manage.py collectstatic --clear --no-input --verbosity 0
 USER app
 
 CMD ["/app/scripts/start_app.sh"]
@@ -67,12 +69,12 @@ ENV PATH /venv/bin:$PATH
 WORKDIR ${APP_HOME}
 COPY ./app ./
 
+RUN /venv/bin/python \
+    /app/manage.py collectstatic --clear --no-input --verbosity 0
+RUN  /venv/bin/python /app/manage.py compile_pyc
+
 RUN addgroup --system app \
     && adduser --system --ingroup app app
 
 USER app
-
-RUN /venv/bin/python /app/manage.py collectstatic --clear --no-input --verbosity 0 && \
-    /venv/bin/python /app/manage.py compile_pyc
-
 CMD ["/app/scripts/start_app.sh"]

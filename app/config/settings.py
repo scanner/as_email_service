@@ -17,17 +17,28 @@ from typing import List
 # 3rd party imports
 #
 import environ
+from django.core.management.utils import get_random_secret_key
 
 # This is be "/app" inside the docker container.
 #
 BASE_DIR = Path(__file__).parent.parent
 
-env = environ.Env(DEBUG=(bool, False))
-
-# Read various parts of the configuration from the environment.
+# NOTE: We provide a default secret key so that we can run 'collectstatic'
+#       during the docker image build phase. When actually run this will be
+#       via a .env passed to the container.
 #
-env.read_env(BASE_DIR / ".env")
+env = environ.Env(
+    DEBUG=(bool, False),
+    DJANGO_SECRET_KEY=(str, get_random_secret_key()),
+    SITE_NAME=(str, "example.com"),
+    HUEY_DB_FILE=(str, ":memory:"),
+    DATABASE_URL=(str, "sqlite:///:memory:"),
+    EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
+    EMAIL_SERVER_TOKENS=(str, "example.com=foo"),
+)
 
+# NOTE: We should try moving secrets to compose secrets.
+#
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env("DEBUG")
 SITE_NAME = env("SITE_NAME")
