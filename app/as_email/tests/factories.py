@@ -37,7 +37,8 @@ fake = Faker()
 class UserFactory(DjangoModelFactory):
     username = factory.Faker("user_name")
     email = factory.Faker("email")
-    name = factory.Faker("name")
+    first_name = factory.Faker("first_name")
+    last_name = factory.Faker("first_name")
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):
@@ -78,29 +79,15 @@ class ServerFactory(DjangoModelFactory):
 class EmailAccountFactory(DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     server = factory.SubFactory(ServerFactory)
+    email_address = factory.LazyAttribute(
+        lambda o: f"{fake.profile()['username']}@{o.server.domain_name}"
+    )
+    mail_dir = factory.LazyAttribute(lambda o: Path(fake.file_path(depth=5)).parent)
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):
         password = extracted if extracted else fake.password(length=16)
         self.set_password(password)
-
-    @post_generation
-    def email_address(self, create: bool, extracted: Sequence[Any], **kwargs):
-        """
-        The email address must have the same domain name as the
-        server so generate it using the server.
-        """
-        self.email_address = (
-            extracted
-            if extracted
-            else f"{fake.profile()['username']}@{self.server.domain_name}"
-        )
-
-    @post_generation
-    def mail_dir(self, create: bool, extracted: Sequence[Any], **kwargs):
-        self.mail_dir = (
-            extracted if extracted else Path(fake.file_path(depth=5)).parent
-        )
 
     class Meta:
         model = EmailAccount
@@ -129,9 +116,7 @@ class BlockedMessageFactory(DjangoModelFactory):
 class MessageFilterRuleFactory(DjangoModelFactory):
     email_account = factory.SubFactory(EmailAccountFactory)
     pattern = factory.Faker("email")
-    header = factory.fuzzy.FuzzyChoice(
-        [x[0] for x in MessageFilterRule.HEADER_CHOICES]
-    )
+    header = factory.fuzzy.FuzzyChoice([x[0] for x in MessageFilterRule.HEADER_CHOICES])
 
     class Meta:
         model = MessageFilterRule
