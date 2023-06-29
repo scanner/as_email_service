@@ -4,6 +4,7 @@
 coverage
 ipython
 pytest
+pytest-asyncio
 pytest-coverage
 pytest-django
 pytest-factoryboy

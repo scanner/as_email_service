@@ -82,7 +82,9 @@ class EmailAccountFactory(DjangoModelFactory):
     email_address = factory.LazyAttribute(
         lambda o: f"{fake.profile()['username']}@{o.server.domain_name}"
     )
-    mail_dir = factory.LazyAttribute(lambda o: Path(fake.file_path(depth=5)).parent)
+    mail_dir = factory.LazyAttribute(
+        lambda o: str(Path(fake.file_path(depth=5)).parent)
+    )
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):
