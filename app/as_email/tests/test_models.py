@@ -24,6 +24,27 @@ pytestmark = pytest.mark.django_db
 
 ####################################################################
 #
+def test_server(server_factory):
+    """
+    Make sure we can create a server, and all of its filefield
+    dirs are setup properly.
+    """
+    server = server_factory()
+    server.save()
+    assert str(server.incoming_spool_dir).endswith("incoming")
+    assert server.domain_name in str(server.incoming_spool_dir)
+    assert server.incoming_spool_dir.is_dir()
+
+    assert str(server.outgoing_spool_dir).endswith("outgoing")
+    assert server.domain_name in str(server.outgoing_spool_dir)
+    assert server.outgoing_spool_dir.is_dir()
+
+    assert str(server.outgoing_spool_dir).endswith(server.domain_name)
+    assert server.outgoing_spool_dir.is_dir()
+
+
+####################################################################
+#
 def test_email_account_set_check_password(email_account_factory):
     ea = email_account_factory()
     password = fake.pystr(min_chars=8, max_chars=32)

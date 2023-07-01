@@ -36,7 +36,6 @@ env = environ.Env(
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
     EMAIL_SERVER_TOKENS=(str, "example.com=foo"),
     EMAIL_BASE_DIR=(str, "/mnt/maildir"),
-    EXTERNAL_AUTH_DB_URL=(str, "sqlite:///:memory:"),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -234,4 +233,4 @@ EMAIL_BASE_DIR = Path(env("EMAIL_BASE_DIR"))
 # NOTE: We should probably make an importable module from asimap that manages
 #       this db and use that to create, update, and modify this db.
 #
-EXTERNAL_AUTH_DB = Path(env("EXTERNAL_AUTH_DB"))
+EXTERNAL_AUTH_DB = Path(env("EXTERNAL_AUTH_DB")) if "EXTERNAL_AUTH_DB" in env else None
