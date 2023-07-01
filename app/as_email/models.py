@@ -7,10 +7,13 @@ mostly custom for the service I use: postmark.
 """
 # system imports
 #
+import asyncio
 from functools import lru_cache
+from pathlib import Path
 
 # 3rd party imports
 #
+import aiofiles
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
@@ -34,6 +37,26 @@ class Provider(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
 
+####################################################################
+#
+def spool_dir_path():
+    """
+    The spool dir is defined in the django settings. This lets us assign the
+    root spool dir to use for a server dynamically.
+    """
+    return settings.EMAIL_SPOOL_DIR
+
+
+####################################################################
+#
+def email_base_dir():
+    """
+    Look the spool dir path this is the root directory in settings where
+    all the mail folders for the email accounts are stored.
+    """
+    return settings.EMAIL_BASE_DIR
+
+
 ########################################################################
 ########################################################################
 #
@@ -47,8 +70,120 @@ class Server(models.Model):
         unique=True,
     )
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
+    incoming_spool_dir = models.FilePathField(
+        spool_dir_path,
+        max_length=1000,
+        allow_files=False,
+        allow_folders=True,
+        recursive=True,
+    )
+    outgoing_spool_dir = models.FilePathField(
+        spool_dir_path,
+        max_length=1000,
+        allow_files=False,
+        allow_folders=True,
+        recursive=True,
+    )
+    mail_dir_parent = models.FilePathField(
+        email_base_dir,
+        max_length=1000,
+        allow_files=False,
+        allow_folders=True,
+        recursive=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    ####################################################################
+    #
+    def save(self, *args, **kwargs):
+        """
+        On pre-save of the Server instance if this is when it is being
+        created pre-fill the incoming spool dir, outgoing spool dir, and
+        mail_dir_parent based on the domain_name of the server.
+
+        This lets the default creation automatically set where these
+        directories are without requiring input if they are not set on create.
+
+        After we have called the parent save method we make sure that the
+        directory specified exists.
+        """
+        # If the object has not been created yet then if the various file
+        # fields have not been set, set them based on django settings and the
+        # domain name.
+        #
+        # XXX We should also check to see if the path exists and if it does it
+        #     must be a directory.
+        #
+        if not self.id:
+            if not self.incoming_spool_dir:
+                self.incoming_spool_dir = (
+                    settings.EMAIL_SPOOL_DIR / self.domain_name / "incoming"
+                )
+            if not self.outgoing_spool_dir:
+                self.outgoing_spool_dir = (
+                    settings.EMAIL_SPOOL_DIR / self.domain_name / "outgoing"
+                )
+
+            if not self.mail_dir_parent:
+                self.mail_dir_parent = settings.EMAIL_BASE_DIR / self.domain_name
+        super().save(*args, **kwargs)
+
+        # Make sure that the directories for the file fields exist.
+        incoming_spool_dir = Path(self.incoming_spool_dir)
+        outgoing_spool_dir = Path(self.outgoing_spool_dir)
+        mail_dir_parent = Path(self.mail_dir_parent)
+
+        if not incoming_spool_dir.exists():
+            incoming_spool_dir.mkdir()
+        if not outgoing_spool_dir.exists():
+            outgoing_spool_dir.mkdir()
+        if not mail_dir_parent.exists():
+            mail_dir_parent.mkdir()
+
+    ####################################################################
+    #
+    async def asave(self, *args, **kwargs):
+        """
+        On pre-save of the Server instance if this is when it is being
+        created pre-fill the incoming spool dir, outgoing spool dir, and
+        mail_dir_parent based on the domain_name of the server.
+
+        This lets the default creation automatically set where these
+        directories are without requiring input if they are not set on create.
+
+        After we have called the parent save method we make sure that the
+        directory specified exists.
+        """
+        # If the object has not been created yet then if the various file
+        # fields have not been set, set them based on django settings and the
+        # domain name.
+        #
+        # XXX We should also check to see if the path exists and if it does it
+        #     must be a directory.
+        #
+        if not self.id:
+            if not self.incoming_spool_dir:
+                self.incoming_spool_dir = (
+                    settings.EMAIL_SPOOL_DIR / self.domain_name / "incoming"
+                )
+            if not self.outgoing_spool_dir:
+                self.outgoing_spool_dir = (
+                    settings.EMAIL_SPOOL_DIR / self.domain_name / "outgoing"
+                )
+
+            if not self.mail_dir_parent:
+                self.mail_dir_parent = settings.EMAIL_BASE_DIR / self.domain_name
+        await super().asave(*args, **kwargs)
+
+        # Make sure that the directories for the file fields exist.
+        #
+        if not await aiofiles.os.path.exists(self.incoming_spool_dir):
+            await aiofiles.os.mkdir(self.incoming_spool_dir)
+        if not await aiofiles.os.path.exists(self.outgoing_spool_dir):
+            await aiofiles.os.mkdir(self.outgoing_spool_dir)
+        if not await aiofiles.os.path.exists(self.mail_dir_parent):
+            await aiofiles.os.mkdir(self.mail_dir_parent)
 
     ####################################################################
     #
@@ -70,7 +205,15 @@ class Server(models.Model):
         XXX Be sure to record metrics when we send a message, and how large the
             message was.
         """
-        self.client.emails.send(message)
+        return self.client.emails.send(message)
+
+    ####################################################################
+    #
+    async def asend_email(self, message):
+        """
+        Send the given email via this server, asyncio version
+        """
+        return await asyncio.to_thread(self.client.emails.send(message))
 
 
 ########################################################################
@@ -123,9 +266,7 @@ class EmailAccount(models.Model):
     ]
 
     user: models.ForeignKey = models.ForeignKey(User, on_delete=models.CASCADE)
-    server: models.ForeignKey = models.ForeignKey(
-        Server, on_delete=models.CASCADE
-    )
+    server: models.ForeignKey = models.ForeignKey(Server, on_delete=models.CASCADE)
     # XXX We should figure out a way to have this still be a validated email
     #     field, but auto-fill the domain name part from the server attribute.
     #     For now we are just going to require that the domain name's match.
@@ -202,6 +343,13 @@ class EmailAccount(models.Model):
     created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
     modified_at: models.DateTimeField = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["forward_to"]),
+            models.Index(fields=["email_address"]),
+            models.Index(fields=["user"]),
+        ]
+
     ####################################################################
     #
     def clean(self):
@@ -218,13 +366,6 @@ class EmailAccount(models.Model):
                     )
                 }
             )
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["forward_to"]),
-            models.Index(fields=["email_address"]),
-            models.Index(fields=["user"]),
-        ]
 
     ####################################################################
     #
@@ -322,13 +463,9 @@ class MessageFilterRule(OrderedModel):
     ]
 
     email_account = models.ForeignKey(EmailAccount, on_delete=models.CASCADE)
-    header = models.CharField(
-        max_length=32, choices=HEADER_CHOICES, default=DEFAULT
-    )
+    header = models.CharField(max_length=32, choices=HEADER_CHOICES, default=DEFAULT)
     pattern = models.CharField(blank=True, max_length=256)
-    action = models.CharField(
-        max_length=2, choices=ACTION_CHOICES, default=FOLDER
-    )
+    action = models.CharField(max_length=2, choices=ACTION_CHOICES, default=FOLDER)
     folder = models.CharField(blank=True, max_length=1024)
     order_with_respect_to = "email_account"
 

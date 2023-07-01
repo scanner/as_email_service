@@ -8,6 +8,7 @@ pytest fixtures for our tests
 
 # 3rd party imports
 #
+import pytest
 from pytest_factoryboy import register
 
 # Project imports
@@ -32,3 +33,34 @@ register(ServerFactory)
 register(EmailAccountFactory)
 register(BlockedMessageFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+@pytest.fixture(autouse=True)
+def email_spool_dir(settings, tmp_path):
+    """
+    We want every test to run with a spool dir that is a fixture (so
+    that we do not accidentally forget to set it in a test that uses a
+    provider/server without specifically calling out that it does.)
+    """
+    spool_dir = tmp_path / "spool"
+    spool_dir.mkdir()
+    settings.EMAIL_SPOOL_DIR = spool_dir
+    yield spool_dir
+
+
+####################################################################
+#
+@pytest.fixture(autouse=True)
+def email_base_dir(settings, tmp_path):
+    """
+    We want every test to run with a base dir that is a fixture (so
+    that we do not accidentally forget to set it in a test that uses a
+    provider/server without specifically calling out that it does.)
+    """
+
+    mail_base_dir = tmp_path / "mail_base_dir"
+    mail_base_dir.mkdir()
+    settings.EMAIL_BASE_DIR = email_base_dir
+    yield mail_base_dir

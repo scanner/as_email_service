@@ -177,9 +177,7 @@ class RelayHandler:
 
     ####################################################################
     #
-    async def handle_EHLO(
-        server, session, envelope, hostname, responses
-    ) -> List[str]:
+    async def handle_EHLO(server, session, envelope, hostname, responses) -> List[str]:
         """
         the primary purpose of having a handler for EHLO is to
         quickly deny hosts that have suffered repeated authentication failures
@@ -209,7 +207,7 @@ class RelayHandler:
         account = session.auth_data
 
         try:
-            await asyncio.to_thread(account.server.send_email(envelope))
+            await account.server.asend_email(envelope)
         except Exception as e:
             # If postmark is down we need to write the message to a spool
             # directory and have a huey worker check for these unsent

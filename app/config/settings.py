@@ -35,6 +35,8 @@ env = environ.Env(
     DATABASE_URL=(str, "sqlite:///:memory:"),
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
     EMAIL_SERVER_TOKENS=(str, "example.com=foo"),
+    EMAIL_BASE_DIR=(str, "/mnt/maildir"),
+    EXTERNAL_AUTH_DB_URL=(str, "sqlite:///:memory:"),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -205,4 +207,31 @@ else:
 # server token for that server.
 #
 EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
+
+# The email spool dir is where incoming and outgoing emails are temporarily
+# stored. There should be a directory "incoming" and "outgoing" in this
+# directory.
+#
 EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
+
+# This is the parent directory where all the MH mail dirs are for all the
+# email accounts. There will be a subdir for each server, and a dir with the
+# username under that subdir. That username dir will be the mh mail dir for
+# each email account.
+#
+EMAIL_BASE_DIR = Path(env("EMAIL_BASE_DIR"))
+
+# The external auth db is a sqlite db that we maintain one table in: "users"
+# The "user" table will at least have two columns: "password" and
+# "maildir". This is for use by external services (primarily for integration
+# with asimap as we do not want to bind asimap to a django project.. but we do
+# want this django app to be the authorities for the username, password, and
+# maildir root for that account.
+#
+# Whenever an email account is saved this db is updated. If it does not exist
+# it is created.
+#
+# NOTE: We should probably make an importable module from asimap that manages
+#       this db and use that to create, update, and modify this db.
+#
+EXTERNAL_AUTH_DB = Path(env("EXTERNAL_AUTH_DB"))
