@@ -177,7 +177,14 @@ class RelayHandler:
 
     ####################################################################
     #
-    async def handle_EHLO(server, session, envelope, hostname, responses) -> List[str]:
+    async def handle_EHLO(
+        self,
+        server: SMTPServer,
+        session: SMTPSession,
+        envelope: SMTPEnvelope,
+        hostname,
+        responses,
+    ) -> List[str]:
         """
         the primary purpose of having a handler for EHLO is to
         quickly deny hosts that have suffered repeated authentication failures
@@ -222,7 +229,7 @@ class RelayHandler:
             fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
                 "%Y.%m.%d-%H.%M.%S.%f%z"
             )
-            spool_file = self.spool_dir / fname
+            spool_file = account.server.incoming_spool_dir / fname
             async with aiofiles.open(spool_file, "wb") as f:
                 # XXX need to convert envelope to a binary stream that
                 #     can be read back in without losing data.
@@ -234,7 +241,9 @@ class RelayHandler:
                 #     actually makea n ORM object for this metadata
                 #     instead of trying to stick it somewhere else.
                 #
-                await f.write(envelope)
+                #     This db object can also track re-send attempts?
+                #
+                await f.write(envelope.original_content)
         return "250 OK"
 
 

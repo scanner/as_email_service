@@ -68,6 +68,6 @@ isort: .isorted
 black: .blackened
 
 mypy: venv
-	$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/
+	@$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/ ./scripts/
 
 .PHONY: requirements formatting lint squeegee isort black mypy
