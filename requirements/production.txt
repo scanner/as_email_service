@@ -10,6 +10,8 @@ aiologger==0.7.0
     # via -r production.in
 aiosmtpd==1.4.4.post2
     # via -r production.in
+annotated-types==0.5.0
+    # via pydantic
 anyio==3.7.0
     # via httpcore
 asgiref==3.7.2
@@ -36,7 +38,7 @@ cryptography==39.0.2
     # via
     #   fido2
     #   python-u2flib-server
-django==4.2.2
+django==4.2.3
     # via
     #   -r production.in
     #   django-anymail
@@ -56,7 +58,7 @@ dnspython==2.3.0
     # via -r production.in
 ecdsa==0.18.0
     # via python-jose
-exceptiongroup==1.1.1
+exceptiongroup==1.1.2
     # via anyio
 fido2==1.0.0
     # via django-mfa2
@@ -91,8 +93,10 @@ pyasn1==0.5.0
     #   rsa
 pycparser==2.21
     # via cffi
-pydantic==1.10.9
+pydantic==2.0
     # via -r production.in
+pydantic-core==2.0.1
+    # via pydantic
 pygments==2.15.1
     # via rich
 pyotp==2.8.0
@@ -131,10 +135,11 @@ sniffio==1.3.0
     #   httpx
 sqlparse==0.4.4
     # via django
-typing-extensions==4.7.0
+typing-extensions==4.7.1
     # via
     #   asgiref
     #   pydantic
+    #   pydantic-core
     #   reactivex
 ua-parser==0.16.1
     # via

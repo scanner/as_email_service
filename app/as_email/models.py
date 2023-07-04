@@ -126,7 +126,9 @@ class Server(models.Model):
                 )
 
             if not self.mail_dir_parent:
-                self.mail_dir_parent = settings.EMAIL_BASE_DIR / self.domain_name
+                self.mail_dir_parent = (
+                    settings.EMAIL_BASE_DIR / self.domain_name
+                )
         super().save(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.
@@ -173,7 +175,9 @@ class Server(models.Model):
                 )
 
             if not self.mail_dir_parent:
-                self.mail_dir_parent = settings.EMAIL_BASE_DIR / self.domain_name
+                self.mail_dir_parent = (
+                    settings.EMAIL_BASE_DIR / self.domain_name
+                )
         await super().asave(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.
@@ -266,7 +270,9 @@ class EmailAccount(models.Model):
     ]
 
     user: models.ForeignKey = models.ForeignKey(User, on_delete=models.CASCADE)
-    server: models.ForeignKey = models.ForeignKey(Server, on_delete=models.CASCADE)
+    server: models.ForeignKey = models.ForeignKey(
+        Server, on_delete=models.CASCADE
+    )
     # XXX We should figure out a way to have this still be a validated email
     #     field, but auto-fill the domain name part from the server attribute.
     #     For now we are just going to require that the domain name's match.
@@ -463,9 +469,13 @@ class MessageFilterRule(OrderedModel):
     ]
 
     email_account = models.ForeignKey(EmailAccount, on_delete=models.CASCADE)
-    header = models.CharField(max_length=32, choices=HEADER_CHOICES, default=DEFAULT)
+    header = models.CharField(
+        max_length=32, choices=HEADER_CHOICES, default=DEFAULT
+    )
     pattern = models.CharField(blank=True, max_length=256)
-    action = models.CharField(max_length=2, choices=ACTION_CHOICES, default=FOLDER)
+    action = models.CharField(
+        max_length=2, choices=ACTION_CHOICES, default=FOLDER
+    )
     folder = models.CharField(blank=True, max_length=1024)
     order_with_respect_to = "email_account"
 

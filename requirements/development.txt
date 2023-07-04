@@ -10,6 +10,10 @@ aiologger==0.7.0
     # via -r production.txt
 aiosmtpd==1.4.4.post2
     # via -r production.txt
+annotated-types==0.5.0
+    # via
+    #   -r production.txt
+    #   pydantic
 anyio==3.7.0
     # via
     #   -r production.txt
@@ -83,7 +87,7 @@ distlib==0.3.6
     # via
     #   -r lint.txt
     #   virtualenv
-django==4.2.2
+django==4.2.3
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -102,7 +106,7 @@ django-mfa2==2.8.0
     # via -r production.txt
 django-ordered-model==3.7.4
     # via -r production.txt
-django-stubs[compatible-mypy]==4.2.2
+django-stubs[compatible-mypy]==4.2.3
     # via -r lint.txt
 django-stubs-ext==4.2.2
     # via
@@ -114,7 +118,7 @@ ecdsa==0.18.0
     # via
     #   -r production.txt
     #   python-jose
-exceptiongroup==1.1.1
+exceptiongroup==1.1.2
     # via
     #   -r production.txt
     #   anyio
@@ -211,7 +215,7 @@ pexpect==4.8.0
     # via ipython
 pickleshare==0.7.5
     # via ipython
-pip-tools==6.13.0
+pip-tools==6.14.0
     # via -r lint.txt
 platformdirs==3.8.0
     # via
@@ -239,8 +243,12 @@ pycparser==2.21
     # via
     #   -r production.txt
     #   cffi
-pydantic==1.10.9
+pydantic==2.0
     # via -r production.txt
+pydantic-core==2.0.1
+    # via
+    #   -r production.txt
+    #   pydantic
 pygments==2.15.1
     # via
     #   -r production.txt
@@ -311,7 +319,7 @@ rsa==4.9
     # via
     #   -r production.txt
     #   python-jose
-ruff==0.0.275
+ruff==0.0.276
     # via -r lint.txt
 simplejson==3.19.1
     # via
@@ -347,6 +355,7 @@ tomli==2.0.1
     #   coverage
     #   django-stubs
     #   mypy
+    #   pip-tools
     #   pyproject-hooks
     #   pytest
 traitlets==5.9.0
@@ -373,7 +382,7 @@ types-urllib3==1.26.25.13
     # via
     #   -r lint.txt
     #   types-requests
-typing-extensions==4.7.0
+typing-extensions==4.7.1
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -382,6 +391,7 @@ typing-extensions==4.7.0
     #   django-stubs-ext
     #   mypy
     #   pydantic
+    #   pydantic-core
     #   pytest-factoryboy
     #   reactivex
 ua-parser==0.16.1

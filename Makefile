@@ -51,4 +51,4 @@ logs:
 	@docker compose logs -f -t
 
 test:
-	@docker compose run --rm devweb pytest --disable-warnings -vvvv
+	@docker compose run --rm devweb pytest --disable-warnings

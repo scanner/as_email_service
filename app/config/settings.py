@@ -233,4 +233,6 @@ EMAIL_BASE_DIR = Path(env("EMAIL_BASE_DIR"))
 # NOTE: We should probably make an importable module from asimap that manages
 #       this db and use that to create, update, and modify this db.
 #
-EXTERNAL_AUTH_DB = Path(env("EXTERNAL_AUTH_DB")) if "EXTERNAL_AUTH_DB" in env else None
+EXTERNAL_AUTH_DB = (
+    Path(env("EXTERNAL_AUTH_DB")) if "EXTERNAL_AUTH_DB" in env else None
+)

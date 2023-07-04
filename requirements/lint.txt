@@ -20,11 +20,11 @@ coverage==7.2.7
     # via -r lint.in
 distlib==0.3.6
     # via virtualenv
-django==4.2.2
+django==4.2.3
     # via
     #   django-stubs
     #   django-stubs-ext
-django-stubs[compatible-mypy]==4.2.2
+django-stubs[compatible-mypy]==4.2.3
     # via -r lint.in
 django-stubs-ext==4.2.2
     # via django-stubs
@@ -50,7 +50,7 @@ packaging==23.1
     #   build
 pathspec==0.11.1
     # via black
-pip-tools==6.13.0
+pip-tools==6.14.0
     # via -r lint.in
 platformdirs==3.8.0
     # via
@@ -62,7 +62,7 @@ pyproject-hooks==1.0.0
     # via build
 pyyaml==6.0
     # via pre-commit
-ruff==0.0.275
+ruff==0.0.276
     # via -r lint.in
 sqlparse==0.4.4
     # via django
@@ -72,6 +72,7 @@ tomli==2.0.1
     #   build
     #   django-stubs
     #   mypy
+    #   pip-tools
     #   pyproject-hooks
 types-cachetools==5.3.0.5
     # via -r lint.in
@@ -87,7 +88,7 @@ types-setuptools==68.0.0.0
     # via -r lint.in
 types-urllib3==1.26.25.13
     # via types-requests
-typing-extensions==4.7.0
+typing-extensions==4.7.1
     # via
     #   asgiref
     #   django-stubs

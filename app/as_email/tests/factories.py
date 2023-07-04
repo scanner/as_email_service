@@ -118,7 +118,9 @@ class BlockedMessageFactory(DjangoModelFactory):
 class MessageFilterRuleFactory(DjangoModelFactory):
     email_account = factory.SubFactory(EmailAccountFactory)
     pattern = factory.Faker("email")
-    header = factory.fuzzy.FuzzyChoice([x[0] for x in MessageFilterRule.HEADER_CHOICES])
+    header = factory.fuzzy.FuzzyChoice(
+        [x[0] for x in MessageFilterRule.HEADER_CHOICES]
+    )
 
     class Meta:
         model = MessageFilterRule
