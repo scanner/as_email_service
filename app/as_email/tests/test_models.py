@@ -10,6 +10,7 @@ Model tests.
 #
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from faker import Faker
 
 # Project imports
@@ -39,9 +40,6 @@ def test_server(server_factory):
     assert server.domain_name in str(server.outgoing_spool_dir)
     assert server.outgoing_spool_dir.is_dir()
 
-    assert str(server.outgoing_spool_dir).endswith(server.domain_name)
-    assert server.outgoing_spool_dir.is_dir()
-
 
 ####################################################################
 #
@@ -63,6 +61,12 @@ def test_email_account_valid_email_address(email_account_factory):
     # The factory by default creates an email_address that is valid.
     #
     ea = email_account_factory()
-    assert ea.clean()
-    assert ea.clean_all()
+    try:
+        ea.clean()
+    except ValidationError as exc:
+        assert False, exc
     ea.save()
+
+    ea.email_address = "foo@example.org"
+    with pytest.raises(ValidationError):
+        ea.clean()
