@@ -45,7 +45,7 @@ def email_spool_dir(settings, tmp_path):
     provider/server without specifically calling out that it does.)
     """
     spool_dir = tmp_path / "spool"
-    spool_dir.mkdir()
+    spool_dir.mkdir(parents=True, exist_ok=True)
     settings.EMAIL_SPOOL_DIR = spool_dir
     yield spool_dir
 
@@ -61,6 +61,6 @@ def email_base_dir(settings, tmp_path):
     """
 
     mail_base_dir = tmp_path / "mail_base_dir"
-    mail_base_dir.mkdir()
-    settings.EMAIL_BASE_DIR = email_base_dir
+    mail_base_dir.mkdir(parents=True, exist_ok=True)
+    settings.EMAIL_BASE_DIR = mail_base_dir
     yield mail_base_dir

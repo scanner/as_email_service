@@ -136,12 +136,9 @@ class Server(models.Model):
         outgoing_spool_dir = Path(self.outgoing_spool_dir)
         mail_dir_parent = Path(self.mail_dir_parent)
 
-        if not incoming_spool_dir.exists():
-            incoming_spool_dir.mkdir()
-        if not outgoing_spool_dir.exists():
-            outgoing_spool_dir.mkdir()
-        if not mail_dir_parent.exists():
-            mail_dir_parent.mkdir()
+        incoming_spool_dir.mkdir(parents=True, exist_ok=True)
+        outgoing_spool_dir.mkdir(parents=True, exist_ok=True)
+        mail_dir_parent.mkdir(parents=True, exist_ok=True)
 
     ####################################################################
     #
@@ -183,11 +180,11 @@ class Server(models.Model):
         # Make sure that the directories for the file fields exist.
         #
         if not await aiofiles.os.path.exists(self.incoming_spool_dir):
-            await aiofiles.os.mkdir(self.incoming_spool_dir)
+            await aiofiles.os.mkdirs(self.incoming_spool_dir)
         if not await aiofiles.os.path.exists(self.outgoing_spool_dir):
-            await aiofiles.os.mkdir(self.outgoing_spool_dir)
+            await aiofiles.os.mkdirs(self.outgoing_spool_dir)
         if not await aiofiles.os.path.exists(self.mail_dir_parent):
-            await aiofiles.os.mkdir(self.mail_dir_parent)
+            await aiofiles.os.mkdirs(self.mail_dir_parent)
 
     ####################################################################
     #
