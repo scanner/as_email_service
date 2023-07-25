@@ -97,12 +97,6 @@ class Command(BaseCommand):
         ssl_key_file = options["ssl_key"]
         spool_dir = settings.EMAIL_SPOOL_DIR
 
-        logger.info(
-            "aiosmtpd: Listening on %d, cert: %s, key: %s",
-            listen_port,
-            ssl_cert_file,
-            ssl_key_file,
-        )
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.create_task(
@@ -255,6 +249,10 @@ async def amain(
     ssl_key: str,
     listen_port: int = LISTEN_PORT,
 ):
+    logger.info(
+        f"aiosmtpd: Listening on {listen_port}, cert:{ssl_cert}, "
+        f"key: {ssl_key}"
+    )
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.load_cert_chain(ssl_cert, ssl_key)
     handler = RelayHandler(spool_dir=spool_dir)
