@@ -17,6 +17,7 @@ from typing import List
 # 3rd party imports
 #
 import environ
+import redis
 from django.core.management.utils import get_random_secret_key
 
 # This is be "/app" inside the docker container.
@@ -31,7 +32,6 @@ env = environ.Env(
     DEBUG=(bool, False),
     DJANGO_SECRET_KEY=(str, get_random_secret_key()),
     SITE_NAME=(str, "example.com"),
-    HUEY_DB_FILE=(str, ":memory:"),
     DATABASE_URL=(str, "sqlite:///:memory:"),
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
     EMAIL_SERVER_TOKENS=(str, "example.com=foo"),
@@ -161,13 +161,23 @@ STATICFILES_FINDERS = [
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://redis:6379",
+    }
+}
+
 HUEY = {
-    "huey_class": "huey.SqliteHuey",
+    "huey_class": "huey.RedisHuey",
     "name": "as_email_service",
     "immediate": False,
     "results": True,  # Store return values of tasks.
+    "store_none": False,
     "utc": True,  # Use UTC for all times internally.
-    "filename": env("HUEY_DB_FILE"),
+    "connection": {
+        "connection_pool": redis.ConnectionPool(host="redis", port=6379, db=1),
+    },
     "consumer": {
         "workers": 4,
         "worker_type": "thread",

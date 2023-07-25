@@ -1,5 +1,9 @@
 version: '3'
 
+volumes:
+  redis_data:
+    name: "as_email_redis_data_01"
+
 services:
   web: &web
     image: as_email_service_app
@@ -45,9 +49,6 @@ services:
       - dev
 
   smtpd:
-    <<: *web
-    build:
-      target: prod
     image: as_email_service_app
     container_name: smtpd
     ports:
@@ -65,13 +66,8 @@ services:
       - prod
 
   worker:
-    <<: *web
-    build:
-      target: prod
     image: as_email_service_app
     container_name: worker
-    ports:
-      - "19247:586"
     command: /app/scripts/start_worker.sh
     restart: always
     env_file: .env
@@ -79,6 +75,20 @@ services:
       - ./app:/app:z
       - ./dbs:/mnt/db:z
       - ./spool:/mnt/spool:z
+    profiles:
+      - dev
+      - prod
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    volumes:
+      - "redis_data:/data"
+      - type: bind
+        source: ${PWD}/config/redis/redis.conf
+        target: /usr/local/etc/redis/redis.conf
+    expose:
+      - 6379
     profiles:
       - dev
       - prod

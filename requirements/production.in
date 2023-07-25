@@ -16,6 +16,7 @@ postmarker
 pydantic
 pytz
 pyyaml
+redispy
 rich
 uvicorn
 wait-for-it
