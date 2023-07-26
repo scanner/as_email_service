@@ -92,6 +92,11 @@ class Server(models.Model):
 
     ####################################################################
     #
+    def __str__(self):
+        return self.domain_name
+
+    ####################################################################
+    #
     def save(self, *args, **kwargs):
         """
         On pre-save of the Server instance if this is when it is being
@@ -277,7 +282,15 @@ class EmailAccount(models.Model):
     account_type = models.CharField(
         max_length=2, choices=ACCOUNT_TYPE_CHOICES, default=ACCOUNT
     )
-    mail_dir: models.CharField = models.CharField(max_length=1000)
+    mail_dir: models.CharField = models.CharField(
+        help_text=_(
+            "The root folder of the mail directory for this email account. "
+            "(If you leave it blank a good default will be chosen. "
+            "This is the recommended practce)"
+        ),
+        max_length=1000,
+        null=True,
+    )
     password: models.CharField = models.CharField(
         max_length=200,
         help_text=_("Password for SMTP and IMAP auth for this account"),
@@ -357,6 +370,23 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
+    def __str__(self):
+        return self.email_address
+
+    ####################################################################
+    #
+    def save(self, *args, **kwargs):
+        # XXX make sure mail dir is set and created#
+        pass
+
+    ####################################################################
+    #
+    async def asave(self, *args, **kwargs):
+        # XXX make sure mail dir is set and created#
+        pass
+
+    ####################################################################
+    #
     def clean(self):
         """
         Make sure that the email address is one that is served by the
@@ -420,6 +450,11 @@ class BlockedMessage(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["email_account"])]
+
+    ####################################################################
+    #
+    def __str__(self):
+        return f"{self.email_account.email_address} - {self.from_address}: {self.subject} ({self.created_at})"
 
 
 ########################################################################
