@@ -214,7 +214,7 @@ class Server(models.Model):
         """
         Send the given email via this server, asyncio version
         """
-        return await asyncio.to_thread(self.client.emails.send(message))
+        return await asyncio.to_thread(self.send_email(message))
 
 
 ########################################################################
@@ -478,4 +478,5 @@ class MessageFilterRule(OrderedModel):
 
     class Meta:
         indexes = [models.Index(fields=["email_account"])]
+        unique_together = ["email_account", "header", "pattern"]
         ordering = ("email_account", "order")

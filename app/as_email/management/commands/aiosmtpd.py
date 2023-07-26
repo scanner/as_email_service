@@ -235,6 +235,9 @@ class RelayHandler:
                 #     actually makea n ORM object for this metadata
                 #     instead of trying to stick it somewhere else.
                 #
+                #     also need to track bounces and deliver a bounce
+                #     email (and we do not retry on bounces)
+                #
                 #     This db object can also track re-send attempts?
                 #
                 await f.write(envelope.original_content)

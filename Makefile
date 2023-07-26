@@ -29,8 +29,8 @@ down:
 	@docker compose --profile dev down --remove-orphans
 
 delete: clean
-	@docker compose --profile dev down  --remove-orphans
-	@docker compose --profile prod down  --remove-orphans
+	@docker compose --profile dev down --remove-orphans
+	@docker compose --profile prod down --remove-orphans
 
 restart:
 	@docker compose --profile dev restart
