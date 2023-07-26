@@ -293,11 +293,25 @@ class EmailAccount(models.Model):
     )
     password: models.CharField = models.CharField(
         max_length=200,
-        help_text=_("Password for SMTP and IMAP auth for this account"),
+        help_text=_(
+            "Password used for the SMTP and IMAP services for this email "
+            "account"
+        ),
         default="XXX",
     )
     handle_blocked_messages: models.CharField = models.CharField(
-        max_length=2, choices=BLOCK_CHOICES, default=DELIVER
+        max_length=2,
+        choices=BLOCK_CHOICES,
+        default=DELIVER,
+        help_text=_(
+            "When the email provider blocks a message because it is thought "
+            "to be spam you can choose to have the email delivered to the "
+            "folder set in the `blocked messages delivery folder` or you can"
+            "choose them to be blocked. ie: not delivered to your mail box "
+            "at all. They will be viewable in the email account's blocked "
+            "messages list where you can choose to have them delivered to your "
+            "mail box on a message by message basis."
+        ),
     )
     blocked_messages_delivery_folder: models.CharField = models.CharField(
         default="Junk",
