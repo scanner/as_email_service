@@ -67,6 +67,9 @@ def test_email_account_valid_email_address(email_account_factory):
         assert False, exc
     ea.save()
 
+    # The email address must end with the same domain name as the
+    # server that it is associated with.
+    #
     ea.email_address = "foo@example.org"
     with pytest.raises(ValidationError):
         ea.clean()

@@ -42,5 +42,5 @@ class MessageFilterRuleAdmin(OrderedModelAdmin):
         "header",
         "pattern",
         "action",
-        "folder",
+        "destination",
     )

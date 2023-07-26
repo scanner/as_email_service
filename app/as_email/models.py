@@ -320,6 +320,16 @@ class EmailAccount(models.Model):
     #
     # NOTE: Unlike 'alias' you can only forward to a single address.
     #
+    # NOTE: We need to make a 'forward check' system. If you set a
+    #       forward, the system will send a test email to the
+    #       forwarded address. The test email has a link back to a
+    #       form on this system that acknowldges the forward.
+    #
+    #       How does that work in terms of UX? We should not
+    #       automatically send a test email when the email account is
+    #       saved. We should have some indicator along with a button
+    #       you press to actually send the test email.
+    #
     forward_to: models.EmailField = models.EmailField(null=True, blank=True)
 
     # If an account is deactivated it can still receive email. However it is no
@@ -428,11 +438,20 @@ class MessageFilterRule(OrderedModel):
     # "qpipe" which offer various actions. We are only supporting 'folder' and
     # 'destroy' for now.
     #
-    FOLDER = "FO"
-    DESTROY = "DE"
+    # TODO: Consider a 'forward' action that lets matches have the
+    #       message forward to another address. (it will act as an
+    #       alias if the destination address is one handled by this
+    #       system.) Like the email account forward the rule will
+    #       remain inactive until a button associated with the rule is
+    #       pressed that sends a test email and that test email is
+    #       acknowledged does the rule become active.
+    #       Also bounces immediately deactivate the rule.
+    #
+    FOLDER = "folder"
+    DESTROY = "destroy"
     ACTION_CHOICES = [
-        (FOLDER, "folder"),
-        (DESTROY, "destroy"),
+        (FOLDER, FOLDER),
+        (DESTROY, DESTROY),
     ]
 
     # For now just these common headers. Adding more is easy.
@@ -471,12 +490,68 @@ class MessageFilterRule(OrderedModel):
     )
     pattern = models.CharField(blank=True, max_length=256)
     action = models.CharField(
-        max_length=2, choices=ACTION_CHOICES, default=FOLDER
+        max_length=10, choices=ACTION_CHOICES, default=FOLDER
     )
-    folder = models.CharField(blank=True, max_length=1024)
+    destination = models.CharField(blank=True, max_length=1024)
     order_with_respect_to = "email_account"
 
     class Meta:
         indexes = [models.Index(fields=["email_account"])]
         unique_together = ["email_account", "header", "pattern"]
         ordering = ("email_account", "order")
+
+    ####################################################################
+    #
+    @classmethod
+    def create_from_rule(cls, email_account: EmailAccount, rule_text: str):
+        """
+        The message filter rule is created to match the lines in a
+        `maildelivery` (part of mh) file. This class method creates a
+        rule based on the syntax of the non-blank, non-comment lines
+        in that file.
+
+        The format is:
+        <header> <pattern> <action> <result> <string (folder name)>
+
+        The fields are separated by whitespace.
+
+        If the action is "destroy" there is no final string (the folder in case of the 'folder' action.)
+
+        We do not currently honor the "result" column so that is just
+        ignored. We are also only supporting "folder" and "destroy"
+        actions. Once a message is matched by a message filter rule,
+        it will be considered delivered and stop processing.
+        """
+        rule_parts = rule_text.split()
+        if len(rule_parts) == 5:
+            (header, pattern, action, result, folder) = rule_parts
+            if action != "folder":
+                raise ValueError(
+                    "5 part message filter rule is only valid for 'folder' "
+                    "rules"
+                )
+            rule = cls(
+                email_account=email_account,
+                header=header,
+                pattern=pattern,
+                action=action,
+                destination=folder,
+            )
+        elif len(rule_parts) == 4:
+            (header, pattern, action, result) = rule_parts
+            if action != "destroy":
+                raise ValueError(
+                    "4 part message filter rule is only valid for 'destroy' "
+                    "rules"
+                )
+            rule = cls(
+                email_account=email_account,
+                header=header,
+                pattern=pattern,
+                action=action,
+            )
+        else:
+            raise ValueError(
+                "rule text must be 4 or 5 columns separated white space."
+            )
+        rule.save()
