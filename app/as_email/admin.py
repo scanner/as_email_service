@@ -34,6 +34,7 @@ class ServerAdmin(admin.ModelAdmin):
         "created_at",
         "modified_at",
     )
+    search_fields = ("domain_name",)
     list_filter = ("provider", "created_at", "modified_at")
     date_hierarchy = "created_at"
 
@@ -60,9 +61,14 @@ class EmailAccountAdmin(admin.ModelAdmin):
     list_filter = (
         "user",
         "server",
+        "account_type",
         "deactivated",
         "created_at",
         "modified_at",
+    )
+    search_fields = (
+        "user",
+        "email_address",
     )
     raw_id_fields = ("alias_for",)
     date_hierarchy = "created_at"
@@ -82,7 +88,8 @@ class BlockedMessageAdmin(admin.ModelAdmin):
         "created_at",
         "modified_at",
     )
-    list_filter = ("email_account", "created_at", "modified_at")
+    list_filter = ("email_account", "status", "created_at", "modified_at")
+    search_fields = ("blocked_reason", "from_address", "cc", "email_account")
     date_hierarchy = "created_at"
 
 
@@ -100,4 +107,5 @@ class MessageFilterRuleAdmin(OrderedModelAdmin):
         "modified_at",
     )
     list_filter = ("email_account", "created_at", "modified_at")
+    search_fields = ("pattern", "destination")
     date_hierarchy = "created_at"

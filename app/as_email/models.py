@@ -36,25 +36,10 @@ class Provider(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
-
-####################################################################
-#
-def spool_dir_path():
-    """
-    The spool dir is defined in the django settings. This lets us assign the
-    root spool dir to use for a server dynamically.
-    """
-    return settings.EMAIL_SPOOL_DIR
-
-
-####################################################################
-#
-def email_base_dir():
-    """
-    Look the spool dir path this is the root directory in settings where
-    all the mail folders for the email accounts are stored.
-    """
-    return settings.EMAIL_BASE_DIR
+    ####################################################################
+    #
+    def __str__(self):
+        return self.name
 
 
 ########################################################################
@@ -70,26 +55,34 @@ class Server(models.Model):
         unique=True,
     )
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
-    incoming_spool_dir = models.FilePathField(
-        spool_dir_path,
-        max_length=1000,
-        allow_files=False,
-        allow_folders=True,
-        recursive=True,
+    incoming_spool_dir = models.CharField(
+        help_text=_(
+            "The directory incoming messages are temporarily spooled to before "
+            "being delivered. If not set a reasonable default will be chosen "
+            "(this is the recommended way)."
+        ),
+        max_length=1024,
+        null=True,
     )
-    outgoing_spool_dir = models.FilePathField(
-        spool_dir_path,
-        max_length=1000,
-        allow_files=False,
-        allow_folders=True,
-        recursive=True,
+    outgoing_spool_dir = models.CharField(
+        help_text=_(
+            "The directory outgoing messages are temporarily spooled to before "
+            "being sent to the server for delivery. If not set a reasonable "
+            "default will be chosen (this is the recommended way)."
+        ),
+        max_length=1024,
+        null=True,
     )
-    mail_dir_parent = models.FilePathField(
-        email_base_dir,
-        max_length=1000,
-        allow_files=False,
-        allow_folders=True,
-        recursive=True,
+    mail_dir_parent = models.CharField(
+        help_text=_(
+            "The directory that is the root of all the local mailboxes that "
+            "mail will be delivered to if being delivered locally. The "
+            "mailboxes are named by the email address being delivered to."
+            "If not set a reasonable default will be chosen (this is the "
+            "recommended way)."
+        ),
+        max_length=1024,
+        null=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
