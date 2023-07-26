@@ -494,6 +494,8 @@ class MessageFilterRule(OrderedModel):
     )
     destination = models.CharField(blank=True, max_length=1024)
     order_with_respect_to = "email_account"
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [models.Index(fields=["email_account"])]

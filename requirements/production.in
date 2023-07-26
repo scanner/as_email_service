@@ -20,3 +20,4 @@ redispy
 rich
 uvicorn
 wait-for-it
+whitenoise

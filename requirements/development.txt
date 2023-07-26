@@ -425,6 +425,8 @@ wheel==0.40.0
     # via
     #   -r lint.txt
     #   pip-tools
+whitenoise==6.5.0
+    # via -r production.txt
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

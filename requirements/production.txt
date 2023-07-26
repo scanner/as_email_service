@@ -158,6 +158,8 @@ uvicorn==0.22.0
     # via -r production.in
 wait-for-it==2.2.2
     # via -r production.in
+whitenoise==6.5.0
+    # via -r production.in
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools
