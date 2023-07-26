@@ -45,7 +45,7 @@ migrate:
 	@docker compose run --rm devweb python /app/manage.py migrate
 
 makemigrations:
-	@docker compose run --rm devweb python /app/manage.py makemigrations
+	@docker compose run --rm devweb python /app/manage.py makemigrations as_email
 
 logs:
 	@docker compose logs -f -t

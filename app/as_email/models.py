@@ -63,6 +63,7 @@ class Server(models.Model):
         ),
         max_length=1024,
         null=True,
+        blank=True,
     )
     outgoing_spool_dir = models.CharField(
         help_text=_(
@@ -72,6 +73,7 @@ class Server(models.Model):
         ),
         max_length=1024,
         null=True,
+        blank=True,
     )
     mail_dir_parent = models.CharField(
         help_text=_(
@@ -83,6 +85,7 @@ class Server(models.Model):
         ),
         max_length=1024,
         null=True,
+        blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
@@ -119,9 +122,7 @@ class Server(models.Model):
                 )
 
             if not self.mail_dir_parent:
-                self.mail_dir_parent = (
-                    settings.EMAIL_BASE_DIR / self.domain_name
-                )
+                self.mail_dir_parent = settings.MAIL_DIRS / self.domain_name
         super().save(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.
@@ -165,9 +166,7 @@ class Server(models.Model):
                 )
 
             if not self.mail_dir_parent:
-                self.mail_dir_parent = (
-                    settings.EMAIL_BASE_DIR / self.domain_name
-                )
+                self.mail_dir_parent = settings.MAIL_DIRS / self.domain_name
         await super().asave(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.

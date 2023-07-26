@@ -18,8 +18,9 @@ services:
     restart: always
     env_file: .env
     volumes:
-      - ./app:/app:z
-      - ./dbs:/mnt/db:z
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
     profiles:
       - prod
 
@@ -40,7 +41,9 @@ services:
     env_file: .env
     volumes:
       - ./app:/app:z
-      - ./dbs:/mnt/db:z
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
       - type: bind
         source: ./pyproject.toml
         target: /app/pyproject.toml
@@ -57,10 +60,10 @@ services:
     restart: always
     env_file: .env
     volumes:
-      - ./app:/app:z
-      - ./dbs:/mnt/db:z
-      - ./spool:/mnt/spool:z
-      - ./ssl:/mnt/ssl:ro
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
+      - "${HOST_SSL_DIR}:/mnt/ssl:ro"
     profiles:
       - dev
       - prod
@@ -72,9 +75,9 @@ services:
     restart: always
     env_file: .env
     volumes:
-      - ./app:/app:z
-      - ./dbs:/mnt/db:z
-      - ./spool:/mnt/spool:z
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
     profiles:
       - dev
       - prod

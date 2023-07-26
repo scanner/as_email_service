@@ -35,7 +35,7 @@ env = environ.Env(
     DATABASE_URL=(str, "sqlite:///:memory:"),
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
     EMAIL_SERVER_TOKENS=(str, "example.com=foo"),
-    EMAIL_BASE_DIR=(str, "/mnt/maildir"),
+    MAIL_DIRS=(str, "/mnt/mail_dir"),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -227,7 +227,7 @@ EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
 # username under that subdir. That username dir will be the mh mail dir for
 # each email account.
 #
-EMAIL_BASE_DIR = Path(env("EMAIL_BASE_DIR"))
+MAIL_DIRS = Path(env("MAIL_DIRS"))
 
 # The external auth db is a sqlite db that we maintain one table in: "users"
 # The "user" table will at least have two columns: "password" and
