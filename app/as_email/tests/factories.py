@@ -5,7 +5,6 @@ Factories for testing all of our models and related code
 """
 # system imports
 #
-from pathlib import Path
 from typing import Any, Sequence
 
 # 3rd party imports
@@ -81,9 +80,6 @@ class EmailAccountFactory(DjangoModelFactory):
     server = factory.SubFactory(ServerFactory)
     email_address = factory.LazyAttribute(
         lambda o: f"{fake.profile()['username']}@{o.server.domain_name}"
-    )
-    mail_dir = factory.LazyAttribute(
-        lambda o: str(Path(fake.file_path(depth=5)).parent)
     )
 
     @post_generation

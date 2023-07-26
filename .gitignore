@@ -133,4 +133,5 @@ dbs/
 ssl/
 spool/
 staticfiles/
+mail_dirs/
 /app/pyproject.toml

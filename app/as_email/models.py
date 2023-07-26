@@ -8,6 +8,7 @@ mostly custom for the service I use: postmark.
 # system imports
 #
 import asyncio
+import mailbox
 from functools import lru_cache
 from pathlib import Path
 
@@ -285,11 +286,14 @@ class EmailAccount(models.Model):
     mail_dir: models.CharField = models.CharField(
         help_text=_(
             "The root folder of the mail directory for this email account. "
-            "(If you leave it blank a good default will be chosen. "
-            "This is the recommended practce)"
+            "This should be left blank and it will be auto-filled in when "
+            "the email account is created. Only fill it in if you have a "
+            "specific location in the file system you want this user's "
+            "mailbox to be stored at."
         ),
         max_length=1000,
         null=True,
+        blank=True,
     )
     password: models.CharField = models.CharField(
         max_length=200,
@@ -389,15 +393,49 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
+    def _setup_mh_mail_dir(self):
+        """
+        Common function for setting the mail_dir attribute and
+        creating the assocaited mailbox.MH.
+        """
+        # If the object has not been created yet and if the mail_dir
+        # is not set set it based on the associated Server's parent
+        # mail dir and email address.
+        #
+        if not self.id:
+            if not self.mail_dir:
+                md = Path(self.server.mail_dir_parent) / self.email_address
+                self.mail_dir = str(md)
+
+    ####################################################################
+    #
     def save(self, *args, **kwargs):
-        # XXX make sure mail dir is set and created#
-        pass
+        """
+        Make sure the mail_dir field is set (and if not fill it in)
+        """
+        self._setup_mh_mail_dir()
+        super().save(*args, **kwargs)
+
+        # Create the mail dir if it does not already exist. We do this
+        # even if self.id is set because the mail dir may have been
+        # changed and we want this process to ensure that it exists.
+        #
+        _ = self.MH()
 
     ####################################################################
     #
     async def asave(self, *args, **kwargs):
-        # XXX make sure mail dir is set and created#
-        pass
+        """
+        Make sure the mail_dir field is set (and if not fill it in)
+        """
+        self._setup_mh_mail_dir()
+        await super().asave(*args, **kwargs)
+
+        # Create the mail dir if it does not already exist. We do this
+        # even if self.id is set because the mail dir may have been
+        # changed and we want this process to ensure that it exists.
+        #
+        _ = self.MH()
 
     ####################################################################
     #
@@ -433,6 +471,16 @@ class EmailAccount(models.Model):
         """
         self.password = make_password(raw_password)
         self.save(update_fields=["password"])
+
+    ####################################################################
+    #
+    @lru_cache()
+    def MH(self, create: bool = True) -> mailbox.MH:
+        """
+        Return a mailbox.MH instance for this user's mail
+        dir. Attempts to create it if it does not already exist.
+        """
+        return mailbox.MH(self.mail_dir, create=create)
 
 
 ########################################################################

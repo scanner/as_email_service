@@ -5,6 +5,7 @@ Model tests.
 """
 # system imports
 #
+import mailbox
 
 # 3rd party imports
 #
@@ -27,8 +28,7 @@ pytestmark = pytest.mark.django_db
 #
 def test_server(server_factory):
     """
-    Make sure we can create a server, and all of its filefield
-    dirs are setup properly.
+    Make sure we can create a server, and all of its dirs are setup properly.
     """
     server = server_factory()
     server.save()
@@ -73,3 +73,21 @@ def test_email_account_valid_email_address(email_account_factory):
     ea.email_address = "foo@example.org"
     with pytest.raises(ValidationError):
         ea.clean()
+
+
+####################################################################
+#
+def test_email_account_mail_dir(email_account_factory):
+    """
+    make sure the mailbox.MH directory for the email account exists
+    """
+    ea = email_account_factory()
+    ea.save()
+
+    # By setting `create=False` this will fail with an exception if
+    # the mailbox does not exist.
+    #
+    try:
+        _ = ea.MH(create=False)
+    except mailbox.NoSuchMailboxError as exc:
+        assert False, exc

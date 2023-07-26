@@ -217,8 +217,8 @@ else:
 EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
 
 # The email spool dir is where incoming and outgoing emails are temporarily
-# stored. There should be a directory "incoming" and "outgoing" in this
-# directory.
+# stored. There should be a directory for every 'Server' and in that server's
+# directory there will be an "incoming" and "outgoing" directory.
 #
 EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
 
