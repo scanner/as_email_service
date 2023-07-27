@@ -409,6 +409,12 @@ class EmailAccount(models.Model):
                 md = Path(self.server.mail_dir_parent) / self.email_address
                 self.mail_dir = str(md)
 
+        # Create the mail dir if it does not already exist. We do this
+        # even if self.id is set because the mail dir may have been
+        # changed and we want this process to ensure that it exists.
+        #
+        _ = self.MH()
+
     ####################################################################
     #
     def save(self, *args, **kwargs):
@@ -418,12 +424,6 @@ class EmailAccount(models.Model):
         self._setup_mh_mail_dir()
         super().save(*args, **kwargs)
 
-        # Create the mail dir if it does not already exist. We do this
-        # even if self.id is set because the mail dir may have been
-        # changed and we want this process to ensure that it exists.
-        #
-        _ = self.MH()
-
     ####################################################################
     #
     async def asave(self, *args, **kwargs):
@@ -432,12 +432,6 @@ class EmailAccount(models.Model):
         """
         self._setup_mh_mail_dir()
         await super().asave(*args, **kwargs)
-
-        # Create the mail dir if it does not already exist. We do this
-        # even if self.id is set because the mail dir may have been
-        # changed and we want this process to ensure that it exists.
-        #
-        _ = self.MH()
 
     ####################################################################
     #
@@ -476,13 +470,11 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    @lru_cache()
     def MH(self, create: bool = True) -> mailbox.MH:
         """
         Return a mailbox.MH instance for this user's mail
         dir. Attempts to create it if it does not already exist.
         """
-        print(f"Creating MH object for '{self.mail_dir}'")
         return mailbox.MH(self.mail_dir, create=create)
 
 
