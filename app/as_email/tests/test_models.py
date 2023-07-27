@@ -96,6 +96,7 @@ def test_email_account_mail_dir(email_account_factory):
     # the mailbox does not exist. It should exist.
     #
     try:
-        _ = ea.MH(create=False)
+        mh = ea.MH(create=False)
+        assert mh._path == ea.mail_dir
     except mailbox.NoSuchMailboxError as exc:
         assert False, exc
