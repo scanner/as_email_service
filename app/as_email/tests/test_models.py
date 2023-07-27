@@ -3,9 +3,11 @@
 """
 Model tests.
 """
+import mailbox
+
 # system imports
 #
-import mailbox
+from pathlib import Path
 
 # 3rd party imports
 #
@@ -32,13 +34,17 @@ def test_server(server_factory):
     """
     server = server_factory()
     server.save()
+
     assert str(server.incoming_spool_dir).endswith("incoming")
     assert server.domain_name in str(server.incoming_spool_dir)
-    assert server.incoming_spool_dir.is_dir()
+    assert Path(server.incoming_spool_dir).is_dir()
 
     assert str(server.outgoing_spool_dir).endswith("outgoing")
     assert server.domain_name in str(server.outgoing_spool_dir)
-    assert server.outgoing_spool_dir.is_dir()
+    assert Path(server.outgoing_spool_dir).is_dir()
+
+    assert str(server.mail_dir_parent).endswith(server.domain_name)
+    assert Path(server.mail_dir_parent).is_dir()
 
 
 ####################################################################
@@ -84,8 +90,10 @@ def test_email_account_mail_dir(email_account_factory):
     ea = email_account_factory()
     ea.save()
 
+    assert Path(ea.mail_dir).is_dir()
+
     # By setting `create=False` this will fail with an exception if
-    # the mailbox does not exist.
+    # the mailbox does not exist. It should exist.
     #
     try:
         _ = ea.MH(create=False)

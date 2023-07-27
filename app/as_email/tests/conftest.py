@@ -53,14 +53,14 @@ def email_spool_dir(settings, tmp_path):
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def email_base_dir(settings, tmp_path):
+def mailbox_dir(settings, tmp_path):
     """
-    We want every test to run with a base dir that is a fixture (so
+    We want every test to run with a MAIL_DIRS that is a fixture (so
     that we do not accidentally forget to set it in a test that uses a
     provider/server without specifically calling out that it does.)
     """
 
     mail_base_dir = tmp_path / "mail_base_dir"
     mail_base_dir.mkdir(parents=True, exist_ok=True)
-    settings.EMAIL_BASE_DIR = mail_base_dir
+    settings.MAIL_DIRS = mail_base_dir
     yield mail_base_dir

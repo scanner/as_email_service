@@ -119,16 +119,18 @@ class Server(models.Model):
         #
         if not self.id:
             if not self.incoming_spool_dir:
-                self.incoming_spool_dir = (
+                self.incoming_spool_dir = str(
                     settings.EMAIL_SPOOL_DIR / self.domain_name / "incoming"
                 )
             if not self.outgoing_spool_dir:
-                self.outgoing_spool_dir = (
+                self.outgoing_spool_dir = str(
                     settings.EMAIL_SPOOL_DIR / self.domain_name / "outgoing"
                 )
 
             if not self.mail_dir_parent:
-                self.mail_dir_parent = settings.MAIL_DIRS / self.domain_name
+                self.mail_dir_parent = str(
+                    settings.MAIL_DIRS / self.domain_name
+                )
         super().save(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.
@@ -480,6 +482,7 @@ class EmailAccount(models.Model):
         Return a mailbox.MH instance for this user's mail
         dir. Attempts to create it if it does not already exist.
         """
+        print(f"Creating MH object for '{self.mail_dir}'")
         return mailbox.MH(self.mail_dir, create=create)
 
 
