@@ -18,18 +18,27 @@ These views are for users. It needs to provide functions to:
 - order mail filter rules (for an email account)
 
 """
+# System imports
+#
+import json
+from datetime import datetime
+from pathlib import Path
+
 # 3rd party imports
 #
+import aiofiles
 from asgiref.sync import sync_to_async
 from django.contrib import auth
 from django.core.exceptions import PermissionDenied
-from django.http import Http404, HttpResponse
-from django.shortcuts import render  # NOQA: F401
-from django.views.decorators.http import require_POST
+from django.http import Http404, HttpResponse, JsonResponse
 
 # Project imports
 #
 from .models import EmailAccount, Server
+from .tasks import dispatch_incoming_email
+from .utils import short_hash_email
+
+# from django.shortcuts import render
 
 
 ####################################################################
@@ -58,7 +67,10 @@ async def index(request):
     """
     returns a simple view of the email accounts that belong to the user
     """
+    # XXX Django 5.0 will add request.auser()
+    #
     user = await sync_to_async(auth.get_user)(request)
+
     # XXX Normally we would use the `@login_required` decorator, but that does
     #     not work with async views as of django 4.2 (looks like django5 will
     #     support it.)
@@ -76,32 +88,65 @@ async def index(request):
 
 ####################################################################
 #
-@require_POST
 async def hook_incoming(request, stream):
     """
     Incoming email being POST'd to us by the provider.
     """
+    # XXX usually we would have used @require_POST decorator.. but async.
+    #     maybe in django 5.0
+    #
+    if request.method != "POST":
+        raise PermissionDenied("must be POST")
+
     server = await _validate_server_api_key(request, stream)
-    return HttpResponse(f"received email for {server}")
+    email = json.loads(request.body)
+
+    short_hash = short_hash_email(email)
+    now = datetime.now().isoformat()
+    email_file_name = f"{now}-{short_hash}.json"
+    fname = Path(server.incoming_spool_dir) / email_file_name
+
+    # We need to make sure that the file is written before we send our
+    # response back to Postmark.. but we should not block other async
+    # processing while waiting for the file to be written.
+    #
+    async with aiofiles.open(fname, "w") as f:
+        await f.write(json.dumps(email))
+
+    # Fire off async huey task to dispatch the email we just wrote to the spool
+    # directory.
+    #
+    _ = dispatch_incoming_email(server.pk, fname)
+    return JsonResponse({"status": "all good", "message": fname})
 
 
 ####################################################################
 #
-@require_POST
 async def hook_bounce(request, stream):
     """
     Bounce notification POST'd to us by the provider.
     """
+    # XXX usually we would have used @require_POST decorator.. but async.
+    #     maybe in django 5.0
+    #
+    if request.method != "POST":
+        raise PermissionDenied("must be POST")
+
     server = await _validate_server_api_key(request, stream)
     return HttpResponse(f"received bounced for {server}")
 
 
 ####################################################################
 #
-@require_POST
 async def hook_spam(request, stream):
     """
     Spam notificaiton POST'd to us by the provider.
     """
+    # XXX usually we would have used @require_POST decorator.. but async.
+    #     maybe in django 5.0
+    #
+    if request.method != "POST":
+        raise PermissionDenied("must be POST")
+
     server = await _validate_server_api_key(request, stream)
     return HttpResponse(f"received spam notification for {server}")
