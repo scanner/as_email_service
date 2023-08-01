@@ -22,24 +22,28 @@ These views are for users. It needs to provide functions to:
 #
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render  # NOQA: F401
+from django.http import HttpResponse, Http404
+from django.shortcuts import render  # NOQA: F401
 from django.views.decorators.http import require_POST
 
 # Project imports
 #
-from .models import Server
+from .models import Server, EmailAccount
 
 
 ####################################################################
 #
-def _validate_server_api_key(request, server_name):
+def _validate_server_api_key(request, server_name: str) -> Server:
     """
     Given the request and server_name from the URL we will look up the
     server object and verify that there is an `api_key` on the request that
     matches server.api_key.
     """
-    server = get_object_or_404(Server, domain_name=server_name)
+    try:
+        server = await Server.objects.aget(domain_name=server_name)
+    except Server.DoesNotExist:
+        raise Http404(f"No server found for stream `{server_name}`")
+
     if "api_key" not in request:
         raise PermissionDenied("no api_key specified in request")
     if request["api_key"] != server.api_key:
@@ -54,6 +58,11 @@ async def index(request):
     """
     returns a simple view of the email accounts that belong to the user
     """
+    user = request.user  # always set because @login_required
+    email_accounts = []
+    async for email_account in EmailAccount.objects.filter(user=user):
+        email_accounts.append(email_account)
+
     return HttpResponse("as email index view")
 
 

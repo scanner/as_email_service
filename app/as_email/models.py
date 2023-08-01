@@ -122,17 +122,9 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def save(self, *args, **kwargs):
+    def _set_initial_values(self):
         """
-        On pre-save of the Server instance if this is when it is being
-        created pre-fill the incoming spool dir, outgoing spool dir, and
-        mail_dir_parent based on the domain_name of the server.
-
-        This lets the default creation automatically set where these
-        directories are without requiring input if they are not set on create.
-
-        After we have called the parent save method we make sure that the
-        directory specified exists.
+        A helper method that sets initial values on object creation.
         """
         # If the object has not been created yet then if the various file
         # fields have not been set, set them based on django settings and the
@@ -163,16 +155,28 @@ class Server(models.Model):
                     for x in range(40)
                 )
 
+    ####################################################################
+    #
+    def save(self, *args, **kwargs):
+        """
+        On pre-save of the Server instance if this is when it is being
+        created pre-fill the incoming spool dir, outgoing spool dir, and
+        mail_dir_parent based on the domain_name of the server.
+
+        This lets the default creation automatically set where these
+        directories are without requiring input if they are not set on create.
+
+        After we have called the parent save method we make sure that the
+        directory specified exists.
+        """
+        self._set_initial_values()
         super().save(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.
-        incoming_spool_dir = Path(self.incoming_spool_dir)
-        outgoing_spool_dir = Path(self.outgoing_spool_dir)
-        mail_dir_parent = Path(self.mail_dir_parent)
-
-        incoming_spool_dir.mkdir(parents=True, exist_ok=True)
-        outgoing_spool_dir.mkdir(parents=True, exist_ok=True)
-        mail_dir_parent.mkdir(parents=True, exist_ok=True)
+        #
+        Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
 
     ####################################################################
     #
@@ -188,25 +192,7 @@ class Server(models.Model):
         After we have called the parent save method we make sure that the
         directory specified exists.
         """
-        # If the object has not been created yet then if the various file
-        # fields have not been set, set them based on django settings and the
-        # domain name.
-        #
-        # XXX We should also check to see if the path exists and if it does it
-        #     must be a directory.
-        #
-        if not self.id:
-            if not self.incoming_spool_dir:
-                self.incoming_spool_dir = (
-                    settings.EMAIL_SPOOL_DIR / self.domain_name / "incoming"
-                )
-            if not self.outgoing_spool_dir:
-                self.outgoing_spool_dir = (
-                    settings.EMAIL_SPOOL_DIR / self.domain_name / "outgoing"
-                )
-
-            if not self.mail_dir_parent:
-                self.mail_dir_parent = settings.MAIL_DIRS / self.domain_name
+        self._set_initial_values()
         await super().asave(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.
