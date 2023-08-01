@@ -20,20 +20,21 @@ These views are for users. It needs to provide functions to:
 """
 # 3rd party imports
 #
-from django.contrib.auth.decorators import login_required
+from asgiref.sync import sync_to_async
+from django.contrib import auth
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponse, Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import render  # NOQA: F401
 from django.views.decorators.http import require_POST
 
 # Project imports
 #
-from .models import Server, EmailAccount
+from .models import EmailAccount, Server
 
 
 ####################################################################
 #
-def _validate_server_api_key(request, server_name: str) -> Server:
+async def _validate_server_api_key(request, server_name: str) -> Server:
     """
     Given the request and server_name from the URL we will look up the
     server object and verify that there is an `api_key` on the request that
@@ -53,17 +54,24 @@ def _validate_server_api_key(request, server_name: str) -> Server:
 
 ####################################################################
 #
-@login_required
 async def index(request):
     """
     returns a simple view of the email accounts that belong to the user
     """
-    user = request.user  # always set because @login_required
+    user = await sync_to_async(auth.get_user)(request)
+    # XXX Normally we would use the `@login_required` decorator, but that does
+    #     not work with async views as of django 4.2 (looks like django5 will
+    #     support it.)
+    #
+    if not user.is_authenticated:
+        raise PermissionDenied("must be logged in")
     email_accounts = []
     async for email_account in EmailAccount.objects.filter(user=user):
         email_accounts.append(email_account)
 
-    return HttpResponse("as email index view")
+    return HttpResponse(
+        f"as email index view for {user}, num email accounts: {len(email_accounts)}"
+    )
 
 
 ####################################################################
@@ -73,7 +81,7 @@ async def hook_incoming(request, stream):
     """
     Incoming email being POST'd to us by the provider.
     """
-    server = _validate_server_api_key(request, stream)
+    server = await _validate_server_api_key(request, stream)
     return HttpResponse(f"received email for {server}")
 
 
@@ -84,7 +92,7 @@ async def hook_bounce(request, stream):
     """
     Bounce notification POST'd to us by the provider.
     """
-    server = _validate_server_api_key(request, stream)
+    server = await _validate_server_api_key(request, stream)
     return HttpResponse(f"received bounced for {server}")
 
 
@@ -95,5 +103,5 @@ async def hook_spam(request, stream):
     """
     Spam notificaiton POST'd to us by the provider.
     """
-    server = _validate_server_api_key(request, stream)
+    server = await _validate_server_api_key(request, stream)
     return HttpResponse(f"received spam notification for {server}")
