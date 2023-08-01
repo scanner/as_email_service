@@ -9,5 +9,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
     path("", TemplateView.as_view(template_name="home.html"), name="home"),
-    # path("as_email/", include("as_email.urls")),
+    path("as_email/", include("as_email.urls")),
 ]

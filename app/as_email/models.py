@@ -10,6 +10,8 @@ mostly custom for the service I use: postmark.
 import asyncio
 import email.message
 import mailbox
+import random
+import string
 from functools import lru_cache
 from pathlib import Path
 
@@ -57,6 +59,21 @@ class Server(models.Model):
         unique=True,
     )
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
+
+    # In the future we may want to move API keys in to a more generalized
+    # framework but right now the only thing that can use the webhook's are the
+    # remote servers and we need a key for them to use so we are tying it to
+    # the server itself. It will be generated when the Server object is
+    # created.
+    #
+    api_key = models.CharField(
+        help_text=_(
+            "In order for the server to be able to post data to the web hooks "
+            "provided by this service, they need an API key that is unique to "
+            "this server."
+        ),
+        max_length=40,
+    )
     incoming_spool_dir = models.CharField(
         help_text=_(
             "The directory incoming messages are temporarily spooled to before "
@@ -91,6 +108,12 @@ class Server(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["domain_name"]),
+        ]
+        ordering = ("domain_name",)
 
     ####################################################################
     #
@@ -127,11 +150,19 @@ class Server(models.Model):
                 self.outgoing_spool_dir = str(
                     settings.EMAIL_SPOOL_DIR / self.domain_name / "outgoing"
                 )
-
             if not self.mail_dir_parent:
                 self.mail_dir_parent = str(
                     settings.MAIL_DIRS / self.domain_name
                 )
+
+            # API Key is created when the object is saved for the first time.
+            #
+            if not self.api_key:
+                self.api_key = "".join(
+                    random.choice(string.ascii_letters + string.digits)
+                    for x in range(40)
+                )
+
         super().save(*args, **kwargs)
 
         # Make sure that the directories for the file fields exist.
@@ -387,8 +418,11 @@ class EmailAccount(models.Model):
         indexes = [
             models.Index(fields=["forward_to"]),
             models.Index(fields=["email_address"]),
+            models.Index(fields=["server"]),
             models.Index(fields=["user"]),
         ]
+
+        ordering = ("server", "email_address")
 
     ####################################################################
     #
@@ -508,7 +542,12 @@ class BlockedMessage(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=["email_account"])]
+        indexes = [
+            models.Index(fields=["email_account"]),
+            models.Index(fields=["created_at", "email_account"]),
+            models.Index(fields=["status", "email_account"]),
+        ]
+        ordering = ("email_account", "created_at")
 
     ####################################################################
     #
@@ -584,7 +623,10 @@ class MessageFilterRule(OrderedModel):
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [models.Index(fields=["email_account"])]
+        indexes = [
+            models.Index(fields=["email_account"]),
+            models.Index(fields=["email_account", "order"]),
+        ]
         unique_together = ["email_account", "header", "pattern"]
         ordering = ("email_account", "order")
 

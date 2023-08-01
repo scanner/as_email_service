@@ -18,17 +18,73 @@ These views are for users. It needs to provide functions to:
 - order mail filter rules (for an email account)
 
 """
+# 3rd party imports
+#
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render  # NOQA: F401
+from django.core.exceptions import PermissionDenied
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404, render  # NOQA: F401
+from django.views.decorators.http import require_POST
 
-# Create your views here.
+# Project imports
+#
+from .models import Server
+
+
+####################################################################
+#
+def _validate_server_api_key(request, server_name):
+    """
+    Given the request and server_name from the URL we will look up the
+    server object and verify that there is an `api_key` on the request that
+    matches server.api_key.
+    """
+    server = get_object_or_404(Server, domain_name=server_name)
+    if "api_key" not in request:
+        raise PermissionDenied("no api_key specified in request")
+    if request["api_key"] != server.api_key:
+        raise PermissionDenied("invalid api_key specified in request")
+    return server
 
 
 ####################################################################
 #
 @login_required
-async def email_accounts(request):
+async def index(request):
     """
     returns a simple view of the email accounts that belong to the user
     """
-    pass
+    return HttpResponse("as email index view")
+
+
+####################################################################
+#
+@require_POST
+async def hook_incoming(request, stream):
+    """
+    Incoming email being POST'd to us by the provider.
+    """
+    server = _validate_server_api_key(request, stream)
+    return HttpResponse(f"received email for {server}")
+
+
+####################################################################
+#
+@require_POST
+async def hook_bounce(request, stream):
+    """
+    Bounce notification POST'd to us by the provider.
+    """
+    server = _validate_server_api_key(request, stream)
+    return HttpResponse(f"received bounced for {server}")
+
+
+####################################################################
+#
+@require_POST
+async def hook_spam(request, stream):
+    """
+    Spam notificaiton POST'd to us by the provider.
+    """
+    server = _validate_server_api_key(request, stream)
+    return HttpResponse(f"received spam notification for {server}")
