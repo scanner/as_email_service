@@ -260,9 +260,9 @@ class EmailAccount(models.Model):
     #
     ALIAS = "AL"
     FORWARDING = "FW"
-    ACCOUNT = "AC"
+    LOCAL_DELIVERY = "LD"
     ACCOUNT_TYPE_CHOICES = [
-        (ACCOUNT, "Account"),
+        (LOCAL_DELIVERY, "Local Delivery"),
         (ALIAS, "Alias"),
         (FORWARDING, "Forwarding"),
     ]
@@ -284,8 +284,9 @@ class EmailAccount(models.Model):
         ),
     )
     account_type = models.CharField(
-        max_length=2, choices=ACCOUNT_TYPE_CHOICES, default=ACCOUNT
+        max_length=2, choices=ACCOUNT_TYPE_CHOICES, default=LOCAL_DELIVERY
     )
+
     mail_dir: models.CharField = models.CharField(
         help_text=_(
             "The root folder of the mail directory for this email account. "
@@ -356,7 +357,7 @@ class EmailAccount(models.Model):
     #       saved. We should have some indicator along with a button
     #       you press to actually send the test email.
     #
-    forward_to: models.EmailField = models.EmailField(null=True, blank=True)
+    forward_to = models.EmailField(null=True, blank=True)
 
     # If an account is deactivated it can still receive email. However it is no
     # longer allowed to send email.
@@ -365,15 +366,15 @@ class EmailAccount(models.Model):
     # need to add logging and metrics for when we receive emails for accounts
     # that do not exist.)
     #
-    deactivated: models.BooleanField = models.BooleanField(default=False)
+    deactivated = models.BooleanField(default=False)
 
     # If the number of bounces exceeds a certain limit then the account is
     # deactivated and not allowed to send new email (it can still
     # receive email) (maybe it should be some sort of percentage of total
     # emails sent by this account.)
     #
-    num_bounces: models.IntegerField = models.IntegerField(default=0)
-    deactivated_reason: models.TextField = models.TextField(
+    num_bounces = models.IntegerField(default=0)
+    deactivated_reason = models.TextField(
         help_text=_("Reason for the account being deactivated"),
         null=True,
         blank=True,

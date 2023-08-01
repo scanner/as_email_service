@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>{% block title %}Apricot Systematic Email Service{% endblock %}</title>
+    {% block blockbots %}<meta name="robots" content="NONE,NOARCHIVE" />{% endblock %}
+    <link rel="stylesheet" type="text/css" href="{{ MEDIA_URL }}/css/stylesheet.css" media="screen, projection, tv " />
+    {% block adminstyle %}{% endblock %}
+    {% block styles %}{% endblock %}
+    {% block extrastyle %}{% endblock %}
+    {% block extrahead %}{% endblock %}
+    {% block jshead %}{% endblock %}
+    {% block scripts %}{% endblock %}
+  </head>
+  <body class="{%if is_popup %}popup {% endif %}{% block bodyclass %}{% endblock %}">
+    <main>
+      {% block content %}
+      {% endblock %}
+    </main>
+  </body>
+</html>
