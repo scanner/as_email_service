@@ -13,6 +13,19 @@
     {% block scripts %}{% endblock %}
   </head>
   <body class="{%if is_popup %}popup {% endif %}{% block bodyclass %}{% endblock %}">
+    {% block sidebar-nav %}
+      <ul class="sidebar-nav">
+        {% if user.is_authenticated %}
+          <li>User: {{ user.get_username }}</li>
+          <li><a href="{% url 'logout' %}?next={{ request.path }}">Logout</a></li>
+          {% if user.is_staff %}
+            <li><a href="{% url 'admin' %}">Admin</li>
+          {% endif %}
+        {% else %}
+            <li><a href="{% url 'login' %}?next={{ request.path }}">Login</a></li>
+        {% endif %}
+      </ul>
+    {% endlbock %}
     <main>
       {% block content %}
       {% endblock %}
