@@ -8,6 +8,7 @@ mostly custom for the service I use: postmark.
 # system imports
 #
 import asyncio
+import email.message
 import mailbox
 from functools import lru_cache
 from pathlib import Path
@@ -588,6 +589,17 @@ class MessageFilterRule(OrderedModel):
 
     ####################################################################
     #
+    def __str__(self):
+        if self.action == self.FOLDER:
+            return (
+                f"Match: '{self.header}', '{self.pattern}' folder: "
+                f"{self.destination}"
+            )
+        else:
+            return f"Match: '{self.header}', '{self.pattern}' destroy"
+
+    ####################################################################
+    #
     @classmethod
     def create_from_rule(cls, email_account: EmailAccount, rule_text: str):
         """
@@ -601,7 +613,8 @@ class MessageFilterRule(OrderedModel):
 
         The fields are separated by whitespace.
 
-        If the action is "destroy" there is no final string (the folder in case of the 'folder' action.)
+        If the action is "destroy" there is no final string (the folder in case
+        of the 'folder' action.)
 
         We do not currently honor the "result" column so that is just
         ignored. We are also only supporting "folder" and "destroy"
@@ -641,3 +654,23 @@ class MessageFilterRule(OrderedModel):
                 "rule text must be 4 or 5 columns separated white space."
             )
         rule.save()
+        return rule
+
+    ####################################################################
+    #
+    def match(self, email_message: email.message.Message):
+        """
+        Returns True if the email message matches the header/pattern.
+
+        NOTE: Matches are only case insensitive substring matches! Not regular
+              expressions!
+        """
+        if self.header not in email_message:
+            return False
+
+        header_contents = email_message.get_all(self.header)
+        for hc in header_contents:
+            if self.pattern.lower() == hc.lower():
+                return True
+
+        return False
