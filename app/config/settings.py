@@ -176,7 +176,7 @@ HUEY = {
         "connection_pool": redis.ConnectionPool(host="redis", port=6379, db=1),
     },
     "consumer": {
-        "workers": 4,
+        "workers": 8,
         "worker_type": "thread",
         "scheduler_interval": 1,  # Check schedule every second, -s.
         "periodic": True,  # Enable crontab feature.

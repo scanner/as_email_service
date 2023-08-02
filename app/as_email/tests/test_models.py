@@ -39,6 +39,8 @@ def test_server(server_factory):
     assert str(server.mail_dir_parent).endswith(server.domain_name)
     assert Path(server.mail_dir_parent).is_dir()
 
+    assert server.api_key
+
 
 ####################################################################
 #
