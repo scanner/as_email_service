@@ -36,7 +36,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 #
 from .models import EmailAccount, Server
 from .tasks import dispatch_incoming_email
-from .utils import short_hash_email
+from .utils import aemail_accounts_by_addr, short_hash_email
 
 # from django.shortcuts import render
 
@@ -101,6 +101,19 @@ async def hook_incoming(request, domain_name):
     server = await _validate_server_api_key(request, domain_name)
     email = json.loads(request.body)
 
+    # This is wasteful but not wasteful.. we look up all the EmailAccounts that
+    # this email will be delivered to, and if it is zero we just stop right
+    # here. Wasteful in that we do this lookup again inside the huey task.. but
+    # that is probably still better than all the work to write the email to the
+    # spool dir and invoke the huey task only for it to do nothing.
+    #
+    email_accounts = await aemail_accounts_by_addr(server, email)
+    if not email_accounts:
+        # XXX here we would log metrics for getting email that no one is going
+        #     to receive.
+        #
+        return JsonResponse({"status": "all good"})
+
     short_hash = short_hash_email(email)
     now = datetime.now().isoformat()
     email_file_name = f"{now}-{short_hash}.json"
@@ -116,7 +129,7 @@ async def hook_incoming(request, domain_name):
     # Fire off async huey task to dispatch the email we just wrote to the spool
     # directory.
     #
-    _ = dispatch_incoming_email(server.pk, fname, short_hash)
+    dispatch_incoming_email(server.pk, fname, short_hash)
     return JsonResponse({"status": "all good", "message": fname})
 
 
