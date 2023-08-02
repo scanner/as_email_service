@@ -43,16 +43,16 @@ from .utils import short_hash_email
 
 ####################################################################
 #
-async def _validate_server_api_key(request, server_name: str) -> Server:
+async def _validate_server_api_key(request, domain_name: str) -> Server:
     """
-    Given the request and server_name from the URL we will look up the
+    Given the request and domain_name from the URL we will look up the
     server object and verify that there is an `api_key` on the request that
     matches server.api_key.
     """
     try:
-        server = await Server.objects.aget(domain_name=server_name)
+        server = await Server.objects.aget(domain_name=domain_name)
     except Server.DoesNotExist:
-        raise Http404(f"No server found for stream `{server_name}`")
+        raise Http404(f"No server found for domain_name `{domain_name}`")
 
     if "api_key" not in request:
         raise PermissionDenied("no api_key specified in request")
@@ -88,7 +88,7 @@ async def index(request):
 
 ####################################################################
 #
-async def hook_incoming(request, stream):
+async def hook_incoming(request, domain_name):
     """
     Incoming email being POST'd to us by the provider.
     """
@@ -98,7 +98,7 @@ async def hook_incoming(request, stream):
     if request.method != "POST":
         raise PermissionDenied("must be POST")
 
-    server = await _validate_server_api_key(request, stream)
+    server = await _validate_server_api_key(request, domain_name)
     email = json.loads(request.body)
 
     short_hash = short_hash_email(email)
@@ -122,7 +122,7 @@ async def hook_incoming(request, stream):
 
 ####################################################################
 #
-async def hook_bounce(request, stream):
+async def hook_bounce(request, domain_name):
     """
     Bounce notification POST'd to us by the provider.
     """
@@ -132,13 +132,13 @@ async def hook_bounce(request, stream):
     if request.method != "POST":
         raise PermissionDenied("must be POST")
 
-    server = await _validate_server_api_key(request, stream)
+    server = await _validate_server_api_key(request, domain_name)
     return HttpResponse(f"received bounced for {server}")
 
 
 ####################################################################
 #
-async def hook_spam(request, stream):
+async def hook_spam(request, domain_name):
     """
     Spam notificaiton POST'd to us by the provider.
     """
@@ -148,5 +148,5 @@ async def hook_spam(request, stream):
     if request.method != "POST":
         raise PermissionDenied("must be POST")
 
-    server = await _validate_server_api_key(request, stream)
+    server = await _validate_server_api_key(request, domain_name)
     return HttpResponse(f"received spam notification for {server}")

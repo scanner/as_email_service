@@ -15,8 +15,12 @@ app_name = "as_email"
 urlpatterns = [
     path("", views.index, name="index"),
     path(
-        "hook/incoming/<str:stream>/", views.hook_incoming, name="hook_incoming"
+        "hook/incoming/<str:domain_name>/",
+        views.hook_incoming,
+        name="hook_incoming",
     ),
-    path("hook/bounce/<str:stream>/", views.hook_bounce, name="hook_bounce"),
-    path("hook/spam/<str:stream>/", views.hook_incoming, name="hook_spam"),
+    path(
+        "hook/bounce/<str:domain_name>/", views.hook_bounce, name="hook_bounce"
+    ),
+    path("hook/spam/<str:domain_name>/", views.hook_incoming, name="hook_spam"),
 ]
