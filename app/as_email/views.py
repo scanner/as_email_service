@@ -116,7 +116,7 @@ async def hook_incoming(request, stream):
     # Fire off async huey task to dispatch the email we just wrote to the spool
     # directory.
     #
-    _ = dispatch_incoming_email(server.pk, fname)
+    _ = dispatch_incoming_email(server.pk, fname, short_hash)
     return JsonResponse({"status": "all good", "message": fname})
 
 
