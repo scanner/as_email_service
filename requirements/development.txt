@@ -14,7 +14,7 @@ annotated-types==0.5.0
     # via
     #   -r production.txt
     #   pydantic
-anyio==3.7.0
+anyio==3.7.1
     # via
     #   -r production.txt
     #   httpcore
@@ -37,13 +37,13 @@ attrs==23.1.0
     #   aiosmtpd
 backcall==0.2.0
     # via ipython
-black==23.3.0
+black==23.7.0
     # via -r lint.txt
 build==0.10.0
     # via
     #   -r lint.txt
     #   pip-tools
-certifi==2023.5.7
+certifi==2023.7.22
     # via
     #   -r production.txt
     #   httpcore
@@ -58,11 +58,11 @@ cfgv==3.3.1
     # via
     #   -r lint.txt
     #   pre-commit
-charset-normalizer==3.1.0
+charset-normalizer==3.2.0
     # via
     #   -r production.txt
     #   requests
-click==8.1.3
+click==8.1.6
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -83,11 +83,11 @@ cryptography==39.0.2
     #   trustme
 decorator==5.1.1
     # via ipython
-distlib==0.3.6
+distlib==0.3.7
     # via
     #   -r lint.txt
     #   virtualenv
-django==4.2.3
+django==4.2.4
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -96,7 +96,7 @@ django==4.2.3
     #   django-mfa2
     #   django-stubs
     #   django-stubs-ext
-django-anymail==10.0
+django-anymail==10.1
     # via -r production.txt
 django-environ==0.10.0
     # via -r production.txt
@@ -112,7 +112,7 @@ django-stubs-ext==4.2.2
     # via
     #   -r lint.txt
     #   django-stubs
-dnspython==2.3.0
+dnspython==2.4.1
     # via -r production.txt
 ecdsa==0.18.0
     # via
@@ -125,9 +125,9 @@ exceptiongroup==1.1.2
     #   pytest
 executing==1.2.0
     # via stack-data
-factory-boy==3.2.1
+factory-boy==3.3.0
     # via pytest-factoryboy
-faker==18.11.2
+faker==19.2.0
     # via factory-boy
 fido2==1.0.0
     # via
@@ -137,14 +137,14 @@ filelock==3.12.2
     # via
     #   -r lint.txt
     #   virtualenv
-gunicorn==20.1.0
+gunicorn==21.2.0
     # via -r production.txt
 h11==0.14.0
     # via
     #   -r production.txt
     #   httpcore
     #   uvicorn
-httpcore==0.17.2
+httpcore==0.17.3
     # via
     #   -r production.txt
     #   httpx
@@ -152,7 +152,7 @@ httpx==0.24.1
     # via -r production.txt
 huey==2.4.5
     # via -r production.txt
-identify==2.5.24
+identify==2.5.26
     # via
     #   -r lint.txt
     #   pre-commit
@@ -165,7 +165,7 @@ idna==3.4
     #   trustme
 inflection==0.5.1
     # via pytest-factoryboy
-influxdb-client==1.36.1
+influxdb-client==1.37.0
     # via -r production.txt
 iniconfig==2.0.0
     # via pytest
@@ -173,7 +173,7 @@ ipython==8.14.0
     # via -r development.in
 isort==5.12.0
     # via -r lint.txt
-jedi==0.18.2
+jedi==0.19.0
     # via ipython
 markdown-it-py==3.0.0
     # via
@@ -201,13 +201,15 @@ nodeenv==1.8.0
 packaging==23.1
     # via
     #   -r lint.txt
+    #   -r production.txt
     #   black
     #   build
+    #   gunicorn
     #   pytest
     #   pytest-sugar
 parso==0.8.3
     # via jedi
-pathspec==0.11.1
+pathspec==0.11.2
     # via
     #   -r lint.txt
     #   black
@@ -215,9 +217,9 @@ pexpect==4.8.0
     # via ipython
 pickleshare==0.7.5
     # via ipython
-pip-tools==6.14.0
+pip-tools==7.1.0
     # via -r lint.txt
-platformdirs==3.8.0
+platformdirs==3.10.0
     # via
     #   -r lint.txt
     #   black
@@ -228,7 +230,7 @@ postmarker==1.0
     # via -r production.txt
 pre-commit==3.3.3
     # via -r lint.txt
-prompt-toolkit==3.0.38
+prompt-toolkit==3.0.39
     # via ipython
 ptyprocess==0.7.0
     # via pexpect
@@ -243,9 +245,9 @@ pycparser==2.21
     # via
     #   -r production.txt
     #   cffi
-pydantic==2.0
+pydantic==2.1.1
     # via -r production.txt
-pydantic-core==2.0.1
+pydantic-core==2.4.0
     # via
     #   -r production.txt
     #   pydantic
@@ -254,7 +256,7 @@ pygments==2.15.1
     #   -r production.txt
     #   ipython
     #   rich
-pyotp==2.8.0
+pyotp==2.9.0
     # via
     #   -r production.txt
     #   django-mfa2
@@ -270,7 +272,7 @@ pytest==7.4.0
     #   pytest-django
     #   pytest-factoryboy
     #   pytest-sugar
-pytest-asyncio==0.21.0
+pytest-asyncio==0.21.1
     # via -r development.in
 pytest-cov==4.1.0
     # via pytest-cover
@@ -299,7 +301,7 @@ python-u2flib-server==5.0.1
     #   django-mfa2
 pytz==2023.3
     # via -r production.txt
-pyyaml==6.0
+pyyaml==6.0.1
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -315,13 +317,13 @@ requests==2.31.0
     #   -r production.txt
     #   django-anymail
     #   postmarker
-rich==13.4.2
+rich==13.5.2
     # via -r production.txt
 rsa==4.9
     # via
     #   -r production.txt
     #   python-jose
-ruff==0.0.276
+ruff==0.0.282
     # via -r lint.txt
 simplejson==3.19.1
     # via
@@ -364,23 +366,23 @@ traitlets==5.9.0
     # via
     #   ipython
     #   matplotlib-inline
-trustme==1.0.0
+trustme==1.1.0
     # via -r development.in
-types-cachetools==5.3.0.5
+types-cachetools==5.3.0.6
     # via -r lint.txt
 types-pytz==2023.3.0.0
     # via
     #   -r lint.txt
     #   django-stubs
-types-pyyaml==6.0.12.10
+types-pyyaml==6.0.12.11
     # via
     #   -r lint.txt
     #   django-stubs
-types-requests==2.31.0.1
+types-requests==2.31.0.2
     # via -r lint.txt
-types-setuptools==68.0.0.0
+types-setuptools==68.0.0.3
     # via -r lint.txt
-types-urllib3==1.26.25.13
+types-urllib3==1.26.25.14
     # via
     #   -r lint.txt
     #   types-requests
@@ -396,12 +398,13 @@ typing-extensions==4.7.1
     #   pydantic-core
     #   pytest-factoryboy
     #   reactivex
-ua-parser==0.16.1
+    #   uvicorn
+ua-parser==0.18.0
     # via
     #   -r production.txt
     #   django-mfa2
     #   user-agents
-urllib3==2.0.3
+urllib3==2.0.4
     # via
     #   -r production.txt
     #   django-anymail
@@ -411,9 +414,9 @@ user-agents==2.2.0
     # via
     #   -r production.txt
     #   django-mfa2
-uvicorn==0.22.0
+uvicorn==0.23.2
     # via -r production.txt
-virtualenv==20.23.1
+virtualenv==20.24.2
     # via
     #   -r lint.txt
     #   pre-commit
@@ -421,7 +424,7 @@ wait-for-it==2.2.2
     # via -r production.txt
 wcwidth==0.2.6
     # via prompt-toolkit
-wheel==0.40.0
+wheel==0.41.0
     # via
     #   -r lint.txt
     #   pip-tools
