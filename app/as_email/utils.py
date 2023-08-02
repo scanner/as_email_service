@@ -12,7 +12,7 @@ from typing import List, Tuple
 
 # Project imports
 #
-from .model import EmailAccount, Server
+from .models import EmailAccount, Server
 
 logger = logging.getLogger(__name__)
 

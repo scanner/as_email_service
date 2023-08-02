@@ -1,0 +1,13 @@
+{% extends "as_email/base.html" %}
+{% block title %}AS Email - Email Accounts{% endblock %}
+{% block content %}
+  {% if email_accounts %}
+    <ul>
+      {% for email_account in email_accounts %}
+        <li>{{ email_account.email_address }}, type: {{ email_account.account_type }}, {{ email_account.handle_blocked_messages }}</li>
+      {% endfor %}
+    </ul>
+  {% else  %}
+    <p>{{ username }}, you have no  email accounts.</p>
+  {% endif %}
+{% endblock %}

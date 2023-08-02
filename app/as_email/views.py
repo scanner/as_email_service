@@ -31,14 +31,13 @@ from asgiref.sync import sync_to_async
 from django.contrib import auth
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
+from django.shortcuts import render
 
 # Project imports
 #
 from .models import EmailAccount, Server
 from .tasks import dispatch_incoming_email
 from .utils import aemail_accounts_by_addr, short_hash_email
-
-# from django.shortcuts import render
 
 
 ####################################################################
@@ -70,7 +69,6 @@ async def index(request):
     # XXX Django 5.0 will add request.auser()
     #
     user = await sync_to_async(auth.get_user)(request)
-
     # XXX Normally we would use the `@login_required` decorator, but that does
     #     not work with async views as of django 4.2 (looks like django5 will
     #     support it.)
@@ -81,9 +79,14 @@ async def index(request):
     async for email_account in EmailAccount.objects.filter(user=user):
         email_accounts.append(email_account)
 
-    return HttpResponse(
-        f"as email index view for {user}, num email accounts: {len(email_accounts)}"
-    )
+    context = {
+        "is_authenticated": user.is_authenticated,
+        "username": user.get_username,
+        "is_staff": user.is_staff,
+        "email_accounts": email_accounts,
+    }
+    response = render(request, "as_email/index.html", context)
+    return response
 
 
 ####################################################################
