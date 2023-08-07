@@ -27,8 +27,7 @@ from pathlib import Path
 # 3rd party imports
 #
 import aiofiles
-from asgiref.sync import sync_to_async
-from django.contrib import auth
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -62,31 +61,20 @@ async def _validate_server_api_key(request, domain_name: str) -> Server:
 
 ####################################################################
 #
-async def index(request):
+@login_required
+def index(request):
     """
     returns a simple view of the email accounts that belong to the user
     """
-    # XXX Django 5.0 will add request.auser()
-    #
-    user = await sync_to_async(auth.get_user)(request)
-    # XXX Normally we would use the `@login_required` decorator, but that does
-    #     not work with async views as of django 4.2 (looks like django5 will
-    #     support it.)
-    #
-    if not user.is_authenticated:
-        raise PermissionDenied("must be logged in")
-    email_accounts = []
-    async for email_account in EmailAccount.objects.filter(user=user):
-        email_accounts.append(email_account)
-
+    # XXX In Django 5.0 we will see if we can move this to an async view. Too
+    #     much just does not work well with async views (like async db lookups
+    #     during django template rendering, @login_required)
+    user = request.user
+    email_accounts = EmailAccount.objects.filter(user=user)
     context = {
-        "is_authenticated": user.is_authenticated,
-        "username": user.get_username,
-        "is_staff": user.is_staff,
         "email_accounts": email_accounts,
     }
-    response = render(request, "as_email/index.html", context)
-    return response
+    return render(request, "as_email/index.html", context)
 
 
 ####################################################################

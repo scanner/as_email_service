@@ -4,6 +4,7 @@ ROOT_DIR := $(shell git rev-parse --show-toplevel)
 include $(ROOT_DIR)/Make.rules
 
 DOCKER_BUILDKIT := 1
+LATEST_TAG := $(shell git describe --abbrev=0)
 
 .PHONY: clean lint test mypy logs migrate makemigrations manage_shell shell restart delete down up build dirs
 
@@ -52,3 +53,8 @@ logs:
 
 test:
 	@docker compose run --rm devweb pytest --disable-warnings
+
+release: build
+	docker tag as_email_service_app:latest as_email_service_app:$(LATEST_TAG)
+	docker tag as_email_service_app:latest ghcr.io/scanner/as_email_service_app:$(LATEST_TAG)
+	docker push ghcr.io/scanner/as_email_service_app:$(LATEST_TAG)

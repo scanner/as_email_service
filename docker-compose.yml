@@ -6,7 +6,7 @@ volumes:
 
 services:
   web: &web
-    image: as_email_service_app
+    image: "as_email_service_app:${RELEASE_VERSION}"
     container_name: app
     build:
       context: .
