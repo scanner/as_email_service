@@ -284,15 +284,13 @@ class EmailAccount(models.Model):
         (FORWARDING, "Forwarding"),
     ]
 
-    user: models.ForeignKey = models.ForeignKey(User, on_delete=models.CASCADE)
-    server: models.ForeignKey = models.ForeignKey(
-        Server, on_delete=models.CASCADE
-    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    server = models.ForeignKey(Server, on_delete=models.CASCADE)
     # XXX We should figure out a way to have this still be a validated email
     #     field, but auto-fill the domain name part from the server attribute.
     #     For now we are just going to require that the domain name's match.
     #
-    email_address: models.EmailField = models.EmailField(
+    email_address = models.EmailField(
         unique=True,
         help_text=_(
             "The email address that will receive emails on this server, "
@@ -304,7 +302,7 @@ class EmailAccount(models.Model):
         max_length=2, choices=ACCOUNT_TYPE_CHOICES, default=LOCAL_DELIVERY
     )
 
-    mail_dir: models.CharField = models.CharField(
+    mail_dir = models.CharField(
         help_text=_(
             "The root folder of the mail directory for this email account. "
             "This should be left blank and it will be auto-filled in when "
@@ -316,7 +314,7 @@ class EmailAccount(models.Model):
         null=True,
         blank=True,
     )
-    password: models.CharField = models.CharField(
+    password = models.CharField(
         max_length=200,
         help_text=_(
             "Password used for the SMTP and IMAP services for this email "
@@ -324,7 +322,7 @@ class EmailAccount(models.Model):
         ),
         default="XXX",
     )
-    handle_blocked_messages: models.CharField = models.CharField(
+    handle_blocked_messages = models.CharField(
         max_length=2,
         choices=BLOCK_CHOICES,
         default=DELIVER,
@@ -338,7 +336,7 @@ class EmailAccount(models.Model):
             "mail box on a message by message basis."
         ),
     )
-    blocked_messages_delivery_folder: models.CharField = models.CharField(
+    blocked_messages_delivery_folder = models.CharField(
         default="Junk",
         max_length=1024,
         help_text=_(
@@ -397,8 +395,8 @@ class EmailAccount(models.Model):
         blank=True,
     )
 
-    created_at: models.DateTimeField = models.DateTimeField(auto_now_add=True)
-    modified_at: models.DateTimeField = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [
