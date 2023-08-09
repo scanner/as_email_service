@@ -102,6 +102,8 @@ django==4.2.4
     #   drf-nested-routers
 django-anymail==10.1
     # via -r production.txt
+django-dry-rest-permissions==1.2.0
+    # via -r production.txt
 django-environ==0.10.0
     # via -r production.txt
 django-extensions==3.2.3

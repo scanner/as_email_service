@@ -43,7 +43,7 @@ class ServerAdmin(admin.ModelAdmin):
 class EmailAccountAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "user",
+        "owner",
         "server",
         "email_address",
         "account_type",
@@ -59,7 +59,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "modified_at",
     )
     list_filter = (
-        "user",
+        "owner",
         "server",
         "account_type",
         "deactivated",
@@ -67,7 +67,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "modified_at",
     )
     search_fields = (
-        "user",
+        "owner",
         "email_address",
     )
     raw_id_fields = ("alias_for",)

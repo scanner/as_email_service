@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "huey.contrib.djhuey",
     "ordered_model",
     "rest_framework",
+    "dry_rest_permissions",
     "as_email",
 ]
 
@@ -96,11 +97,10 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 REST_FRAMEWORK = {
-    # Use Django's standard `django.contrib.auth` permissions,
-    # or allow read-only access for unauthenticated users.
-    "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
-    ]
+    # All access to the as_email API requires authentication. Additional
+    # permissions are defined on each of the models.
+    #
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"]
 }
 
 # Database

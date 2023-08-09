@@ -13,6 +13,8 @@ from pytest_factoryboy import register
 
 # Project imports
 #
+from rest_framework.test import APIClient
+
 from .factories import (
     BlockedMessageFactory,
     EmailAccountFactory,
@@ -64,3 +66,13 @@ def mailbox_dir(settings, tmp_path):
     mail_base_dir.mkdir(parents=True, exist_ok=True)
     settings.MAIL_DIRS = mail_base_dir
     yield mail_base_dir
+
+
+####################################################################
+#
+@pytest.fixture
+def api_client():
+    """
+    fixture for DRF's APIClient object.
+    """
+    return APIClient

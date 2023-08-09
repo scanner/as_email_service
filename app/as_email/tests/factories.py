@@ -76,7 +76,7 @@ class ServerFactory(DjangoModelFactory):
 ########################################################################
 #
 class EmailAccountFactory(DjangoModelFactory):
-    user = factory.SubFactory(UserFactory)
+    owner = factory.SubFactory(UserFactory)
     server = factory.SubFactory(ServerFactory)
     email_address = factory.LazyAttribute(
         lambda o: f"{fake.profile()['username']}@{o.server.domain_name}"
@@ -89,7 +89,7 @@ class EmailAccountFactory(DjangoModelFactory):
 
     class Meta:
         model = EmailAccount
-        django_get_or_create = ("user", "email_address", "server")
+        django_get_or_create = ("owner", "email_address", "server")
 
 
 ########################################################################

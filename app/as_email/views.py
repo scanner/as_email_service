@@ -31,6 +31,10 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
+from dry_rest_permissions.generics import (
+    DRYPermissionFiltersBase,
+    DRYPermissions,
+)
 from rest_framework.viewsets import ModelViewSet
 
 # Project imports
@@ -165,42 +169,51 @@ async def hook_spam(request, domain_name):
 ########################################################################
 ########################################################################
 #
-class EmailAccountViewSet(ModelViewSet):
-    serialize_class = EmailAccountSerializer
+class OwnerFilterBackend(DRYPermissionFiltersBase):
+    def filter_list_queryset(self, request, queryset, view):
+        """
+        Limits all list requests to only be seen by the owners.
+        """
+        return queryset.filter(owner=request.user)
 
-    ####################################################################
-    #
-    def get_queryset(self):
-        return EmailAccount.objects.filter(
-            user=self.kwargs["request"].user,
-        )
+
+########################################################################
+########################################################################
+#
+class EmailAccountViewSet(ModelViewSet):
+    permission_classes = (DRYPermissions,)
+    serializer_class = EmailAccountSerializer
+    queryset = EmailAccount.objects.all()
+    filter_backends = (OwnerFilterBackend,)
+
+
+########################################################################
+########################################################################
+#
+class EmailAccountOwnerFilterBackend(DRYPermissionFiltersBase):
+    def filter_list_queryset(self, request, queryset, view):
+        """
+        Limits all list requests to only be seen by the owner of the
+        associated email account.
+        """
+        return queryset.filter(email_account__owner=request.user)
 
 
 ########################################################################
 ########################################################################
 #
 class BlockedMessageViewSet(ModelViewSet):
-    serialize_class = BlockedMessageSerializer
-
-    ####################################################################
-    #
-    def get_queryset(self):
-        return BlockedMessage.objects.filter(
-            email_account=self.kwargs["email_account_pk"],
-            email_account__user=self.kwargs["request"].user,
-        )
+    permission_classes = (DRYPermissions,)
+    serializer_class = BlockedMessageSerializer
+    queryset = BlockedMessage.objects.all()
+    filter_backends = (EmailAccountOwnerFilterBackend,)
 
 
 ########################################################################
 ########################################################################
 #
 class MessageFilterRuleViewSet(ModelViewSet):
-    serialize_class = MessageFilterRuleSerializer
-
-    ####################################################################
-    #
-    def get_queryset(self):
-        return MessageFilterRule.objects.filter(
-            email_account=self.kwargs["email_account_pk"],
-            email_account__user=self.kwargs["request"].user,
-        )
+    permission_classes = (DRYPermissions,)
+    serializer_class = MessageFilterRuleSerializer
+    queryset = MessageFilterRule.objects.all()
+    filter_backends = (EmailAccountOwnerFilterBackend,)

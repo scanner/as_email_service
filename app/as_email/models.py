@@ -284,7 +284,7 @@ class EmailAccount(models.Model):
         (FORWARDING, "Forwarding"),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
     server = models.ForeignKey(Server, on_delete=models.CASCADE)
     # XXX We should figure out a way to have this still be a validated email
     #     field, but auto-fill the domain name part from the server attribute.
@@ -403,7 +403,7 @@ class EmailAccount(models.Model):
             models.Index(fields=["forward_to"]),
             models.Index(fields=["email_address"]),
             models.Index(fields=["server"]),
-            models.Index(fields=["user"]),
+            models.Index(fields=["owner"]),
         ]
 
         ordering = ("server", "email_address")
@@ -412,6 +412,45 @@ class EmailAccount(models.Model):
     #
     def __str__(self):
         return self.email_address
+
+    #######################
+    #######################
+    #
+    # Permissions:
+    #
+    # No one can create or delete an EmailAccount (via the rest API).
+    # Only `owners` can update, retrieve, list EmailAccounts that they own.
+    #
+    ####################################################################
+    #
+    @staticmethod
+    def has_write_permission(self):
+        return True
+
+    ####################################################################
+    #
+    def has_object_write_permission(self, request):
+        return False
+
+    ####################################################################
+    #
+    def has_object_update_permission(self, request):
+        return request.user == self.owner
+
+    ####################################################################
+    #
+    @staticmethod
+    def has_read_permission(self):
+        return True
+
+    ####################################################################
+    #
+    def has_object_read_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to retrieve/list the
+        object if they are the owner.
+        """
+        return request.user == self.owner
 
     ####################################################################
     #
@@ -537,6 +576,51 @@ class BlockedMessage(models.Model):
     #
     def __str__(self):
         return f"{self.email_account.email_address} - {self.from_address}: {self.subject} ({self.created_at})"
+
+    #######################
+    #######################
+    #
+    # Permissions:
+    #
+    # Only owners can list, retrieve blocked messages that are associated with
+    # an email account that they own.
+    #
+    # Only owners of the associated email account can "deliver" a blocked
+    # message
+    #
+    ####################################################################
+    #
+    @staticmethod
+    def has_write_permission(self):
+        return True
+
+    ####################################################################
+    #
+    @staticmethod
+    def has_read_permission(self):
+        return True
+
+    ####################################################################
+    #
+    def has_object_read_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to retrieve/list the
+        object if they are the owner of the associated email account
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    # XXX Need to define the 'deliver' permission.
+    #
+    @staticmethod
+    def has_deliver_permission(request):
+        return True
+
+    ####################################################################
+    #
+    def has_object_deliver_permission(self, request):
+        return request.user == self.email_account.owner
 
 
 ########################################################################

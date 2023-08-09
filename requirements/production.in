@@ -12,6 +12,7 @@ django-ordered-model
 djangorestframework
 dnspython
 drf-nested-routers
+django-dry-rest-permissions
 gunicorn
 httpx
 huey
