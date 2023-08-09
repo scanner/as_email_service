@@ -8,17 +8,12 @@ Serializers for the rest framework of our models
 
 # 3rd party imports
 #
-from django.contrib.auth import get_user_model
 from rest_framework.serializers import HyperlinkedModelSerializer
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 # Project imports
 #
 from .models import BlockedMessage, EmailAccount, MessageFilterRule
-
-# Various models that belong to a specific user need the User object.
-#
-User = get_user_model()
 
 
 ########################################################################

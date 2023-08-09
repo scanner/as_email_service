@@ -80,7 +80,7 @@ def index(request):
     #     much just does not work well with async views (like async db lookups
     #     during django template rendering, @login_required)
     user = request.user
-    email_accounts = EmailAccount.objects.filter(user=user)
+    email_accounts = EmailAccount.objects.filter(owner=user)
     context = {
         "email_accounts": email_accounts,
     }

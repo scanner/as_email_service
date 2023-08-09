@@ -3,6 +3,7 @@ aiologger
 aiosmtpd
 django
 django-anymail
+django-dry-rest-permissions
 django-environ
 django-extensions
 django-filter
@@ -12,7 +13,6 @@ django-ordered-model
 djangorestframework
 dnspython
 drf-nested-routers
-django-dry-rest-permissions
 gunicorn
 httpx
 huey

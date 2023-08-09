@@ -15,8 +15,8 @@
   <body class="{%if is_popup %}popup {% endif %}{% block bodyclass %}{% endblock %}">
     {% block sidebar-nav %}
       <ul class="sidebar-nav">
-        {% if is_authenticated %}
-          <li>User: {{ username }}</li>
+        {% if user.is_authenticated %}
+          <li>User: {{ user }}</li>
           <li><a href="{% url 'logout' %}?next={{ request.path }}">Logout</a></li>
           {% if is_staff %}
             <li><a href="{% url 'admin:index' %}">Admin</li>
