@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "django_extensions",
     "huey.contrib.djhuey",
     "ordered_model",
+    "rest_framework",
     "as_email",
 ]
 
@@ -94,6 +95,13 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permissions,
+    # or allow read-only access for unauthenticated users.
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
+    ]
+}
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases

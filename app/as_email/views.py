@@ -31,10 +31,16 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
+from rest_framework.viewsets import ModelViewSet
 
 # Project imports
 #
-from .models import EmailAccount, Server
+from .models import BlockedMessage, EmailAccount, MessageFilterRule, Server
+from .serializers import (
+    BlockedMessageSerializer,
+    EmailAccountSerializer,
+    MessageFilterRuleSerializer,
+)
 from .tasks import dispatch_incoming_email
 from .utils import aemail_accounts_by_addr, short_hash_email
 
@@ -154,3 +160,47 @@ async def hook_spam(request, domain_name):
 
     server = await _validate_server_api_key(request, domain_name)
     return HttpResponse(f"received spam notification for {server}")
+
+
+########################################################################
+########################################################################
+#
+class EmailAccountViewSet(ModelViewSet):
+    serialize_class = EmailAccountSerializer
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        return EmailAccount.objects.filter(
+            user=self.kwargs["request"].user,
+        )
+
+
+########################################################################
+########################################################################
+#
+class BlockedMessageViewSet(ModelViewSet):
+    serialize_class = BlockedMessageSerializer
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        return BlockedMessage.objects.filter(
+            email_account=self.kwargs["email_account_pk"],
+            email_account__user=self.kwargs["request"].user,
+        )
+
+
+########################################################################
+########################################################################
+#
+class MessageFilterRuleViewSet(ModelViewSet):
+    serialize_class = MessageFilterRuleSerializer
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        return MessageFilterRule.objects.filter(
+            email_account=self.kwargs["email_account_pk"],
+            email_account__user=self.kwargs["request"].user,
+        )

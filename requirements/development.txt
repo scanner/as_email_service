@@ -93,14 +93,22 @@ django==4.2.4
     #   -r production.txt
     #   django-anymail
     #   django-extensions
+    #   django-filter
+    #   django-guardian
     #   django-mfa2
     #   django-stubs
     #   django-stubs-ext
+    #   djangorestframework
+    #   drf-nested-routers
 django-anymail==10.1
     # via -r production.txt
 django-environ==0.10.0
     # via -r production.txt
 django-extensions==3.2.3
+    # via -r production.txt
+django-filter==23.2
+    # via -r production.txt
+django-guardian==2.4.0
     # via -r production.txt
 django-mfa2==2.8.0
     # via -r production.txt
@@ -112,7 +120,13 @@ django-stubs-ext==4.2.2
     # via
     #   -r lint.txt
     #   django-stubs
+djangorestframework==3.14.0
+    # via
+    #   -r production.txt
+    #   drf-nested-routers
 dnspython==2.4.1
+    # via -r production.txt
+drf-nested-routers==0.93.4
     # via -r production.txt
 ecdsa==0.18.0
     # via
@@ -300,7 +314,9 @@ python-u2flib-server==5.0.1
     #   -r production.txt
     #   django-mfa2
 pytz==2023.3
-    # via -r production.txt
+    # via
+    #   -r production.txt
+    #   djangorestframework
 pyyaml==6.0.1
     # via
     #   -r lint.txt

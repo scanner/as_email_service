@@ -43,18 +43,32 @@ django==4.2.4
     #   -r production.in
     #   django-anymail
     #   django-extensions
+    #   django-filter
+    #   django-guardian
     #   django-mfa2
+    #   djangorestframework
+    #   drf-nested-routers
 django-anymail==10.1
     # via -r production.in
 django-environ==0.10.0
     # via -r production.in
 django-extensions==3.2.3
     # via -r production.in
+django-filter==23.2
+    # via -r production.in
+django-guardian==2.4.0
+    # via -r production.in
 django-mfa2==2.8.0
     # via -r production.in
 django-ordered-model==3.7.4
     # via -r production.in
+djangorestframework==3.14.0
+    # via
+    #   -r production.in
+    #   drf-nested-routers
 dnspython==2.4.1
+    # via -r production.in
+drf-nested-routers==0.93.4
     # via -r production.in
 ecdsa==0.18.0
     # via python-jose
@@ -110,7 +124,9 @@ python-jose==3.3.0
 python-u2flib-server==5.0.1
     # via django-mfa2
 pytz==2023.3
-    # via -r production.in
+    # via
+    #   -r production.in
+    #   djangorestframework
 pyyaml==6.0.1
     # via -r production.in
 reactivex==4.0.4

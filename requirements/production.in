@@ -5,9 +5,13 @@ django
 django-anymail
 django-environ
 django-extensions
+django-filter
+django-guardian
 django-mfa2
 django-ordered-model
+djangorestframework
 dnspython
+drf-nested-routers
 gunicorn
 httpx
 huey
