@@ -89,6 +89,7 @@ class EmailAccountFactory(DjangoModelFactory):
 
     class Meta:
         model = EmailAccount
+        skip_postgeneration_save = True  # Saved when `set_password()` is called
         django_get_or_create = ("owner", "email_address", "server")
 
 

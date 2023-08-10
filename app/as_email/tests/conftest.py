@@ -70,6 +70,21 @@ def mailbox_dir(settings, tmp_path):
 
 ####################################################################
 #
+@pytest.fixture(autouse=True)
+def huey_immediate_mode(settings):
+    """
+    Huey tasks are invoked immediately inline. Can not think of a case
+    where we would not want this to happen automatically while running tests.
+    """
+    from huey.contrib.djhuey import HUEY as huey
+
+    huey.immediate = True
+    settings.HUEY["immediate"] = True
+    yield huey
+
+
+####################################################################
+#
 @pytest.fixture
 def api_client():
     """

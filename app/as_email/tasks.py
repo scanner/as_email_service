@@ -40,15 +40,17 @@ def expire_old_blocked_messages():
     horizon and delete them.
     """
     horizon = datetime.now(tz=TZ) - MESSAGE_HORIZON_TD
-    num_deleted, _ = BlockedMessage.objects.filter(created_at__lt=horizon)
+    num_deleted, _ = BlockedMessage.objects.filter(
+        created_at__lt=horizon
+    ).delete()
     if num_deleted > 0:
-        print(f"expired_old_blocked_messages: Deleted {num_deleted}")
+        logger.info("expired_old_blocked_messages: Deleted %d", num_deleted)
 
 
 ####################################################################
 #
 @db_periodic_task(crontab(minute="*/5"))
-def dispatch_outgoing_spooled_email():
+def dispatch_outgoing_email():
     """
     Look for email messages in our outgoing spool folder and
     attempt to send them via the mail provider.
