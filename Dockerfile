@@ -9,7 +9,9 @@ WORKDIR ${APP_HOME}
 COPY requirements/production.txt /app/requirements/production.txt
 COPY pyproject.toml /app/
 RUN python -m venv --copies /venv
-RUN . /venv/bin/activate && pip install -r /app/requirements/production.txt
+RUN . /venv/bin/activate && \
+    pip install --upgrade pip && \
+    pip install -r /app/requirements/production.txt
 
 #########################
 #

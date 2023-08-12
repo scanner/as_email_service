@@ -6,12 +6,16 @@ volumes:
 
 services:
   web: &web
-    image: "as_email_service_app:${RELEASE_VERSION}"
+    image: "as_email_service_app:latest"
     container_name: app
     build:
       context: .
       dockerfile: ./Dockerfile
       target: prod
+      platforms:
+        - "linux/amd64"
+        - "linux/arm64"
+        # - "linux/arm/v7"   # when we want to build for raspberry pi's
     ports:
       - "11578:8000"
     command: /app/scripts/start_app.sh
@@ -26,7 +30,7 @@ services:
 
   devweb:
     <<: *web
-    image: as_email_service_app_dev
+    image: as_email_service_app_dev:latest
     container_name: app_dev
     build:
       context: .
