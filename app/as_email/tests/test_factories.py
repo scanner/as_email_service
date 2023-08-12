@@ -51,6 +51,13 @@ def test_server_factory(server_factory):
 
 ####################################################################
 #
+def test_server_factory_client(server_factory):
+    server = server_factory()
+    server.send_email("test message")
+
+
+####################################################################
+#
 def test_email_account_factory(email_account_factory):
     email_account = email_account_factory()
     assert isinstance(email_account, EmailAccount)

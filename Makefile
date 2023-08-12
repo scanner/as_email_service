@@ -9,8 +9,8 @@ LATEST_TAG := $(shell git describe --abbrev=0)
 .PHONY: clean lint test mypy logs migrate makemigrations manage_shell shell restart delete down up build dirs
 
 build: requirements/production.txt requirements/development.txt
-	@docker compose --profile prod build
-	@docker compose --profile dev build
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile prod build
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile dev build
 
 dirs: dbs ssl spool
 

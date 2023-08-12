@@ -17,8 +17,6 @@ from typing import Dict, List, Optional
 
 # 3rd party imports
 #
-import aiofiles
-import pytz
 from aiologger import Logger
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import SMTP as SMTPServer
@@ -208,39 +206,17 @@ class RelayHandler:
         account = session.auth_data
 
         try:
+            # XXX Need to either convert envelope to something we can send to
+            #    postmark via the postmaker library, or the standard python
+            #    library format .. or the postmarker library format..  and
+            #    whatever we choose we need to be able to write it to disk and
+            #    read it from disk.
+            #
             await account.server.asend_email(envelope)
-        except Exception as e:
-            # If postmark is down we need to write the message to a spool
-            # directory and have a huey worker check for these unsent
-            # messages and send it for us.
-            #
-            # XXX We should handle different kinds of failures
-            #     differently.. for instance we are getting some sort
-            #     of authentication denied message from postmark we
-            #     should return a failure message to our caller.
-            #
-            await logger.exception("Failed with exception %s", e)
-            fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
-                "%Y.%m.%d-%H.%M.%S.%f%z"
-            )
-            spool_file = account.server.incoming_spool_dir / fname
-            async with aiofiles.open(spool_file, "wb") as f:
-                # XXX need to convert envelope to a binary stream that
-                #     can be read back in without losing data.
-                #
-                # XXX we should create a db object for each email we
-                #     retry so that we can track number of retries and
-                #     how long we have been retrying for and how long
-                #     until the next retry. It is probably best to
-                #     actually makea n ORM object for this metadata
-                #     instead of trying to stick it somewhere else.
-                #
-                #     also need to track bounces and deliver a bounce
-                #     email (and we do not retry on bounces)
-                #
-                #     This db object can also track re-send attempts?
-                #
-                await f.write(envelope.original_content)
+        except Exception as exc:
+            await logger.exception("Failed: %s", exc)
+            return f"500 {str(exc)}"
+
         return "250 OK"
 
 

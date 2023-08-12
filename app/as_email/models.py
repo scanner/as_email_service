@@ -9,15 +9,19 @@ mostly custom for the service I use: postmark.
 #
 import asyncio
 import email.message
+import logging
 import mailbox
 import random
 import string
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
 # 3rd party imports
 #
 import aiofiles
+import pytz
+from aiologger import Logger as AIOLogger
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
@@ -26,10 +30,14 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
+from postmarker.exceptions import ClientError
+from requests import RequestException
 
 # Various models that belong to a specific user need the User object.
 #
 User = get_user_model()
+logger = logging.getLogger(__name__)
+alogger = AIOLogger.with_default_handlers(name=__name__)
 
 
 ########################################################################
@@ -217,22 +225,88 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def send_email(self, message):
+    def _spool_outgoing_message(self, message):
+        """
+        Logic to write a message to the outgoing message spool for later
+        sending.
+        """
+        fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
+            "%Y.%m.%d-%H.%M.%S.%f%z"
+        )
+        spool_file = Path(self.incoming_spool_dir / fname)
+
+        # XXX need to convert envelope to a binary stream that
+        #     can be read back in without losing data.
+        #
+        # XXX we should create a db object for each email we
+        #     retry so that we can track number of retries and
+        #     how long we have been retrying for and how long
+        #     until the next retry. It is probably best to
+        #     actually makea n ORM object for this metadata
+        #     instead of trying to stick it somewhere else.
+        #
+        #     also need to track bounces and deliver a bounce
+        #     email (and we do not retry on bounces)
+        #
+        #     This db object can also track re-send attempts?
+        #
+        spool_file.write_bytes(message.original_context)
+
+    ####################################################################
+    #
+    def send_email(self, message, spool_on_retryable=True):
         """
         Send the given email via this server.
+
+        If we get a failure while trying to send the message and
+        `spool_on_retryable` is True and the failure is one of the "retryable"
+        failures such as rate limit exceeded, network failure, service is
+        temporarily down then we will write the message to the outgoing spool
+        directory to be automatically retried by a huey task.
 
         XXX Be sure to record metrics when we send a message, and how large the
             message was.
         """
-        return self.client.emails.send(message)
+        try:
+            self.client.emails.send(message)
+        except RequestException as exc:
+            logger.error(
+                f"Failed to send email: {exc}. Spooling for retransmission"
+            )
+            if spool_on_retryable:
+                self._spool_outgoing_message(message)
+            return False
+        except ClientError as exc:
+            # For certain error codes we spool for retry. For everything else
+            # it will fail here and now.
+            #
+            if exc.error_code in (
+                100,  # Maintenance
+                405,  # Account has run out of credits
+                429,  # Rate limit exceeded
+            ):
+                if spool_on_retryable:
+                    self._spool_outgoing_message(message)
+                    logger.warn(f"Spooling message for retry ({exc})")
+                else:
+                    logger.warn(f"Message retry failed: ({exc})")
+                return False
+            else:
+                logger.error(
+                    f"Failed to send email: {exc}. Spooling for retransmission"
+                )
+                raise
+        return True
 
     ####################################################################
     #
-    async def asend_email(self, message):
+    async def asend_email(self, message, spool_on_retryable=True):
         """
         Send the given email via this server, asyncio version
         """
-        return await asyncio.to_thread(self.send_email(message))
+        return await asyncio.to_thread(
+            self.send_email(message), spool_on_retryable=spool_on_retryable
+        )
 
 
 ########################################################################
