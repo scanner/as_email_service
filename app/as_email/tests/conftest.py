@@ -31,10 +31,26 @@ from .factories import (
 #
 register(UserFactory)
 register(ProviderFactory)
-register(ServerFactory)
 register(EmailAccountFactory)
 register(BlockedMessageFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+@pytest.fixture
+def server_factory(postmark_client):
+    """
+    A factory for creating server's that have the postmarker pytest
+    postmark_client factory returned when you call ".client"
+    """
+
+    def make_server(*args, **kwargs):
+        server = ServerFactory(*args, **kwargs)
+        server._client = postmark_client
+        return server
+
+    return make_server
 
 
 ####################################################################

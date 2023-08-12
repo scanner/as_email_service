@@ -12,9 +12,9 @@ import email.message
 import logging
 import mailbox
 import random
+import smtplib
 import string
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 
 # 3rd party imports
@@ -45,6 +45,13 @@ alogger = AIOLogger.with_default_handlers(name=__name__)
 #
 class Provider(models.Model):
     name = models.CharField(unique=True, max_length=200)
+    smtp = models.CharField(
+        help_text=_(
+            "The host for sending messages via SMTP for this provider (each server has its own unique login, but all the servers on the same provider using the same hostname for SMTP.)"
+        ),
+        max_length=200,
+        blank=False,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -214,14 +221,21 @@ class Server(models.Model):
 
     ####################################################################
     #
-    @lru_cache()
+    @property
     def client(self) -> PostmarkClient:
         """
         Returns a postmark client for this server
         """
-        return PostmarkClient(
-            server_token=settings.EMAIL_SERVER_TOKENS[self.domain_name]
-        )
+        if not hasattr(self, "_client"):
+            if self.domain_name not in settings.EMAIL_SERVER_TOKENS:
+                raise KeyError(
+                    f"The token for the server '{self.domain_name} is not "
+                    "defined in `settings.EMAIL_SERVER_TOKENS`"
+                )
+            self._client = PostmarkClient(
+                server_token=settings.EMAIL_SERVER_TOKENS[self.domain_name]
+            )
+        return self._client
 
     ####################################################################
     #
@@ -251,6 +265,18 @@ class Server(models.Model):
         #     This db object can also track re-send attempts?
         #
         spool_file.write_bytes(message.original_context)
+
+    ####################################################################
+    #
+    def smtp(self, email_account, to, message, spool_on_retryable=True):
+        """
+        send email via smtp.
+        """
+        smtp = smtplib.SMTP(self.provider.smtp, 587)
+        smtp.starttls()
+        token = settings.EMAIL_SERVER_TOKENS[self.domain_name]
+        smtp.login(token, token)
+        smtp.sendmail(email_account.email_address, to, message)
 
     ####################################################################
     #

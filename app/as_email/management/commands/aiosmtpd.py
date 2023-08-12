@@ -19,7 +19,8 @@ from typing import Dict, List, Optional
 #
 from aiologger import Logger
 from aiosmtpd.controller import Controller
-from aiosmtpd.smtp import SMTP as SMTPServer
+
+# from aiosmtpd.smtp import SMTP as SMTPServer
 from aiosmtpd.smtp import AuthResult
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import LoginPassword
@@ -59,6 +60,7 @@ class DenyInfo(BaseModel):
 
 # XXX Maybe this should be a list with a capped size so if we get
 #     connections from millions of hosts we do not consume all memory.
+#     an LRU.. or we should use our redis server
 #
 DENY_PEER_LIST: Dict[str, DenyInfo] = {}
 
@@ -171,11 +173,10 @@ class RelayHandler:
     #
     async def handle_EHLO(
         self,
-        server: SMTPServer,
         session: SMTPSession,
         envelope: SMTPEnvelope,
         hostname,
-        responses,
+        responses: List[str],
     ) -> List[str]:
         """
         the primary purpose of having a handler for EHLO is to
@@ -198,7 +199,7 @@ class RelayHandler:
     # .. not sure why their example does not follow that convention.
     #
     async def handle_DATA(
-        self, server: SMTPServer, session: SMTPSession, envelope: SMTPEnvelope
+        self, session: SMTPSession, envelope: SMTPEnvelope
     ) -> str:
         # The as_email.models.EmailAccount object instance is passed in via
         # session.auth_data.

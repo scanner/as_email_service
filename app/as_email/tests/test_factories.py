@@ -6,6 +6,7 @@ it returns the correct type of object.
 """
 # system imports
 #
+from email.mime.text import MIMEText
 
 # 3rd party imports
 #
@@ -53,7 +54,8 @@ def test_server_factory(server_factory):
 #
 def test_server_factory_client(server_factory):
     server = server_factory()
-    server.send_email("test message")
+    message = MIMEText("Test message")
+    server.send_email(message)
 
 
 ####################################################################
