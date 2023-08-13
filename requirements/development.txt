@@ -309,6 +309,8 @@ python-dateutil==2.8.2
     #   -r production.txt
     #   faker
     #   influxdb-client
+python-dotenv==1.0.0
+    # via -r production.txt
 python-jose==3.3.0
     # via
     #   -r production.txt

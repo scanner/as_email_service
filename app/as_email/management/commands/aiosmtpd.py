@@ -235,6 +235,8 @@ def send_email_via_smtp(account, envelope):
 
     XXX In the future this should probably move to as_email/utils.py and
         provide async and sync version.
+
+    XXX Envelope should be either aiosmtp.envelope, or email.EmailMessage, or postmarker.emails.Email
     """
     server = account.server
     if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
@@ -244,14 +246,15 @@ def send_email_via_smtp(account, envelope):
         )
     token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
 
+    # XXX Needs to add `X-PM-Message-Stream: outbound` header (or the name
+    #     should be configurable for each server) so we need to parse the
+    #     message if it is not already parsed.
+    #
     server, port = server.smtp_server.split(":")
     client = Client(server, int(port))
     client.starttls()
     client.login(token, token)
     try:
-        # XXX Needs to add `X-PM-Message-Stream: outbound` header (or the name
-        #     should be configurable for each server)
-        #
         client.sendmail(
             account.email_address, envelope.rcpt_tos, envelope.raw_content
         )

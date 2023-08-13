@@ -19,6 +19,7 @@ huey
 influxdb-client
 postmarker
 pydantic
+python-dotenv
 pytz
 pyyaml
 redispy
