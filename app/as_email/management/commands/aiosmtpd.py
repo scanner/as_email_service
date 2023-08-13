@@ -249,6 +249,9 @@ def send_email_via_smtp(account, envelope):
     client.starttls()
     client.login(token, token)
     try:
+        # XXX Needs to add `X-PM-Message-Stream: outbound` header (or the name
+        #     should be configurable for each server)
+        #
         client.sendmail(
             account.email_address, envelope.rcpt_tos, envelope.raw_content
         )
