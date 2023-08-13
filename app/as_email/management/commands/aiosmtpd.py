@@ -13,6 +13,8 @@ object.
 import asyncio
 import ssl
 from datetime import datetime
+from smtplib import SMTP as Client
+from smtplib import SMTPException
 from typing import Dict, List, Optional
 
 # 3rd party imports
@@ -28,7 +30,7 @@ from aiosmtpd.smtp import Session as SMTPSession
 
 # Project imports
 #
-from as_email.models import EmailAccount
+from as_email.models import EmailAccount, spool_message
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from pydantic import BaseModel
@@ -207,18 +209,54 @@ class RelayHandler:
         account = session.auth_data
 
         try:
-            # XXX Need to either convert envelope to something we can send to
-            #    postmark via the postmaker library, or the standard python
-            #    library format .. or the postmarker library format..  and
-            #    whatever we choose we need to be able to write it to disk and
-            #    read it from disk.
-            #
-            await account.server.asend_email(envelope)
+            await asyncio.to_thread(send_email_via_smtp(account, envelope))
         except Exception as exc:
             await logger.exception("Failed: %s", exc)
             return f"500 {str(exc)}"
 
         return "250 OK"
+
+
+########################################################################
+#
+def send_email_via_smtp(account, envelope):
+    """
+    Use smtplib.SMTP to send the given email. Use the token to authenticate
+    to the smtp server.
+
+    This function is synchronous and meant to be called via
+    `asyncio.to_thread()`.
+
+    If we fail to send the message due to a network issue the message will be
+    written to the spool directory to be sent at a later time.
+
+    Instead of relying on django ORM objects that may not be fully resolved all
+    parameters that are necessary are passed in directly.
+
+    XXX In the future this should probably move to as_email/utils.py and
+        provide async and sync version.
+    """
+    server = account.server
+    if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+        raise KeyError(
+            f"The token for the server '{server.domain_name} is not "
+            "defined in `settings.EMAIL_SERVER_TOKENS`"
+        )
+    token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
+
+    server, port = server.smtp_server.split(":")
+    client = Client(server, int(port))
+    client.starttls()
+    client.login(token, token)
+    try:
+        client.sendmail(
+            account.email_address, envelope.rcpt_tos, envelope.raw_content
+        )
+    except SMTPException as exc:
+        logger.error(
+            f"Mail from {account.email_address}, to: {envelope.rcpt_tos}, failed with exception: {exc}"
+        )
+        spool_message(server.outgoing_spool_dir, envelope)
 
 
 ########################################################################

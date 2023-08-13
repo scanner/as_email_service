@@ -40,14 +40,42 @@ logger = logging.getLogger(__name__)
 alogger = AIOLogger.with_default_handlers(name=__name__)
 
 
+####################################################################
+#
+def spool_message(spool_dir, message):
+    """
+    Logic to write a message to the message spool for later dispatching.
+    """
+    fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
+        "%Y.%m.%d-%H.%M.%S.%f%z"
+    )
+    spool_file = Path(spool_dir / fname)
+    # XXX need to convert envelope to a binary stream that
+    #     can be read back in without losing data.
+    #
+    # XXX we should create a db object for each email we
+    #     retry so that we can track number of retries and
+    #     how long we have been retrying for and how long
+    #     until the next retry. It is probably best to
+    #     actually makea n ORM object for this metadata
+    #     instead of trying to stick it somewhere else.
+    #
+    #     also need to track bounces and deliver a bounce
+    #     email (and we do not retry on bounces)
+    #
+    #     This db object can also track re-send attempts?
+    #
+    spool_file.write_bytes(message.original_context)
+
+
 ########################################################################
 ########################################################################
 #
 class Provider(models.Model):
     name = models.CharField(unique=True, max_length=200)
-    smtp = models.CharField(
+    smtp_server = models.CharField(
         help_text=_(
-            "The host for sending messages via SMTP for this provider (each server has its own unique login, but all the servers on the same provider using the same hostname for SMTP.)"
+            "The host:port for sending messages via SMTP for this provider (each server has its own unique login, but all the servers on the same provider using the same hostname for SMTP.)"
         ),
         max_length=200,
         blank=False,
@@ -239,35 +267,6 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def _spool_outgoing_message(self, message):
-        """
-        Logic to write a message to the outgoing message spool for later
-        sending.
-        """
-        fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
-            "%Y.%m.%d-%H.%M.%S.%f%z"
-        )
-        spool_file = Path(self.incoming_spool_dir / fname)
-
-        # XXX need to convert envelope to a binary stream that
-        #     can be read back in without losing data.
-        #
-        # XXX we should create a db object for each email we
-        #     retry so that we can track number of retries and
-        #     how long we have been retrying for and how long
-        #     until the next retry. It is probably best to
-        #     actually makea n ORM object for this metadata
-        #     instead of trying to stick it somewhere else.
-        #
-        #     also need to track bounces and deliver a bounce
-        #     email (and we do not retry on bounces)
-        #
-        #     This db object can also track re-send attempts?
-        #
-        spool_file.write_bytes(message.original_context)
-
-    ####################################################################
-    #
     def smtp(self, email_account, to, message, spool_on_retryable=True):
         """
         send email via smtp.
@@ -300,7 +299,7 @@ class Server(models.Model):
                 f"Failed to send email: {exc}. Spooling for retransmission"
             )
             if spool_on_retryable:
-                self._spool_outgoing_message(message)
+                spool_message(self.outgoing_spool_dir, message)
             return False
         except ClientError as exc:
             # For certain error codes we spool for retry. For everything else
@@ -312,7 +311,7 @@ class Server(models.Model):
                 429,  # Rate limit exceeded
             ):
                 if spool_on_retryable:
-                    self._spool_outgoing_message(message)
+                    spool_message(self.outgoing_spool_dir, message)
                     logger.warn(f"Spooling message for retry ({exc})")
                 else:
                     logger.warn(f"Message retry failed: ({exc})")

@@ -54,6 +54,7 @@ class UserFactory(DjangoModelFactory):
 #
 class ProviderFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Provider {n}")
+    smtp_server = factory.Sequence(lambda n: f"smtp{n}.example.com:587")
 
     class Meta:
         model = Provider
