@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 
 # Project imports
 #
@@ -109,20 +110,19 @@ def test_alias_self(email_account_factory):
 
     But for now this is what we have.
     """
-    ea_1 = email_account_factory()
-    ea_1.account_type = EmailAccount.ALIAS
+    ea_1 = email_account_factory(account_type=EmailAccount.ALIAS)
     ea_1.save()
 
-    ea_2 = email_account_factory()
-    ea_2.account_type = EmailAccount.ALIAS
+    ea_2 = email_account_factory(account_type=EmailAccount.ALIAS)
     ea_2.save()
 
     # This is fine.. EmailAccount #1 is an alis for EmailAccount #2.
     ea_1.alias_for.add(ea_2)
 
-    # This is NOT fine. EmailAccount #2 can not be an alias for EmailAccount
-    # #1.
-    ea_2.alias_for.add(ea_1)
+    # This is NOT fine. Can not alias to yourself.
+    #
+    with pytest.raises(IntegrityError):
+        ea_1.alias_for.add(ea_1)
 
 
 ####################################################################
