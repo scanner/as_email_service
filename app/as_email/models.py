@@ -805,6 +805,10 @@ class MessageFilterRule(OrderedModel):
     #       acknowledged does the rule become active.
     #       Also bounces immediately deactivate the rule.
     #
+    # XXX `destroy` does nothing currently. So if a message matches a destroy
+    #     filter rule, and no other rules, then the message will be delivered
+    #     to the inbox.
+    #
     FOLDER = "folder"
     DESTROY = "destroy"
     ACTION_CHOICES = [
@@ -934,7 +938,7 @@ class MessageFilterRule(OrderedModel):
 
     ####################################################################
     #
-    def match(self, email_message: email.message.Message):
+    def match(self, email_message: email.message.EmailMessage):
         """
         Returns True if the email message matches the header/pattern.
 
@@ -946,7 +950,7 @@ class MessageFilterRule(OrderedModel):
 
         header_contents = email_message.get_all(self.header)
         for hc in header_contents:
-            if self.pattern.lower() == hc.lower():
+            if self.pattern.lower() in hc.lower():
                 return True
 
         return False

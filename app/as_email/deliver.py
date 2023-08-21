@@ -25,22 +25,111 @@ There are three main entry points:
 
   NOTE: https://www.iana.org/assignments/message-headers/message-headers.xhtml
 """
+import logging
+from email.message import EmailMessage
+
 # system imports
 #
-from email.message import EmailMessage
+from mailbox import MH, NoSuchMailboxError
+from typing import List
 
 # Project imports
 #
-from .models import EmailAccount
+from .models import EmailAccount, MessageFilterRule
+
+logger = logging.getLogger(__name__)
 
 
 ####################################################################
 #
-def deliver_email_locally(
-    email_account: EmailAccount, email_message: EmailMessage
-):
+def apply_message_filter_rules(
+    email_account: EmailAccount, msg: EmailMessage
+) -> List[str]:
+    """
+    Apply all of the message filter rules for this email account on this
+    message.
+
+    We return a list of mailboxes that the message should be delivered to. If
+    the list is empty then the message is to be delivered to the 'inbox'
+    mailbox.
+
+    NOTE: In the future message filter rules might be able to do other things
+          such as modifying the message or maybe even causing it to be
+          delivered to a different address. But will leave that for later.
+    """
+    # XXX this allow matching multiple filter rules which would result in the
+    #     message being delivered to multiple mailboxes. We will need to
+    #     implement the `result` flag from slocal's maildelivery so we can
+    #     differentiate if a message has already matched a filter rule or not
+    #     letting the user specify more specific matches first so we can have
+    #     it only delivered to one mailbox for those rules.
+    #
+    deliver_to = []
+    frs = MessageFilterRule.objects.filter(email_account=email_account)
+    for fr in frs:
+        # XXX We are only applying rules that are not DESTROY. We will handle
+        #     that later.
+        #
+        if fr.action == MessageFilterRule.DESTROY:
+            continue
+        if fr.match(msg):
+            deliver_to.append(fr.destination)
+    return deliver_to
+
+
+####################################################################
+#
+def _add_msg_to_folder(folder: MH, msg: EmailMessage):
+    """
+    Adding a message to a MH folder requires several simple steps. This
+    wraps those steps.
+    """
+    try:
+        folder.lock()
+        msg_id = folder.add(msg)
+        sequences = folder.get_sequences()
+        if "unseen" in sequences:
+            sequences["unseen"].append(msg_id)
+        else:
+            sequences["unseen"] = [msg_id]
+        folder.set_sequences(sequences)
+    finally:
+        folder.unlock()
+
+
+####################################################################
+#
+def deliver_email_locally(email_account: EmailAccount, msg: EmailMessage):
     """
     Deliver the email_message in to the MH mail dir for the given email
     account.
     """
-    pass
+    deliver_to = apply_message_filter_rules(email_account, msg)
+    delivered_to = []
+
+    # If no mailbox was specified by any of the message filter rules, then
+    # deliver this message to the inbox.
+    #
+    mh = email_account.MH()
+    for mbox in deliver_to:
+        try:
+            folder = mh.get_folder(mbox)
+            _add_msg_to_folder(folder, msg)
+            delivered_to.append(mbox)
+        except NoSuchMailboxError:
+            logger.warn(
+                "for email account %s, attempted to deliver message to "
+                "non-existing mailbox %s",
+                email_account.email_address,
+                mbox,
+            )
+
+    # If the message was not delivered to any folders in the above loop,
+    # deliver it to the inbox. Creating the inbox if it does not already exist.
+    #
+    if not delivered_to:
+        try:
+            folder = mh.get_folder("inbox")
+        except NoSuchMailboxError:
+            folder = mh.add_folder("inbox")
+        _add_msg_to_folder(folder, msg)
