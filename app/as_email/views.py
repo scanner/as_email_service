@@ -46,7 +46,7 @@ from .serializers import (
     MessageFilterRuleSerializer,
 )
 from .tasks import dispatch_incoming_email
-from .utils import aemail_accounts_by_addr, short_hash_email
+from .utils import split_email_mailbox_hash
 
 
 ####################################################################
@@ -89,9 +89,21 @@ def index(request):
 
 ####################################################################
 #
-async def hook_incoming(request, domain_name):
+async def hook_postmark_incoming(request, domain_name):
     """
-    Incoming email being POST'd to us by the provider.
+    Incoming email being POST'd to us by a postmark provider.
+
+    When emails come in, postmark will POST to this webhook once for each
+    address that it is delivering email for.
+
+    So if a message was "to" "cc" and "bcc" the same address one POST will be
+    made to this hook.
+
+    If a message was to two different addresses, but each is served by
+    postmark, two POST's to this hook will be made.
+
+    In all cases the key `OriginalRecipient` will contain the email address a
+    specific POST is being made for.
     """
     # XXX usually we would have used @require_POST decorator.. but async.
     #     maybe in django 5.0
@@ -102,41 +114,68 @@ async def hook_incoming(request, domain_name):
     server = await _validate_server_api_key(request, domain_name)
     email = json.loads(request.body)
 
+    if "OriginalRecipient" not in email:
+        # XXX Log an error that we got an email without an original recipient.
+        #
+        return JsonResponse(
+            {
+                "status": "all good",
+                "message": "no original recipient",
+            }
+        )
+
+    # Find out who this email is being sent to, and validate that there is an
+    # EmailAccount for that address. If it is not one we serve, we need to
+    # log/record metrics about that but otherwise drop it on the floor.
+    #
     # This is wasteful but not wasteful.. we look up all the EmailAccounts that
     # this email will be delivered to, and if it is zero we just stop right
     # here. Wasteful in that we do this lookup again inside the huey task.. but
     # that is probably still better than all the work to write the email to the
     # spool dir and invoke the huey task only for it to do nothing.
     #
-    email_accounts = await aemail_accounts_by_addr(server, email)
-    if not email_accounts:
+    addr = split_email_mailbox_hash(email["OriginalRecipient"])
+    try:
+        email_account = await EmailAccount.objects.aget(email_address=addr)
+    except EmailAccount.DoesNotExist:
         # XXX here we would log metrics for getting email that no one is going
         #     to receive.
         #
         return JsonResponse({"status": "all good"})
 
-    short_hash = short_hash_email(email)
+    message_id = email["MessageID"]
     now = datetime.now().isoformat()
-    email_file_name = f"{now}-{short_hash}.json"
+    email_file_name = f"{now}-{message_id}.json"
     fname = Path(server.incoming_spool_dir) / email_file_name
+
+    # To account for other mail providers in the future and to reduce the json
+    # dict we write to just what we need to deliver the email we create a new
+    # dict that will hold what we write in the incoming spool directory.
+    #
+    spooled_email = {
+        "recipient": email["OriginalRecipient"],
+        "message-id": message_id,
+        "date": email["Date"],
+        "raw_email": email["RawEmail"],
+    }
 
     # We need to make sure that the file is written before we send our
     # response back to Postmark.. but we should not block other async
     # processing while waiting for the file to be written.
     #
     async with aiofiles.open(fname, "w") as f:
-        await f.write(json.dumps(email))
+        await f.write(json.dumps(spooled_email))
 
     # Fire off async huey task to dispatch the email we just wrote to the spool
     # directory.
     #
-    dispatch_incoming_email(server.pk, fname, short_hash)
+    dispatch_incoming_email(email_account.pk, fname)
     return JsonResponse({"status": "all good", "message": fname})
 
 
 ####################################################################
 #
-async def hook_bounce(request, domain_name):
+async def hook_postmark_bounce(request, domain_name):
     """
     Bounce notification POST'd to us by the provider.
     """
@@ -152,7 +191,7 @@ async def hook_bounce(request, domain_name):
 
 ####################################################################
 #
-async def hook_spam(request, domain_name):
+async def hook_postmark_spam(request, domain_name):
     """
     Spam notificaiton POST'd to us by the provider.
     """

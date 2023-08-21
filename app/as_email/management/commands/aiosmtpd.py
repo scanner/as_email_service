@@ -31,6 +31,7 @@ from aiosmtpd.smtp import Session as SMTPSession
 # Project imports
 #
 from as_email.models import EmailAccount, spool_message
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from pydantic import BaseModel
@@ -209,7 +210,7 @@ class RelayHandler:
         account = session.auth_data
 
         try:
-            await asyncio.to_thread(send_email_via_smtp(account, envelope))
+            await sync_to_async(send_email_via_smtp(account, envelope))
         except Exception as exc:
             await logger.exception("Failed: %s", exc)
             return f"500 {str(exc)}"

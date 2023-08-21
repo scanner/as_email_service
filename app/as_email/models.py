@@ -267,21 +267,50 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def smtp(self, email_account, to, message, spool_on_retryable=True):
+    def send_email_via_smtp(self, rcpt_tos, message, spool_on_retryable=True):
         """
-        send email via smtp.
+        send email via smtp. It is weird to have two different methods, but
+        they do have different purposes. One is for email that is being relayed
+        (via the aiosmptd daemon command) as well for retrying spooled
+        messages. The other is for directly sending a message for some
+        adminstrative purpose (like messages from mailer-daemon about
+        bounces). We likely could just get rid of the API method and rely
+        wholly on the SMTP method, but I feel that in the future when we
+        support sending batched emails and using templates it will make more
+        sense to keep it around.
         """
-        smtp = smtplib.SMTP(self.provider.smtp, 587)
-        smtp.starttls()
-        token = settings.EMAIL_SERVER_TOKENS[self.domain_name]
-        smtp.login(token, token)
-        smtp.sendmail(email_account.email_address, to, message)
+
+        server = self.server
+        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+            raise KeyError(
+                f"The token for the server '{server.domain_name} is not "
+                "defined in `settings.EMAIL_SERVER_TOKENS`"
+            )
+        token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
+
+        # XXX Needs to add `X-PM-Message-Stream: outbound` header (or the name
+        #     should be configurable for each server) so we need to parse the
+        #     message if it is not already parsed.
+        #
+        smtp_server, port = server.smtp_server.split(":")
+        smtp_client = smtplib.SMTP(smtp_server, int(port))
+        smtp_client.starttls()
+        smtp_client.login(token, token)
+        try:
+            smtp_client.sendmail(self.email_address, rcpt_tos, message)
+        except smtplib.SMTPException as exc:
+            logger.error(
+                f"Mail from {self.email_address}, to: {rcpt_tos}, failed with exception: {exc}"
+            )
+            spool_message(server.outgoing_spool_dir, message)
 
     ####################################################################
     #
     def send_email(self, message, spool_on_retryable=True):
         """
-        Send the given email via this server.
+        Send the given email via this server using the server's web API.
+
+        NOTE: This is different then sending the email via SMTP.
 
         If we get a failure while trying to send the message and
         `spool_on_retryable` is True and the failure is one of the "retryable"
@@ -383,6 +412,11 @@ class EmailAccount(models.Model):
         (FORWARDING, "Forwarding"),
     ]
 
+    # Max number of levels you can nest an alias. There is no easy way to check
+    # this except for traversing all the aliases.
+    #
+    ALIAS_FOLLOW_DEPTH = 3
+
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     server = models.ForeignKey(Server, on_delete=models.CASCADE)
     # XXX We should figure out a way to have this still be a validated email
@@ -452,6 +486,7 @@ class EmailAccount(models.Model):
         "self",
         related_name="aliases",
         related_query_name="alias",
+        through="Alias",
         symmetrical=False,
     )
 
@@ -634,6 +669,37 @@ class EmailAccount(models.Model):
         dir. Attempts to create it if it does not already exist.
         """
         return mailbox.MH(self.mail_dir, create=create)
+
+
+########################################################################
+########################################################################
+#
+class Alias(models.Model):
+    """
+    Through relation for EmailAccount aliases. Make sure we do not alias to
+    ourselves.
+    """
+
+    from_email_account = models.ForeignKey(
+        EmailAccount, on_delete=models.CASCADE, related_name="+"
+    )
+    to_email_account = models.ForeignKey(
+        EmailAccount, on_delete=models.CASCADE, related_name="+"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                name="%(app_label)s_%(class)s_unique_relationships",
+                fields=["from_email_account", "to_email_account"],
+            ),
+            models.CheckConstraint(
+                name="%(app_label)s_%(class)s_prevent_self_alias",
+                check=~models.Q(
+                    from_email_account=models.F("to_email_account")
+                ),
+            ),
+        ]
 
 
 ########################################################################

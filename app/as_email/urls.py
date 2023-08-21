@@ -14,9 +14,9 @@ from .views import (
     BlockedMessageViewSet,
     EmailAccountViewSet,
     MessageFilterRuleViewSet,
-    hook_bounce,
-    hook_incoming,
-    hook_spam,
+    hook_postmark_bounce,
+    hook_postmark_incoming,
+    hook_postmark_spam,
     index,
 )
 
@@ -57,10 +57,18 @@ urlpatterns = [
     path("api/v1", include(router.urls)),
     path("api/v1", include(email_account_router.urls)),
     path(
-        "hook/incoming/<str:domain_name>/",
-        hook_incoming,
-        name="hook_incoming",
+        "hook/postmark/incoming/<str:domain_name>/",
+        hook_postmark_incoming,
+        name="hook_postmark_incoming",
     ),
-    path("hook/bounce/<str:domain_name>/", hook_bounce, name="hook_bounce"),
-    path("hook/spam/<str:domain_name>/", hook_spam, name="hook_spam"),
+    path(
+        "hook/postmark/bounce/<str:domain_name>/",
+        hook_postmark_bounce,
+        name="hook_postmark_bounce",
+    ),
+    path(
+        "hook/postmark/spam/<str:domain_name>/",
+        hook_postmark_spam,
+        name="hook_postmark_spam",
+    ),
 ]

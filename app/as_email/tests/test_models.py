@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 
 # Project imports
 #
-from ..models import MessageFilterRule
+from ..models import EmailAccount, MessageFilterRule
 
 User = get_user_model()
 
@@ -95,6 +95,43 @@ def test_email_account_mail_dir(email_account_factory):
         assert mh._path == ea.mail_dir
     except mailbox.NoSuchMailboxError as exc:
         assert False, exc
+
+
+####################################################################
+#
+def test_alias_self(email_account_factory):
+    """
+    We make sure an EmailAccount can not alias itself.
+
+    Obviously we need to do better than this and we should make sure aliases
+    do not go to deep, and that at no point in that level of aliasing it loops
+    back to alias any of the EmailAccounts that are aliased to themselves.
+
+    But for now this is what we have.
+    """
+    ea_1 = email_account_factory()
+    ea_1.account_type = EmailAccount.ALIAS
+    ea_1.save()
+
+    ea_2 = email_account_factory()
+    ea_2.account_type = EmailAccount.ALIAS
+    ea_2.save()
+
+    # This is fine.. EmailAccount #1 is an alis for EmailAccount #2.
+    ea_1.alias_for.add(ea_2)
+
+    # This is NOT fine. EmailAccount #2 can not be an alias for EmailAccount
+    # #1.
+    ea_2.alias_for.add(ea_1)
+
+
+####################################################################
+#
+def test_email_account_alias_loop(email_account_factory):
+    """
+    within the follow-depth for email aliases make sure that no loops occur.
+    """
+    pass
 
 
 ####################################################################
