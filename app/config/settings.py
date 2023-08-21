@@ -40,7 +40,7 @@ env = environ.Env(
 
 # NOTE: We should try moving secrets to compose secrets.
 #
-SECRET_KEY = env("DJANGO_SECRET_KEY")
+SECRET_KEY = env("DJANGO_SECRET_KEY", default=get_random_secret_key())
 DEBUG = env("DEBUG")
 SITE_NAME = env("SITE_NAME")
 
