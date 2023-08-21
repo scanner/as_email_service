@@ -3,8 +3,11 @@
 """
 pytest fixtures for our tests
 """
+from email.headerregistry import Address
+
 # system imports
 #
+from email.message import EmailMessage
 
 # 3rd party imports
 #
@@ -34,6 +37,39 @@ register(ProviderFactory)
 register(EmailAccountFactory)
 register(BlockedMessageFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+@pytest.fixture
+def email_factory(faker):
+    """
+    Returns a factory that creates email.message.EmailMessages
+
+    For now we will always create MIMEMultipart messages with a text part, html
+    alternative, and a binary attachment.
+    """
+
+    # TODO: have this factory take kwargs for headers the caller can set in the
+    #       generated email.
+    #
+    def make_email():
+        msg = EmailMessage()
+        msg["Subject"] = faker.sentence()
+        username, domain_name = faker.email().split("@")
+        msg["From"] = Address(faker.name(), username, domain_name)
+        username, domain_name = faker.email().split("@")
+        msg["To"] = Address(faker.name(), username, domain_name)
+        message_content = faker.paragraphs(nb=5)
+        msg.set_content("\n".join(message_content))
+        paragraphs = "\n".join([f"<p>{x}</p>" for x in message_content])
+        msg.add_alternative(
+            f"<html><head></head><body>{paragraphs}</body></html>",
+            subtype="html",
+        )
+        return msg
+
+    return make_email
 
 
 ####################################################################

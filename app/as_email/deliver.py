@@ -74,6 +74,17 @@ def apply_message_filter_rules(
             continue
         if fr.match(msg):
             deliver_to.append(fr.destination)
+            # XXX Because our first version does not have the deliver to
+            #     multiple mailbox support, messages that match first in the
+            #     rules get delivered to that matching rule's destination.
+            #
+            #     In the future we will support the different result types that
+            #     slocal does.
+            #
+            #     This makes it important to have your most specific match
+            #     ordered first in the rules.
+            #
+            return deliver_to
     return deliver_to
 
 
