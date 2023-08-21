@@ -22,7 +22,7 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 
 # Project imports
 #
-from .delivery import deliver_email_locally
+from .deliver import deliver_email_locally
 from .models import BlockedMessage, EmailAccount, Server
 
 MESSAGE_HORIZON = 44  # 44 days, because postmark's horizon is 45 days.

@@ -31,7 +31,7 @@ from email.message import EmailMessage
 
 # Project imports
 #
-from ..models import EmailAccount
+from .models import EmailAccount
 
 
 ####################################################################
