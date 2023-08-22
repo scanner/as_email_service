@@ -144,3 +144,13 @@ def deliver_email_locally(email_account: EmailAccount, msg: EmailMessage):
         except NoSuchMailboxError:
             folder = mh.add_folder("inbox")
         _add_msg_to_folder(folder, msg)
+
+
+####################################################################
+#
+def deliver_email_to_alias(
+    email_account: EmailAccount, msg: EmailMessage, depth=0
+):
+    """
+    XXX We should consider making a single top level
+    """

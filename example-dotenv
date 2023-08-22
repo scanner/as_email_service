@@ -1,0 +1,36 @@
+# This project uses a .env file for basic configuration and passing secrets to
+# the AS Email Service.
+#
+# Naturally due to the sensitive nature of this file access to it must be
+# carefully controlled.
+#
+# This is a get-the-thing-off-the-ground setup.
+#
+# The following env. vars are required for the service to function.
+#
+DJANGO_SECRET_KEY=<your sites secret key here>
+EMAIL_BACKEND=<backend to use>
+ANYMAIL="key1=value1,key2=value2"
+SITE_NAME=your_email_server.your.domain
+DEFAULT_FROM_EMAIL = "you@example.com"
+SERVER_EMAIL = "your-server@example.com"
+
+# Key/value pairs for your configured servers at postmark. The key is the name
+# of the server, they key is the API key for that server.
+#
+EMAIL_SERVER_TOKENS="example.com=foo,example.org=baz"
+
+# All of these parts are setup based on the default docker-compose file that
+# mounts file values under /mnt/db, /mnt/spool, /mnt/mail_dirs/, /mnt/ssl
+#
+DATABASE_URL=sqlite:////mnt/db/as_email_service.db
+EMAIL_SPOOL_DIR=/mnt/spool
+MAIL_DIRS=/mnt/mail_dirs
+HOST_SPOOL_ROOT=/mnt/spool
+HOST_MAIL_ROOT=/mnt/mail_dirs
+HOST_DB_DIR=/mnt/dbs
+HOST_SSL_DIR=/mnt/ssl
+
+# What docker tag to pull and run
+#
+RELEASE_VERSION=latest
