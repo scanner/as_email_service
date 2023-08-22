@@ -12,10 +12,34 @@ import pytest
 
 # Project imports
 #
-from ..deliver import apply_message_filter_rules
+from ..deliver import apply_message_filter_rules, deliver_email_locally
 from ..models import MessageFilterRule
 
 pytestmark = pytest.mark.django_db
+
+
+####################################################################
+#
+def compare_email_content(msg1, msg2):
+    # Compare all headers
+    #
+    if msg1.items() != msg2.items():
+        return False
+
+    if msg1.is_multipart() != msg2.is_multipart():
+        return False
+
+    # If not multipart, the payload should be the same.
+    #
+    if not msg1.is_multipart():
+        assert msg1.get_payload() == msg2.get_payload()
+
+    # Otherwise, compare each part.
+    #
+    for part1, part2 in zip(msg1.get_payload(), msg2.get_payload()):
+        if part1.get_payload() != part2.get_payload():
+            return False
+    return True
 
 
 ####################################################################
@@ -46,3 +70,40 @@ def test_apply_message_filter_rules(
     msg = email_factory()
     deliver_to = apply_message_filter_rules(ea, msg)
     assert len(deliver_to) == 0
+
+
+####################################################################
+#
+def test_deliver_email_locally(
+    email_account_factory, message_filter_rule_factory, email_factory
+):
+    ea = email_account_factory()
+    ea.save()
+    msg = email_factory()
+
+    deliver_email_locally(ea, msg)
+
+    # The message should have been delivered to the inbox since there are no
+    # mail filter rules. And it should be the only message in the mailbox.
+    #
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
+
+    # Now create a mfr and make sure the message is delivered to the proper
+    # folder.
+    #
+    msg = email_factory()
+    folder_name = "test"
+    folder = mh.add_folder(folder_name)
+    mfr = message_filter_rule_factory(
+        email_account=ea,
+        header=MessageFilterRule.FROM,
+        pattern=msg["from"],
+        destination=folder_name,
+    )
+    mfr.save()
+    deliver_email_locally(ea, msg)
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
