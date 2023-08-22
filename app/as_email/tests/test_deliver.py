@@ -21,6 +21,11 @@ pytestmark = pytest.mark.django_db
 ####################################################################
 #
 def compare_email_content(msg1, msg2):
+    """
+    Because we can not directly compare a Message and EmailMessage object
+    we need to compare their parts. Since an EmailMessage is a sub-class of
+    Message it will have all the same methods necessary for comparison.
+    """
     # Compare all headers
     #
     if msg1.items() != msg2.items():
@@ -36,7 +41,11 @@ def compare_email_content(msg1, msg2):
 
     # Otherwise, compare each part.
     #
-    for part1, part2 in zip(msg1.get_payload(), msg2.get_payload()):
+    parts1 = msg1.get_payload()
+    parts2 = msg2.get_payload()
+    if len(parts1) != len(parts2):
+        return False
+    for part1, part2 in zip(parts1, parts2):
         if part1.get_payload() != part2.get_payload():
             return False
     return True
