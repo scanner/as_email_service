@@ -9,6 +9,8 @@ A Django app and smtp relay service for working with 3rd party email services (w
 - [Administration](#administration)
 - [Design](#design)
 - [Local Development](#local-development)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Setup
 
