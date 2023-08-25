@@ -16,6 +16,7 @@ import smtplib
 import string
 from datetime import datetime
 from pathlib import Path
+from typing import List
 
 # 3rd party imports
 #
@@ -267,7 +268,12 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def send_email_via_smtp(self, rcpt_tos, message, spool_on_retryable=True):
+    def send_email_via_smtp(
+        self,
+        rcpt_tos: List[str],
+        msg: email.message.EmailMessage,
+        spool_on_retryable: bool = True,
+    ):
         """
         send email via smtp. It is weird to have two different methods, but
         they do have different purposes. One is for email that is being relayed
@@ -279,7 +285,6 @@ class Server(models.Model):
         support sending batched emails and using templates it will make more
         sense to keep it around.
         """
-
         server = self.server
         if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
             raise KeyError(
@@ -288,21 +293,27 @@ class Server(models.Model):
             )
         token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
 
-        # XXX Needs to add `X-PM-Message-Stream: outbound` header (or the name
-        #     should be configurable for each server) so we need to parse the
-        #     message if it is not already parsed.
+        # Add `X-PM-Message-Stream: outbound` header for postmark. Make sure
+        # that there is only ONE `X-PM-Message-Stream` header.
         #
+        # NOTE: In the future we might want to support other streams besides
+        #       "outbound" and this would likely be set on the Server object.
+        #
+        del msg["X-PM-Message-Stream"]
+        msg["X-PM-Message-Stream"] = "outbound"
+
         smtp_server, port = server.smtp_server.split(":")
         smtp_client = smtplib.SMTP(smtp_server, int(port))
         smtp_client.starttls()
         smtp_client.login(token, token)
         try:
-            smtp_client.sendmail(self.email_address, rcpt_tos, message)
+            smtp_client.sendmail(self.email_address, rcpt_tos, msg.as_bytes())
         except smtplib.SMTPException as exc:
             logger.error(
-                f"Mail from {self.email_address}, to: {rcpt_tos}, failed with exception: {exc}"
+                f"Mail from {self.email_address}, to: {rcpt_tos}, failed with "
+                f"exception: {exc}"
             )
-            spool_message(server.outgoing_spool_dir, message)
+            spool_message(server.outgoing_spool_dir, msg)
 
     ####################################################################
     #
@@ -415,7 +426,7 @@ class EmailAccount(models.Model):
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
     #
-    ALIAS_FOLLOW_DEPTH = 3
+    MAX_ALIAS_DEPTH = 3
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     server = models.ForeignKey(Server, on_delete=models.CASCADE)

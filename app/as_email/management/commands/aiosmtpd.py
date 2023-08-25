@@ -11,10 +11,10 @@ object.
 # system imports
 #
 import asyncio
+import email
+import email.policy
 import ssl
 from datetime import datetime
-from smtplib import SMTP as Client
-from smtplib import SMTPException
 from typing import Dict, List, Optional
 
 # 3rd party imports
@@ -30,7 +30,7 @@ from aiosmtpd.smtp import Session as SMTPSession
 
 # Project imports
 #
-from as_email.models import EmailAccount, spool_message
+from as_email.models import EmailAccount
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -126,6 +126,15 @@ class Authenticator:
     #     account, how many failures, of which kind.
     #
     def __call__(self, server, session, envelope, mechanism, auth_data):
+        """
+        NOTE: If the datbase is inaccessible or slow this method will be
+        slow. Since our initial implementation uses a local sqlite db and there
+        should not be that much contention we expect it to be quick.
+
+        If we were to use some sort of cache, we need to make sure that the
+        cache is invalidated whenever an email account is saved/deleted/added
+        so that there are no delays in authentication changes.
+        """
         fail_nothandled = AuthResult(success=False, handled=False)
         if mechanism not in ("LOGIN", "PLAIN"):
             return fail_nothandled
@@ -230,40 +239,12 @@ def send_email_via_smtp(account, envelope):
 
     If we fail to send the message due to a network issue the message will be
     written to the spool directory to be sent at a later time.
-
-    Instead of relying on django ORM objects that may not be fully resolved all
-    parameters that are necessary are passed in directly.
-
-    XXX In the future this should probably move to as_email/utils.py and
-        provide async and sync version.
-
-    XXX Envelope should be either aiosmtp.envelope, or email.EmailMessage, or postmarker.emails.Email
     """
-    server = account.server
-    if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
-        raise KeyError(
-            f"The token for the server '{server.domain_name} is not "
-            "defined in `settings.EMAIL_SERVER_TOKENS`"
-        )
-    token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
-
-    # XXX Needs to add `X-PM-Message-Stream: outbound` header (or the name
-    #     should be configurable for each server) so we need to parse the
-    #     message if it is not already parsed.
-    #
-    server, port = server.smtp_server.split(":")
-    client = Client(server, int(port))
-    client.starttls()
-    client.login(token, token)
-    try:
-        client.sendmail(
-            account.email_address, envelope.rcpt_tos, envelope.raw_content
-        )
-    except SMTPException as exc:
-        logger.error(
-            f"Mail from {account.email_address}, to: {envelope.rcpt_tos}, failed with exception: {exc}"
-        )
-        spool_message(server.outgoing_spool_dir, envelope)
+    msg = email.message_from_bytes(
+        envelope.raw_content,
+        policy=email.policy.default,
+    )
+    account.send_email_via_smtp(envelope.rcpt_tos, msg)
 
 
 ########################################################################

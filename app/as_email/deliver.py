@@ -42,6 +42,22 @@ logger = logging.getLogger(__name__)
 
 ####################################################################
 #
+def deliver_message(
+    email_account: EmailAccount,
+    msg: EmailMessage,
+    depth: int = 0,
+):
+    """
+    Deliver the given message to the given email account. This accounts for
+    locally delivery, aliases, and forwards to external systems.
+    """
+    depth += 1
+    if depth > EmailAccount.MAX_ALIAS_DEPTH:
+        pass
+
+
+####################################################################
+#
 def apply_message_filter_rules(
     email_account: EmailAccount, msg: EmailMessage
 ) -> List[str]:
