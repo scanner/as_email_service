@@ -520,13 +520,22 @@ class EmailAccount(models.Model):
     forward_to = models.EmailField(null=True, blank=True)
 
     # If an account is deactivated it can still receive email. However it is no
-    # longer allowed to send email.
+    # longer allowed to send email. Also, no forwarding or aliasing is allowed.
+    # All email received by a deactivated account is delivered locally.
     #
     # (and if an account does not exist the email will be dropped, again we
     # need to add logging and metrics for when we receive emails for accounts
     # that do not exist.)
     #
-    deactivated = models.BooleanField(default=False)
+    deactivated = models.BooleanField(
+        help_text=_(
+            "If an account is deactivated it can still receive email. However "
+            "it is no longer allowed to send email. Also, no forwarding or "
+            "aliasing is allowed. All email received by a deactivated account "
+            "is delivered locally."
+        ),
+        default=False,
+    )
 
     # If the number of bounces exceeds a certain limit then the account is
     # deactivated and not allowed to send new email (it can still

@@ -51,9 +51,31 @@ def deliver_message(
     Deliver the given message to the given email account. This accounts for
     locally delivery, aliases, and forwards to external systems.
     """
-    depth += 1
+    # If the max alias depth is exceeded the message is delivered locally to
+    # this account and a message is logged.
+    #
     if depth > EmailAccount.MAX_ALIAS_DEPTH:
-        pass
+        deliver_message_locally(email_account, msg)
+        logger.warn(
+            f"Deliver recursion too deep for message {msg['Message-ID']}, "
+            f"for account {email_account.email_address}, depth: {depth}"
+        )
+
+    # If the email account is deactivated then messages are ONLY delivered
+    # locally. No aliasing, no forwarding.
+    #
+    if email_account.deactivated:
+        deliver_message_locally(email_account, msg)
+        return
+
+    match email_account.account_type:
+        case EmailAccount.LOCAL_DELIVERY:
+            deliver_message_locally(email_account, msg)
+        case EmailAccount.ALIAS:
+            for alias_for in email_account.alias_for.all():
+                deliver_message(alias_for, msg, depth + 1)
+        case EmailAccount.FORWARDING:
+            forward_message(email_account, msg)
 
 
 ####################################################################
@@ -126,7 +148,7 @@ def _add_msg_to_folder(folder: MH, msg: EmailMessage):
 
 ####################################################################
 #
-def deliver_email_locally(email_account: EmailAccount, msg: EmailMessage):
+def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
     """
     Deliver the email_message in to the MH mail dir for the given email
     account.
@@ -164,9 +186,6 @@ def deliver_email_locally(email_account: EmailAccount, msg: EmailMessage):
 
 ####################################################################
 #
-def deliver_email_to_alias(
-    email_account: EmailAccount, msg: EmailMessage, depth=0
-):
-    """
-    XXX We should consider making a single top level
-    """
+def forward_message(email_account: EmailAccount, msg: EmailMessage, depth=0):
+    """ """
+    pass
