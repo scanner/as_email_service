@@ -186,6 +186,19 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
 
 ####################################################################
 #
-def forward_message(email_account: EmailAccount, msg: EmailMessage, depth=0):
-    """ """
-    pass
+def forward_message(email_account: EmailAccount, msg: EmailMessage):
+    """
+    Forward the given message to the email address setup for forwarding to
+    on the account.
+
+    If the forwarding email address is not set or the account is deactivated,
+    deliver the message locally and log a message.
+    """
+    if not email_account.forward_to or email_account.deactivated:
+        if not email_account.forward_to:
+            msg = "forwarding address it not set"
+        else:
+            msg = "account is deactivated"
+        logger.warn(f"For email account {email_account.email_address}, {msg}")
+        deliver_message_locally(email_account, msg)
+        return

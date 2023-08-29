@@ -12,7 +12,7 @@ import pytest
 
 # Project imports
 #
-from ..deliver import apply_message_filter_rules, deliver_email_locally
+from ..deliver import apply_message_filter_rules, deliver_message_locally
 from ..models import MessageFilterRule
 
 pytestmark = pytest.mark.django_db
@@ -83,14 +83,14 @@ def test_apply_message_filter_rules(
 
 ####################################################################
 #
-def test_deliver_email_locally(
+def test_deliver_message_locally(
     email_account_factory, message_filter_rule_factory, email_factory
 ):
     ea = email_account_factory()
     ea.save()
     msg = email_factory()
 
-    deliver_email_locally(ea, msg)
+    deliver_message_locally(ea, msg)
 
     # The message should have been delivered to the inbox since there are no
     # mail filter rules. And it should be the only message in the mailbox.
@@ -113,6 +113,6 @@ def test_deliver_email_locally(
         destination=folder_name,
     )
     mfr.save()
-    deliver_email_locally(ea, msg)
+    deliver_message_locally(ea, msg)
     stored_msg = folder.get(1)
     assert compare_email_content(msg, stored_msg)

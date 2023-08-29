@@ -422,6 +422,12 @@ class EmailAccount(models.Model):
         (ALIAS, "Alias"),
         (FORWARDING, "Forwarding"),
     ]
+    FORWARD_ENCAPSULTE = "EN"
+    FORWARD_RESEND = "RS"
+    FORWARD_STYLE = [
+        (FORWARD_ENCAPSULTE, "Encapsulate"),
+        (FORWARD_RESEND, "Resend"),
+    ]
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
@@ -518,6 +524,21 @@ class EmailAccount(models.Model):
     #       you press to actually send the test email.
     #
     forward_to = models.EmailField(null=True, blank=True)
+
+    forward_style = models.CharField(
+        max_length=2,
+        choices=FORWARD_STYLE,
+        default=FORWARD_RESEND,
+        help_text=_(
+            "When forwarding email to an address outside of the system you can"
+            "choose two ways to format the message. Either encapsualte it as an"
+            "rfc822 mime attchment, or send the message on, rewriting the "
+            "from: address, and adding text to the message indicating it was "
+            "resent. In all cases the forwarded message will have `resent-from`"
+            "and `reply-to` headers added so that replies go to the original "
+            "address."
+        ),
+    )
 
     # If an account is deactivated it can still receive email. However it is no
     # longer allowed to send email. Also, no forwarding or aliasing is allowed.

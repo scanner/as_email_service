@@ -22,7 +22,7 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 
 # Project imports
 #
-from .deliver import deliver_email_locally
+from .deliver import deliver_message
 from .models import BlockedMessage, EmailAccount, Server
 
 MESSAGE_HORIZON = 44  # 44 days, because postmark's horizon is 45 days.
@@ -127,16 +127,13 @@ def dispatch_incoming_email(email_account_pk, email_fname):
     msg = email.message_from_string(
         email_msg["RawEmail"], policy=email.policy.default
     )
-
-    # Based on the EmailAccount we determine how we are going to dispatch this
-    # email.
-    #
-    match email_account.account_type:
-        case EmailAccount.LOCAL_DELIVERY:
-            deliver_email_locally(email_account, msg)
-        case EmailAccount.ALIAS:
-            pass
-        case EmailAccount.FORWARDING:
-            pass
-
-    email_file.delete()
+    try:
+        deliver_message(email_account, msg)
+    except Exception:
+        logger.exception(
+            "Failed to deliver message %s to '%s'",
+            msg["Message-ID"],
+            email_account.email_address,
+        )
+    finally:
+        email_file.delete()
