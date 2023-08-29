@@ -28,7 +28,7 @@ django-stubs==4.2.3
     # via -r lint.in
 django-stubs-ext==4.2.2
     # via django-stubs
-filelock==3.12.2
+filelock==3.12.3
     # via virtualenv
 identify==2.5.27
     # via pre-commit
@@ -62,7 +62,7 @@ pyproject-hooks==1.0.0
     # via build
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.0.285
+ruff==0.0.286
     # via -r lint.in
 sqlparse==0.4.4
     # via django
@@ -93,10 +93,11 @@ typing-extensions==4.7.1
     #   asgiref
     #   django-stubs
     #   django-stubs-ext
+    #   filelock
     #   mypy
 virtualenv==20.24.3
     # via pre-commit
-wheel==0.41.1
+wheel==0.41.2
     # via pip-tools
 
 # The following packages are considered to be unsafe in a requirements file:
