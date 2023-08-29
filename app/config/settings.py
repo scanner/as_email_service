@@ -36,6 +36,7 @@ env = environ.Env(
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
     EMAIL_SERVER_TOKENS=(str, "example.com=foo"),
     MAIL_DIRS=(str, "/mnt/mail_dir"),
+    DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -192,7 +193,7 @@ HUEY = {
     },
 }
 
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="admin@example.com")
 SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 EMAIL_SUBJECT_PREFIX = env(
     "DJANGO_EMAIL_SUBJECT_PREFIX",

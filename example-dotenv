@@ -12,7 +12,7 @@ DJANGO_SECRET_KEY=<your sites secret key here>
 EMAIL_BACKEND=<backend to use>
 ANYMAIL="key1=value1,key2=value2"
 SITE_NAME=your_email_server.your.domain
-DEFAULT_FROM_EMAIL = "you@example.com"
+DEFAULT_FROM_EMAIL = "as-email@example.com"
 SERVER_EMAIL = "your-server@example.com"
 
 # Key/value pairs for your configured servers at postmark. The key is the name
