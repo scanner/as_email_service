@@ -100,18 +100,16 @@ class Command(BaseCommand):
         ssl_key_file = options["ssl_key"]
         spool_dir = settings.EMAIL_SPOOL_DIR
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.create_task(
-            amain(
-                ssl_cert=ssl_cert_file,
-                ssl_key=ssl_key_file,
-                spool_dir=spool_dir,
-                listen_port=listen_port,
-            )
-        )
         try:
-            loop.run_forever()
+            with asyncio.Runner() as runner:
+                runner.run(
+                    amain(
+                        ssl_cert=ssl_cert_file,
+                        ssl_key=ssl_key_file,
+                        spool_dir=spool_dir,
+                        listen_port=listen_port,
+                    )
+                )
         except KeyboardInterrupt:
             logger.warn("KeyboardInterrupt - Exiting")
 
