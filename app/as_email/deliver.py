@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 def deliver_message(
     email_account: EmailAccount,
     msg: EmailMessage,
-    depth: int = 0,
+    depth: int = 1,
 ):
     """
     Deliver the given message to the given email account. This accounts for

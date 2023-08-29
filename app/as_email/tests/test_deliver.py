@@ -12,8 +12,12 @@ import pytest
 
 # Project imports
 #
-from ..deliver import apply_message_filter_rules, deliver_message_locally
-from ..models import MessageFilterRule
+from ..deliver import (
+    apply_message_filter_rules,
+    deliver_message,
+    deliver_message_locally,
+)
+from ..models import EmailAccount, MessageFilterRule
 
 pytestmark = pytest.mark.django_db
 
@@ -114,5 +118,104 @@ def test_deliver_message_locally(
     )
     mfr.save()
     deliver_message_locally(ea, msg)
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
+
+
+####################################################################
+#
+def test_deliver_alias(email_account_factory, email_factory):
+    ea_1 = email_account_factory(account_type=EmailAccount.ALIAS)
+    ea_1.save()
+    ea_2 = email_account_factory()
+    ea_2.save()
+    ea_1.alias_for.add(ea_2)
+
+    # Messages being delivered to ea1 will be delivered to ea2.
+    #
+    msg = email_factory()
+    deliver_message(ea_1, msg)
+
+    # The message should have been delivered to the inbox of ea_2.
+    #
+    mh = ea_2.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
+
+    # Create another level of aliasing.
+    ea_3 = email_account_factory()
+    ea_3.save()
+    ea_2.alias_for.add(ea_3)
+    ea_2.account_type = EmailAccount.ALIAS
+    ea_2.save()
+
+    # message sent to ea_1 will be delivered to ea_3
+    #
+    msg = email_factory()
+    deliver_message(ea_1, msg)
+    mh = ea_3.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
+
+
+####################################################################
+#
+def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
+    ea_1 = email_account_factory(account_type=EmailAccount.ALIAS)
+    ea_1.save()
+    ea_2 = email_account_factory()
+    ea_2.save()
+    ea_3 = email_account_factory()
+    ea_3.save()
+
+    ea_1.alias_for.add(ea_2)
+    ea_1.alias_for.add(ea_3)
+
+    msg = email_factory()
+    deliver_message(ea_1, msg)
+
+    mh_2 = ea_2.MH()
+    folder = mh_2.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
+
+    mh_3 = ea_3.MH()
+    folder = mh_3.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
+
+
+####################################################################
+#
+def test_email_account_alias_depth(email_account_factory, email_factory):
+    """
+    we only let an alias go three deep. if we try to alias more than that
+    it will be delivered at a higher level. also a warning will be logged.
+    """
+    # Make a list of email accounts, aliasing them to the next account.
+    email_accounts = []
+    prev_ea = None
+    for i in range(EmailAccount.MAX_ALIAS_DEPTH + 2):
+        ea = email_account_factory(account_type=EmailAccount.ALIAS)
+        ea.save()
+        email_accounts.append(ea)
+
+        if prev_ea:
+            prev_ea.alias_for.add(ea)
+        prev_ea = ea
+
+    # The message should be delivered to the max alias depth email account.
+    #
+    # XXX We should mock the logger so we can also verify that a message was
+    #     logged when the max alias depth was exceeded.
+    #
+    msg = email_factory()
+    deliver_message(email_accounts[0], msg)
+
+    ea = email_accounts[EmailAccount.MAX_ALIAS_DEPTH]
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert compare_email_content(msg, stored_msg)

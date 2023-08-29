@@ -708,8 +708,14 @@ class EmailAccount(models.Model):
         """
         Return a mailbox.MH instance for this user's mail
         dir. Attempts to create it if it does not already exist.
+        Also make sure that the inbox also exists.
         """
-        return mailbox.MH(self.mail_dir, create=create)
+        mh = mailbox.MH(self.mail_dir, create=create)
+        try:
+            _ = mh.get_folder("inbox")
+        except mailbox.NoSuchMailboxError:
+            _ = mh.add_folder("inbox")
+        return mh
 
 
 ########################################################################

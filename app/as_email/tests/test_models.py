@@ -127,15 +127,6 @@ def test_alias_self(email_account_factory):
 
 ####################################################################
 #
-def test_email_account_alias_loop(email_account_factory):
-    """
-    within the follow-depth for email aliases make sure that no loops occur.
-    """
-    pass
-
-
-####################################################################
-#
 def test_create_rule_from_text(faker, email_account_factory):
     """
     message filter rules are all about filtering messages and are based on
