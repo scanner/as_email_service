@@ -61,13 +61,6 @@ def deliver_message(
             f"for account {email_account.email_address}, depth: {depth}"
         )
 
-    # If the email account is deactivated then messages are ONLY delivered
-    # locally. No aliasing, no forwarding.
-    #
-    if email_account.deactivated:
-        deliver_message_locally(email_account, msg)
-        return
-
     match email_account.account_type:
         case EmailAccount.LOCAL_DELIVERY:
             deliver_message_locally(email_account, msg)

@@ -551,9 +551,9 @@ class EmailAccount(models.Model):
     deactivated = models.BooleanField(
         help_text=_(
             "If an account is deactivated it can still receive email. However "
-            "it is no longer allowed to send email. Also, no forwarding or "
-            "aliasing is allowed. All email received by a deactivated account "
-            "is delivered locally."
+            "it is no longer allowed to send email. Aliasing to other email "
+            "accounts is allowed, but no forwarding to an email account not on "
+            "on the system is allowed."
         ),
         default=False,
     )
