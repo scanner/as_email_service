@@ -189,9 +189,14 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     """
     if not email_account.forward_to or email_account.deactivated:
         if not email_account.forward_to:
-            msg = "forwarding address it not set"
+            log_msg = "forwarding address it not set"
         else:
-            msg = "account is deactivated"
-        logger.warn(f"For email account {email_account.email_address}, {msg}")
+            log_msg = "account is deactivated"
+        logger.warn(
+            "Forwarding for '%s' denied for message %s: %s",
+            email_account.email_address,
+            msg["Message-ID"],
+            log_msg,
+        )
         deliver_message_locally(email_account, msg)
         return

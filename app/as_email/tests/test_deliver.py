@@ -8,6 +8,7 @@ Test the various functions in the `deliver` module
 
 # 3rd party imports
 #
+import factory
 import pytest
 
 # Project imports
@@ -216,6 +217,39 @@ def test_email_account_alias_depth(email_account_factory, email_factory):
 
     ea = email_accounts[EmailAccount.MAX_ALIAS_DEPTH]
     mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert compare_email_content(msg, stored_msg)
+
+
+####################################################################
+#
+def test_forwarding(email_account_factory, email_factory):
+    pass
+
+
+####################################################################
+#
+def test_deactivated_forward(email_account_factory, email_factory):
+    """
+    Deactivated email accounts can receive email, can alias email, but can
+    not forward email. The account that tries to forward the email has it
+    delivered locally.
+    """
+    ea_1 = email_account_factory(
+        account_type=EmailAccount.FORWARDING,
+        forward_to=factory.Faker("email"),
+        deactivated=True,
+    )
+    ea_1.save()
+
+    msg = email_factory()
+
+    # Since this account is forwarding, but it is deactivated the message will
+    # be locally delivered.
+    #
+    deliver_message(ea_1, msg)
+    mh = ea_1.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert compare_email_content(msg, stored_msg)
