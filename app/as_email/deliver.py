@@ -179,6 +179,57 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
 
 ####################################################################
 #
+def make_encapsulated_fwd_msg(
+    email_account: EmailAccount, orig_msg: EmailMessage
+):
+    """
+    Take the original message and add it as an attachment to the message we
+    generate that explains that this is the forwarded message.
+
+    The client presentation is not as good depending on how your mail client
+    shows rfc822 attachments, but it leaves the original message unmodified.
+    """
+    msg = EmailMessage()
+    if "Subject" in orig_msg:
+        msg["Subject"] = f"Fwd: {orig_msg['Subject']}"
+    else:
+        msg["Subject"] = f"Fwd: from {orig_msg['From']}"
+
+    if "Message-ID" in orig_msg:
+        msg["References"] = orig_msg["Message-ID"]
+
+    msg["From"] = email_account.email_address
+    msg["To"] = email_account.forward_to
+    try:
+        msg.set_content(orig_msg.get_content())
+    except Exception as exc:
+        logger.warning(
+            "Unable to get content for forwarded message %s for %s: %s",
+            msg["Message-ID"],
+            email_account.email_address,
+            str(exc),
+        )
+    msg.add_attachment(
+        orig_msg.as_bytes(),
+        maintype="message",
+        subtype="rfc822",
+    )
+    return msg
+
+
+####################################################################
+#
+def make_resent_msg(email_account: EmailAccount, orig_msg: EmailMessage):
+    """
+    Keyword Arguments:
+    email_account: EmailAccount --
+    orig_msg: EmailMessage      --
+    """
+    pass
+
+
+####################################################################
+#
 def forward_message(email_account: EmailAccount, msg: EmailMessage):
     """
     Forward the given message to the email address setup for forwarding to
@@ -201,6 +252,15 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
         deliver_message_locally(email_account, msg)
         return
 
+    # re-format the message based on the fowarding type set.
+    #
+    match email_account.forward_style:
+        case EmailAccount.FORWARD_RESENT:
+            msg = make_resent_msg(email_account, msg)
+            pass
+        case EmailAccount.FORWARD_ENCAPSULTE:
+            msg = make_encapsulated_fwd_msg(email_account, msg)
+
     # When forwarding we add `Resent-From`, `Original-From`,
     # `Original-Message-ID`, and `reply-to` headers.
     #
@@ -214,10 +274,4 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     msg.replace_header("Resent-To", email_account.forward_to)
     msg.replace_header("From", email_account.email_address)
 
-    # re-format the message based on the fowarding type set.
-    #
-    match email_account.forward_style:
-        case EmailAccount.FORWARD_RESENT:
-            pass
-        case EmailAccount.FORWARD_ENCAPSULTE:
-            pass
+    email_account.send_email_via_smtp([email_account.forward_to], msg)

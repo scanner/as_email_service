@@ -727,6 +727,24 @@ class EmailAccount(models.Model):
             _ = mh.add_folder("inbox")
         return mh
 
+    ####################################################################
+    #
+    def send_email_via_smtp(
+        self,
+        rcpt_tos: List[str],
+        msg: email.message.EmailMessage,
+        spool_on_retryable: bool = True,
+    ):
+        """
+        Wrapper around self.server.send_email_via_smtp ....
+        """
+        self.server.send_email_via_smtp(
+            self.email_address,
+            rcpt_tos,
+            msg,
+            spool_on_retryable=spool_on_retryable,
+        )
+
 
 ########################################################################
 ########################################################################
