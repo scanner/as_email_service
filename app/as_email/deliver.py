@@ -200,3 +200,21 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
         )
         deliver_message_locally(email_account, msg)
         return
+
+    # When forwarding we add `Resent-From`, `Original-From`,
+    # `Original-Message-ID`, and `reply-to` headers.
+    #
+    msg["Original-Message-ID"] = msg["Message-ID"]
+    if "Reply-To" not in msg:
+        msg["Reply-To"] = msg["From"]
+    msg["Original-From"] = msg["From"]
+    msg["Resent-From"] = email_account.email_address
+    msg.replace_header("From", email_account.email_address)
+
+    # re-format the message based on the fowarding type set.
+    #
+    match email_account.forward_style:
+        case EmailAccount.FORWARD_RESENT:
+            pass
+        case EmailAccount.FORWARD_ENCAPSULTE:
+            pass
