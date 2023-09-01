@@ -127,6 +127,47 @@ def test_alias_self(email_account_factory):
 
 ####################################################################
 #
+def test_email_via_smtp(email_account_factory, email_factory, mocker):
+    # Mock the SMTP object in the models module
+    #
+    mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
+    mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP)
+
+    ea = email_account_factory()
+    msg = email_factory(frm=ea.email_address)
+    ea.server.send_email_via_smtp(
+        ea.email_address,
+        [
+            msg["To"],
+        ],
+        msg,
+    )
+
+    assert mock_SMTP.return_value.send_message.call_count == 1
+
+
+####################################################################
+#
+def test_email_via_smtp_invalid_from(
+    email_account_factory, email_factory, faker
+):
+    """
+    You can only send email from the domain name that the server has.
+    """
+    ea = email_account_factory()
+    msg = email_factory(frm=ea.email_address)
+    with pytest.raises(ValueError):
+        ea.server.send_email_via_smtp(
+            faker.email(),
+            [
+                msg["To"],
+            ],
+            msg,
+        )
+
+
+####################################################################
+#
 def test_create_rule_from_text(faker, email_account_factory):
     """
     message filter rules are all about filtering messages and are based on

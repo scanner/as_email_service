@@ -56,7 +56,7 @@ def deliver_message(
     #
     if depth > EmailAccount.MAX_ALIAS_DEPTH:
         deliver_message_locally(email_account, msg)
-        logger.warn(
+        logger.warning(
             f"Deliver recursion too deep for message {msg['Message-ID']}, "
             f"for account {email_account.email_address}, depth: {depth}"
         )
@@ -159,7 +159,7 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
             _add_msg_to_folder(folder, msg)
             delivered_to.append(mbox)
         except NoSuchMailboxError:
-            logger.warn(
+            logger.warning(
                 "for email account %s, attempted to deliver message to "
                 "non-existing mailbox %s",
                 email_account.email_address,
@@ -192,7 +192,7 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
             log_msg = "forwarding address it not set"
         else:
             log_msg = "account is deactivated"
-        logger.warn(
+        logger.warning(
             "Forwarding for '%s' denied for message %s: %s",
             email_account.email_address,
             msg["Message-ID"],
@@ -205,10 +205,13 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     # `Original-Message-ID`, and `reply-to` headers.
     #
     msg["Original-Message-ID"] = msg["Message-ID"]
+    msg["Resent-Message-ID"] = msg["Message-ID"]
     if "Reply-To" not in msg:
         msg["Reply-To"] = msg["From"]
     msg["Original-From"] = msg["From"]
+    msg["Original-Recipient"] = email_account.email_address
     msg["Resent-From"] = email_account.email_address
+    msg.replace_header("Resent-To", email_account.forward_to)
     msg.replace_header("From", email_account.email_address)
 
     # re-format the message based on the fowarding type set.

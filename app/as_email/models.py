@@ -270,6 +270,7 @@ class Server(models.Model):
     #
     def send_email_via_smtp(
         self,
+        email_from: str,
         rcpt_tos: List[str],
         msg: email.message.EmailMessage,
         spool_on_retryable: bool = True,
@@ -284,14 +285,21 @@ class Server(models.Model):
         wholly on the SMTP method, but I feel that in the future when we
         support sending batched emails and using templates it will make more
         sense to keep it around.
+
+        NOTE: the "email_from" must be from the same domain name as the server,
+              if not a ValueError exception is raised.
         """
-        server = self.server
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+        if self.domain_name != email_from.split("@")[-1]:
+            raise ValueError(
+                f"Domain name of {email_from} is not the same "
+                f"as the server's: {self.domain_name}"
+            )
+        if self.domain_name not in settings.EMAIL_SERVER_TOKENS:
             raise KeyError(
-                f"The token for the server '{server.domain_name} is not "
+                f"The token for the server '{self.domain_name} is not "
                 "defined in `settings.EMAIL_SERVER_TOKENS`"
             )
-        token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
+        token = settings.EMAIL_SERVER_TOKENS[self.domain_name]
 
         # Add `X-PM-Message-Stream: outbound` header for postmark. Make sure
         # that there is only ONE `X-PM-Message-Stream` header.
@@ -302,18 +310,20 @@ class Server(models.Model):
         del msg["X-PM-Message-Stream"]
         msg["X-PM-Message-Stream"] = "outbound"
 
-        smtp_server, port = server.smtp_server.split(":")
+        smtp_server, port = self.provider.smtp_server.split(":")
         smtp_client = smtplib.SMTP(smtp_server, int(port))
         smtp_client.starttls()
         smtp_client.login(token, token)
         try:
-            smtp_client.sendmail(self.email_address, rcpt_tos, msg.as_bytes())
+            smtp_client.send_message(
+                msg, from_addr=email_from, to_addrs=rcpt_tos
+            )
         except smtplib.SMTPException as exc:
             logger.error(
-                f"Mail from {self.email_address}, to: {rcpt_tos}, failed with "
+                f"Mail from {email_from}, to: {rcpt_tos}, failed with "
                 f"exception: {exc}"
             )
-            spool_message(server.outgoing_spool_dir, msg)
+            spool_message(self.outgoing_spool_dir, msg)
 
     ####################################################################
     #

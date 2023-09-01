@@ -34,7 +34,6 @@ from .factories import (
 #
 register(UserFactory)
 register(ProviderFactory)
-register(EmailAccountFactory)
 register(BlockedMessageFactory)
 register(MessageFilterRuleFactory)
 
@@ -53,13 +52,30 @@ def email_factory(faker):
     # TODO: have this factory take kwargs for headers the caller can set in the
     #       generated email.
     #
-    def make_email():
+    def make_email(**kwargs):
+        """
+        if kwargs for 'subject', 'from' or 'to' are provided use those in
+        the message instead of faker generated ones.
+
+        NOTE: `from` is a reserverd word in python so you need to specify
+              `frm`
+        """
         msg = EmailMessage()
-        msg["Subject"] = faker.sentence()
-        username, domain_name = faker.email().split("@")
-        msg["From"] = Address(faker.name(), username, domain_name)
-        username, domain_name = faker.email().split("@")
-        msg["To"] = Address(faker.name(), username, domain_name)
+        msg["Subject"] = (
+            faker.sentence() if "subject" not in kwargs else kwargs["subject"]
+        )
+        if "msg_from" not in kwargs:
+            username, domain_name = faker.email().split("@")
+            msg["From"] = Address(faker.name(), username, domain_name)
+        else:
+            msg["From"] = kwargs["frm"]
+
+        if "to" not in kwargs:
+            username, domain_name = faker.email().split("@")
+            msg["To"] = Address(faker.name(), username, domain_name)
+        else:
+            msg["To"] = kwargs["to"]
+
         message_content = faker.paragraphs(nb=5)
         msg.set_content("\n".join(message_content))
         paragraphs = "\n".join([f"<p>{x}</p>" for x in message_content])
@@ -75,18 +91,38 @@ def email_factory(faker):
 ####################################################################
 #
 @pytest.fixture
-def server_factory(postmark_client):
+def server_factory(postmark_client, settings, faker):
     """
     A factory for creating server's that have the postmarker pytest
     postmark_client factory returned when you call ".client"
+    This also sets makes sure that the API token for the server we create
+    is in the django settings.EMAIL_SERVER_TOKENS
     """
 
     def make_server(*args, **kwargs):
         server = ServerFactory(*args, **kwargs)
+        settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.pystr()
         server._client = postmark_client
         return server
 
-    return make_server
+    yield make_server
+
+
+####################################################################
+#
+@pytest.fixture
+def email_account_factory(server_factory):
+    """
+    Make sure our email account factory uses the fixtures setup by the
+    server_factory.
+    """
+
+    def make_email_account(*args, **kwargs):
+        kwargs["server"] = server_factory()
+        email_account = EmailAccountFactory(*args, **kwargs)
+        return email_account
+
+    yield make_email_account
 
 
 ####################################################################

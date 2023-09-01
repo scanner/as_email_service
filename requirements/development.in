@@ -8,6 +8,7 @@ pytest-asyncio
 pytest-coverage
 pytest-django
 pytest-factoryboy
+pytest-mock
 pytest-sugar
 trustme
 werkzeug

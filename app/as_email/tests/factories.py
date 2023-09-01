@@ -43,10 +43,12 @@ class UserFactory(DjangoModelFactory):
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):
         password = extracted if extracted else fake.password(length=16)
         self.set_password(password)
+        self.save()
 
     class Meta:
         model = get_user_model()
         django_get_or_create = ("username",)
+        skip_postgeneration_save = True
 
 
 ########################################################################

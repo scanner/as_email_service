@@ -190,7 +190,9 @@ def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
 
 ####################################################################
 #
-def test_email_account_alias_depth(email_account_factory, email_factory):
+def test_email_account_alias_depth(
+    email_account_factory, email_factory, caplog
+):
     """
     we only let an alias go three deep. if we try to alias more than that
     it will be delivered at a higher level. also a warning will be logged.
@@ -207,13 +209,13 @@ def test_email_account_alias_depth(email_account_factory, email_factory):
             prev_ea.alias_for.add(ea)
         prev_ea = ea
 
-    # The message should be delivered to the max alias depth email account.
-    #
-    # XXX We should mock the logger so we can also verify that a message was
-    #     logged when the max alias depth was exceeded.
+    # The message should be delivered to the max alias depth email
+    # account. Also a message should have been logged about this.
     #
     msg = email_factory()
     deliver_message(email_accounts[0], msg)
+
+    assert "Deliver recursion too deep for message" in caplog.text
 
     ea = email_accounts[EmailAccount.MAX_ALIAS_DEPTH]
     mh = ea.MH()
