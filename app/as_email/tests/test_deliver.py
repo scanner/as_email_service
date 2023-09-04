@@ -25,19 +25,27 @@ pytestmark = pytest.mark.django_db
 
 ####################################################################
 #
-def compare_email_content(msg1, msg2):
+def assert_email_equal(msg1, msg2, ignore_headers=False):
     """
     Because we can not directly compare a Message and EmailMessage object
     we need to compare their parts. Since an EmailMessage is a sub-class of
     Message it will have all the same methods necessary for comparison.
     """
-    # Compare all headers
+    # Compare all headers, unless we are ignoring them.
     #
-    if msg1.items() != msg2.items():
-        return False
+    if ignore_headers is False:
+        assert msg1.items() == msg2.items()
 
-    if msg1.is_multipart() != msg2.is_multipart():
-        return False
+    # If we are ignoring only some headers, then skip those.
+    #
+    if isinstance(ignore_headers, list):
+        ignore_headers = [x.lower() for x in ignore_headers]
+        for header, value in msg1.items():
+            if header.lower() in ignore_headers:
+                continue
+            assert msg2[header] != value
+
+    assert msg1.is_multipart() == msg2.is_multipart()
 
     # If not multipart, the payload should be the same.
     #
@@ -48,12 +56,10 @@ def compare_email_content(msg1, msg2):
     #
     parts1 = msg1.get_payload()
     parts2 = msg2.get_payload()
-    if len(parts1) != len(parts2):
-        return False
+    assert len(parts1) == len(parts2)
+
     for part1, part2 in zip(parts1, parts2):
-        if part1.get_payload() != part2.get_payload():
-            return False
-    return True
+        assert part1.get_payload() == part2.get_payload()
 
 
 ####################################################################
@@ -103,7 +109,7 @@ def test_deliver_message_locally(
     mh = ea.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)
 
     # Now create a mfr and make sure the message is delivered to the proper
     # folder.
@@ -120,7 +126,7 @@ def test_deliver_message_locally(
     mfr.save()
     deliver_message_locally(ea, msg)
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
@@ -142,7 +148,7 @@ def test_deliver_alias(email_account_factory, email_factory):
     mh = ea_2.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)
 
     # Create another level of aliasing.
     ea_3 = email_account_factory()
@@ -158,7 +164,7 @@ def test_deliver_alias(email_account_factory, email_factory):
     mh = ea_3.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
@@ -180,12 +186,12 @@ def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
     mh_2 = ea_2.MH()
     folder = mh_2.get_folder("inbox")
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)
 
     mh_3 = ea_3.MH()
     folder = mh_3.get_folder("inbox")
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
@@ -221,21 +227,16 @@ def test_email_account_alias_depth(
     mh = ea.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
-def test_resent_forwarding(email_account_factory, email_factory, mocker):
+def test_resent_forwarding(email_account_factory, email_factory, smtp):
     """
     Test forwarding of the message by having some headers re-written, the
     subject modified but the message otherwise sent on as it is.
     """
-    # Mock the SMTP object in the models module
-    #
-    mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
-    mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP)
-
     ea_1 = email_account_factory(
         account_type=EmailAccount.FORWARDING,
         forward_style=EmailAccount.FORWARD_RESEND,
@@ -243,26 +244,38 @@ def test_resent_forwarding(email_account_factory, email_factory, mocker):
     )
     ea_1.save()
 
+    msg = email_factory()
+    deliver_message(ea_1, msg)
+
+    # The message should have been delivered to our smtp mock using the
+    # `send_message` call.
+    #
+    assert smtp.return_value.send_message.call_count == 1
+
 
 ####################################################################
 #
-def test_encapsulate_forwarding(email_account_factory, email_factory, mocker):
+def test_encapsulate_forwarding(email_account_factory, email_factory, smtp):
     """
     Test forwarding of the message by having the original message attached
     as an rfc822 attachment, the original content text being in the new
     message.
     """
-    # Mock the SMTP object in the models module
-    #
-    mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
-    mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP)
-
     ea_1 = email_account_factory(
         account_type=EmailAccount.FORWARDING,
         forward_style=EmailAccount.FORWARD_ENCAPSULTE,
         forward_to=factory.Faker("email"),
     )
     ea_1.save()
+
+    msg = email_factory()
+    deliver_message(ea_1, msg)
+
+    # NOTE: in the models object we create a smtp_client. On the smtp_client
+    #       the only thing we care about is that the `send_message` method was
+    #       called with the appropriate values.
+    #
+    assert smtp.return_value.send_message.call_count == 1
 
 
 ####################################################################
@@ -289,4 +302,4 @@ def test_deactivated_forward(email_account_factory, email_factory):
     mh = ea_1.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
-    assert compare_email_content(msg, stored_msg)
+    assert_email_equal(msg, stored_msg)

@@ -76,7 +76,9 @@ class Provider(models.Model):
     name = models.CharField(unique=True, max_length=200)
     smtp_server = models.CharField(
         help_text=_(
-            "The host:port for sending messages via SMTP for this provider (each server has its own unique login, but all the servers on the same provider using the same hostname for SMTP.)"
+            "The host:port for sending messages via SMTP for this provider "
+            "(each server has its own unique login, but all the servers on "
+            "the same provider using the same hostname for SMTP.)"
         ),
         max_length=200,
         blank=False,

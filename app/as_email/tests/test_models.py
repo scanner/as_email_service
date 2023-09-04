@@ -127,18 +127,19 @@ def test_alias_self(email_account_factory):
 
 ####################################################################
 #
-def test_email_via_smtp(email_account_factory, email_factory, mock_smtp):
+def test_email_via_smtp(email_account_factory, email_factory, smtp):
     ea = email_account_factory()
     msg = email_factory(frm=ea.email_address)
-    ea.server.send_email_via_smtp(
-        ea.email_address,
-        [
-            msg["To"],
-        ],
-        msg,
-    )
+    from_addr = ea.email_address
+    rcpt_tos = [msg["To"]]
+    ea.server.send_email_via_smtp(from_addr, rcpt_tos, msg)
 
-    assert mock_smtp.return_value.send_message.call_count == 1
+    # NOTE: in the models object we create a smtp_client. On the smtp_client
+    #       the only thing we care about is that the `send_message` method was
+    #       called with the appropriate values.
+    #
+    send_message = smtp.return_value.send_message
+    assert send_message.call_count == 1
 
 
 ####################################################################
