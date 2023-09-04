@@ -198,7 +198,6 @@ def make_encapsulated_fwd_msg(
     if "Message-ID" in orig_msg:
         msg["References"] = orig_msg["Message-ID"]
 
-    msg["From"] = email_account.email_address
     msg["To"] = email_account.forward_to
     try:
         msg.set_content(orig_msg.get_content())
@@ -215,23 +214,6 @@ def make_encapsulated_fwd_msg(
         subtype="rfc822",
     )
     return msg
-
-
-####################################################################
-#
-def make_resent_msg(email_account: EmailAccount, orig_msg: EmailMessage):
-    """
-    A resent message is one in which the message is essentially unchanged
-    but we add and rewrite some headers indicating that the message was
-    forwarded.
-
-    We have to rewrite the 'from' because we can not send email from an address
-    that is not controlled by us. Luckily the 'reply-to' lets us make sure the
-    original sender can be replied to, and we do not have to fix the "to"
-    header so the original recipient is still valid even though we are sending
-    it to a totally different "to" address.
-    """
-    pass
 
 
 ####################################################################
@@ -258,6 +240,7 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
         deliver_message_locally(email_account, msg)
         return
 
+    original_from = msg["From"]
     if email_account.forward_style == EmailAccount.FORWARD_ENCAPSULTE:
         msg = make_encapsulated_fwd_msg(email_account, msg)
 
@@ -272,11 +255,14 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     # reply-to to be the original from so that replies go to the right place.
     #
     if "Reply-To" not in msg:
-        msg["Reply-To"] = msg["From"]
-    msg["Original-From"] = msg["From"]
+        msg["Reply-To"] = original_from
+    msg["Original-From"] = original_from
     msg["Original-Recipient"] = email_account.email_address
     msg["Resent-From"] = email_account.email_address
     msg["Resent-To"] = email_account.forward_to
-    msg.replace_header("From", email_account.email_address)
+    if "From" in msg:
+        msg.replace_header("From", email_account.email_address)
+    else:
+        msg["From"] = email_account.email_address
 
     email_account.send_email_via_smtp([email_account.forward_to], msg)

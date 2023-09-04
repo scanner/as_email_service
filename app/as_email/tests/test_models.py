@@ -140,6 +140,11 @@ def test_email_via_smtp(email_account_factory, email_factory, smtp):
     #
     send_message = smtp.return_value.send_message
     assert send_message.call_count == 1
+    assert send_message.call_args.args == (msg,)
+    assert send_message.call_args.kwargs == {
+        "from_addr": from_addr,
+        "to_addrs": rcpt_tos,
+    }
 
 
 ####################################################################

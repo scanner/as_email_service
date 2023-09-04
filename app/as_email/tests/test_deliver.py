@@ -269,13 +269,38 @@ def test_encapsulate_forwarding(email_account_factory, email_factory, smtp):
     ea_1.save()
 
     msg = email_factory()
+    original_from = msg["From"]
+    original_subj = msg["Subject"]
+
     deliver_message(ea_1, msg)
 
     # NOTE: in the models object we create a smtp_client. On the smtp_client
     #       the only thing we care about is that the `send_message` method was
     #       called with the appropriate values.
     #
-    assert smtp.return_value.send_message.call_count == 1
+    send_message = smtp.return_value.send_message
+    assert send_message.call_count == 1
+    assert send_message.call_args.kwargs == {
+        "from_addr": ea_1.email_address,
+        "to_addrs": [ea_1.forward_to],
+    }
+
+    sent_message = send_message.call_args.args[0]
+    assert sent_message["Original-From"] == original_from
+    assert sent_message["Original-Recipient"] == ea_1.email_address
+    assert sent_message["Resent-From"] == ea_1.email_address
+    assert sent_message["Resent-To"] == ea_1.forward_to
+    assert sent_message["From"] == ea_1.email_address
+    assert sent_message["To"] == ea_1.forward_to
+    assert sent_message["Subject"] == f"Fwd: {original_subj}"
+
+    # Look for the first message/rfc822 attachement. That should be our
+    # forwarded message.
+    #
+    for attachment in sent_message.iter_attachments():
+        if attachment.get_content_type() == "message/rfc822":
+            print(attachment.get_payload(decode=True))
+            assert attachment.get_payload(decode=True) == msg.as_bytes()
 
 
 ####################################################################
