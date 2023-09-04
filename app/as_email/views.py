@@ -27,6 +27,7 @@ from pathlib import Path
 # 3rd party imports
 #
 import aiofiles
+from aiologger import Logger
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
@@ -46,7 +47,9 @@ from .serializers import (
     MessageFilterRuleSerializer,
 )
 from .tasks import dispatch_incoming_email
-from .utils import split_email_mailbox_hash
+from .utils import split_email_mailbox_hash, spooled_email
+
+logger = Logger.with_default_handlers(name=__file__)
 
 
 ####################################################################
@@ -113,10 +116,14 @@ async def hook_postmark_incoming(request, domain_name):
 
     server = await _validate_server_api_key(request, domain_name)
     email = json.loads(request.body)
+    message_id = email["MessageID"] if "MessageID" in email else None
 
     if "OriginalRecipient" not in email:
-        # XXX Log an error that we got an email without an original recipient.
-        #
+        logger.warning(
+            "email received from postmark without `OriginalRecipient`, "
+            "message id: %s",
+            message_id,
+        )
         return JsonResponse(
             {
                 "status": "all good",
@@ -138,12 +145,14 @@ async def hook_postmark_incoming(request, domain_name):
     try:
         email_account = await EmailAccount.objects.aget(email_address=addr)
     except EmailAccount.DoesNotExist:
+        logger.info(
+            "Received email for email account that does not exist: %s", addr
+        )
         # XXX here we would log metrics for getting email that no one is going
         #     to receive.
         #
         return JsonResponse({"status": "all good"})
 
-    message_id = email["MessageID"]
     now = datetime.now().isoformat()
     email_file_name = f"{now}-{message_id}.json"
     fname = Path(server.incoming_spool_dir) / email_file_name
@@ -152,19 +161,21 @@ async def hook_postmark_incoming(request, domain_name):
     # dict we write to just what we need to deliver the email we create a new
     # dict that will hold what we write in the incoming spool directory.
     #
-    spooled_email = {
-        "recipient": email["OriginalRecipient"],
-        "message-id": message_id,
-        "date": email["Date"],
-        "raw_email": email["RawEmail"],
-    }
+    email_json = json.dumps(
+        spooled_email(
+            email["OriginalRecipient"],
+            message_id,
+            email["Date"],
+            email["RawEmail"],
+        )
+    )
 
     # We need to make sure that the file is written before we send our
     # response back to Postmark.. but we should not block other async
     # processing while waiting for the file to be written.
     #
     async with aiofiles.open(fname, "w") as f:
-        await f.write(json.dumps(spooled_email))
+        await f.write(email_json)
 
     # Fire off async huey task to dispatch the email we just wrote to the spool
     # directory.

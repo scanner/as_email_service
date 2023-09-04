@@ -61,6 +61,7 @@ def email_factory(faker):
               `frm`
         """
         msg = EmailMessage()
+        msg["Message-ID"] = faker.uuid4()
         msg["Subject"] = (
             faker.sentence() if "subject" not in kwargs else kwargs["subject"]
         )
@@ -149,7 +150,6 @@ def mailbox_dir(settings, tmp_path):
     that we do not accidentally forget to set it in a test that uses a
     provider/server without specifically calling out that it does.)
     """
-
     mail_base_dir = tmp_path / "mail_base_dir"
     mail_base_dir.mkdir(parents=True, exist_ok=True)
     settings.MAIL_DIRS = mail_base_dir

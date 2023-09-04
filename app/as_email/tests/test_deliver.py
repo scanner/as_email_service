@@ -34,7 +34,10 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     # Compare all headers, unless we are ignoring them.
     #
     if ignore_headers is False:
-        assert msg1.items() == msg2.items()
+        assert len(msg1.items()) == len(msg2.items())
+        for header, value in msg1.items():
+            value = value.replace("\n", "")
+            assert msg2[header].replace("\n", "") == value
 
     # If we are ignoring only some headers, then skip those.
     #

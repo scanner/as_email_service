@@ -27,3 +27,21 @@ def split_email_mailbox_hash(email_address: str) -> Tuple[str]:
     if "+" in addr:
         addr, mbox_hash = addr.split("+", 1)
     return (f"{addr}@{domain}", mbox_hash)
+
+
+####################################################################
+#
+def spooled_email(recipient, msg_id, date, raw_email):
+    """
+    Incoming email is written to a spool directory as json files. It has a
+    specific format and this function returns a dict in that format.
+
+    This is encapsulated in this function so that our tests and our incoming
+    email hook use the same method for generating this dict.
+    """
+    return {
+        "recipient": recipient,
+        "message-id": msg_id,
+        "date": date,
+        "raw_email": raw_email,
+    }

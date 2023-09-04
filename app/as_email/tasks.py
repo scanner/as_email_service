@@ -123,9 +123,9 @@ def dispatch_incoming_email(email_account_pk, email_fname):
     """
     email_account = EmailAccount.objects.get(pk=email_account_pk)
     email_file = Path(email_fname)
-    email_msg = json.loads(email_file.read_bytes())
+    email_msg = json.loads(email_file.read_text())
     msg = email.message_from_string(
-        email_msg["RawEmail"], policy=email.policy.default
+        email_msg["raw_email"], policy=email.policy.default
     )
     try:
         deliver_message(email_account, msg)
@@ -136,4 +136,4 @@ def dispatch_incoming_email(email_account_pk, email_fname):
             email_account.email_address,
         )
     finally:
-        email_file.delete()
+        email_file.unlink()
