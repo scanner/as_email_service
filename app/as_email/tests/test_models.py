@@ -127,12 +127,7 @@ def test_alias_self(email_account_factory):
 
 ####################################################################
 #
-def test_email_via_smtp(email_account_factory, email_factory, mocker):
-    # Mock the SMTP object in the models module
-    #
-    mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
-    mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP)
-
+def test_email_via_smtp(email_account_factory, email_factory, mock_smtp):
     ea = email_account_factory()
     msg = email_factory(frm=ea.email_address)
     ea.server.send_email_via_smtp(
@@ -143,7 +138,7 @@ def test_email_via_smtp(email_account_factory, email_factory, mocker):
         msg,
     )
 
-    assert mock_SMTP.return_value.send_message.call_count == 1
+    assert mock_smtp.return_value.send_message.call_count == 1
 
 
 ####################################################################

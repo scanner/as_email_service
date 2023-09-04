@@ -179,3 +179,21 @@ def api_client():
     fixture for DRF's APIClient object.
     """
     return APIClient
+
+
+####################################################################
+#
+@pytest.fixture
+def mock_smtp(mocker):
+    """
+    We frequently need to test something that will send an email via SMTP.
+    This fixture encapsulates this and returns a mock object that can be
+    interrogated for the SMTP calls against it.
+
+    NOTE: This only mocks the smtplib.SMTP module in the models module
+    """
+    # Mock the SMTP object in the models module
+    # XXX Can we do relative imports for MagicMock?
+    mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
+    with mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP):
+        yield mock_SMTP
