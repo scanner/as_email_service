@@ -14,6 +14,7 @@ from .views import (
     BlockedMessageViewSet,
     EmailAccountViewSet,
     MessageFilterRuleViewSet,
+    hook_forward_valid,
     hook_postmark_bounce,
     hook_postmark_incoming,
     hook_postmark_spam,
@@ -71,4 +72,12 @@ urlpatterns = [
         hook_postmark_spam,
         name="hook_postmark_spam",
     ),
+    # We want to have a way to validate forwarding addresses. When the user
+    # tries to setup a forward we give an action that sends a test message to
+    # the forwarded address. This test message contains a link back to this
+    # endpoint. If the user clicks on the link and goes back here that
+    # indicates that the forwarded message was sent and received properly and
+    # we can let this be a valid forwarding address.
+    #
+    path("hook/forward_valid/", hook_forward_valid, name="hook_forward_valid"),
 ]

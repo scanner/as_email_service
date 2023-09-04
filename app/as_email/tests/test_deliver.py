@@ -226,7 +226,22 @@ def test_email_account_alias_depth(
 
 ####################################################################
 #
-def test_forwarding(email_account_factory, email_factory):
+def test_resent_forwarding(email_account_factory, email_factory):
+    """
+    Test forwarding of the message by having some headers re-written, the
+    subject modified but the message otherwise sent on as it is.
+    """
+    pass
+
+
+####################################################################
+#
+def test_encapsulate_forwarding(email_account_factory, email_factory):
+    """
+    Test forwarding of the message by having the original message attached
+    as an rfc822 attachment, the original content text being in the new
+    message.
+    """
     pass
 
 

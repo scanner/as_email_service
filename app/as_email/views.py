@@ -205,6 +205,25 @@ async def hook_postmark_spam(request, domain_name):
     return HttpResponse(f"received spam notification for {server}")
 
 
+####################################################################
+#
+async def hook_forward_valid(request):
+    """
+    A return call by a user trying to establish an email forward. A link to
+    this is sent when the user attempts to validate that an email address used
+    for forwarding is valid.
+    """
+    # The request should have a 'validation_key' and 'email_account_id' as
+    # parameters.
+    #
+
+    # This should probably re-direct to a view that shows the email account
+    # forwarding is being enabled for, and set a flag in the email account
+    # indicating the forwarding is okay.
+    #
+    return HttpResponse("Ok.. ")
+
+
 ########################################################################
 ########################################################################
 #

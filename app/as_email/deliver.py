@@ -221,9 +221,15 @@ def make_encapsulated_fwd_msg(
 #
 def make_resent_msg(email_account: EmailAccount, orig_msg: EmailMessage):
     """
-    Keyword Arguments:
-    email_account: EmailAccount --
-    orig_msg: EmailMessage      --
+    A resent message is one in which the message is essentially unchanged
+    but we add and rewrite some headers indicating that the message was
+    forwarded.
+
+    We have to rewrite the 'from' because we can not send email from an address
+    that is not controlled by us. Luckily the 'reply-to' lets us make sure the
+    original sender can be replied to, and we do not have to fix the "to"
+    header so the original recipient is still valid even though we are sending
+    it to a totally different "to" address.
     """
     pass
 
@@ -264,8 +270,9 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     # When forwarding we add `Resent-From`, `Original-From`,
     # `Original-Message-ID`, and `reply-to` headers.
     #
-    msg["Original-Message-ID"] = msg["Message-ID"]
-    msg["Resent-Message-ID"] = msg["Message-ID"]
+    if "Message-ID" in msg:
+        msg["Original-Message-ID"] = msg["Message-ID"]
+        msg["Resent-Message-ID"] = msg["Message-ID"]
     if "Reply-To" not in msg:
         msg["Reply-To"] = msg["From"]
     msg["Original-From"] = msg["From"]
