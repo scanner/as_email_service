@@ -243,6 +243,11 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     original_from = msg["From"]
     if email_account.forward_style == EmailAccount.FORWARD_ENCAPSULTE:
         msg = make_encapsulated_fwd_msg(email_account, msg)
+    else:
+        if "Subject" in msg:
+            msg.replace_header("Subject", f"Fwd: {msg['Subject']}")
+        else:
+            msg["Subject"] = f"Fwd: from {msg['From']}"
 
     # When forwarding we add `Resent-From`, `Original-From`,
     # `Original-Message-ID`, and `reply-to` headers.

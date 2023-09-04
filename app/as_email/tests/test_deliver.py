@@ -245,12 +245,32 @@ def test_resent_forwarding(email_account_factory, email_factory, smtp):
     ea_1.save()
 
     msg = email_factory()
+    original_to = msg["To"]
+    original_from = msg["From"]
+    original_subj = msg["Subject"]
+
     deliver_message(ea_1, msg)
 
     # The message should have been delivered to our smtp mock using the
     # `send_message` call.
     #
-    assert smtp.return_value.send_message.call_count == 1
+    send_message = smtp.return_value.send_message
+    assert send_message.call_count == 1
+    assert send_message.call_args.kwargs == {
+        "from_addr": ea_1.email_address,
+        "to_addrs": [ea_1.forward_to],
+    }
+
+    sent_message = send_message.call_args.args[0]
+    assert sent_message["Original-From"] == original_from
+    assert sent_message["Original-Recipient"] == ea_1.email_address
+    assert sent_message["Resent-From"] == ea_1.email_address
+    assert sent_message["Resent-To"] == ea_1.forward_to
+    assert sent_message["From"] == ea_1.email_address
+    assert sent_message["To"] == original_to
+    assert sent_message["Subject"] == f"Fwd: {original_subj}"
+
+    assert_email_equal(msg, sent_message, ignore_headers=True)
 
 
 ####################################################################
