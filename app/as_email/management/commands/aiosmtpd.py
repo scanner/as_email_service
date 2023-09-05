@@ -8,12 +8,15 @@ It gets the mailprovider info from the django configuration.
 It authenticates mail accounts from the django as_email.models.Account
 object.
 """
-# system imports
-#
 import asyncio
 import email
 import email.policy
+import logging
 import ssl
+
+# system imports
+#
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -38,6 +41,8 @@ from pydantic import BaseModel
 
 DEST_PORT = 587
 LISTEN_PORT = 19246
+
+logger = Logger.with_default_handlers(name=__file__, level=logging.DEBUG)
 
 
 ########################################################################
@@ -66,8 +71,6 @@ class DenyInfo(BaseModel):
 #     an LRU.. or we should use our redis server
 #
 DENY_PEER_LIST: Dict[str, DenyInfo] = {}
-
-logger = Logger.with_default_handlers(name=__file__)
 
 
 ########################################################################
@@ -100,18 +103,54 @@ class Command(BaseCommand):
         ssl_key_file = options["ssl_key"]
         spool_dir = settings.EMAIL_SPOOL_DIR
 
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.load_cert_chain(ssl_cert_file, ssl_key_file)
+        handler = RelayHandler(spool_dir=spool_dir)
+        print("Handler created.. creating controller")
+        controller = Controller(
+            handler,
+            hostname="",  # This means listens on all interfaces.
+            server_hostname=settings.SITE_NAME,
+            port=listen_port,
+            authenticator=Authenticator(),
+            ssl_context=context,
+            require_starttls=True,
+            auth_required=True,
+        )
+        print("Starting controller")
+        controller.start()
         try:
-            with asyncio.Runner() as runner:
-                runner.run(
-                    amain(
-                        ssl_cert=ssl_cert_file,
-                        ssl_key=ssl_key_file,
-                        spool_dir=spool_dir,
-                        listen_port=listen_port,
-                    )
-                )
+            while True:
+                time.sleep(300)
         except KeyboardInterrupt:
-            logger.warn("KeyboardInterrupt - Exiting")
+            print("Keyboard interrupt, exiting")
+        finally:
+            controller.stop()
+
+        # try:
+        #     loop = asyncio.get_running_loop()
+        # except RuntimeError:
+        #     loop = asyncio.new_event_loop()
+        #     asyncio.set_event_loop(loop)
+        # loop.run_until_complete(
+        #     amain(
+        #         loop,
+        #         ssl_cert=ssl_cert_file,
+        #         ssl_key=ssl_key_file,
+        #         spool_dir=spool_dir,
+        #         listen_port=listen_port,
+        #     )
+        # )
+        # loop.run_forever()
+        # with asyncio.Runner() as runner:
+        #     runner.run(
+        #         amain(
+        #             ssl_cert=ssl_cert_file,
+        #             ssl_key=ssl_key_file,
+        #             spool_dir=spool_dir,
+        #             listen_port=listen_port,
+        #         )
+        #     )
 
 
 ########################################################################
@@ -178,6 +217,10 @@ class RelayHandler:
         unable to send messages through postmark immediately.
         """
         self.spool_dir = spool_dir
+        self.logger = Logger.with_default_handlers(
+            name=__file__,
+            level=logging.DEBUG,
+        )
 
     ####################################################################
     #
@@ -219,7 +262,7 @@ class RelayHandler:
         try:
             await sync_to_async(send_email_via_smtp(account, envelope))
         except Exception as exc:
-            await logger.exception("Failed: %s", exc)
+            await logger.exception(f"Failed: {exc}")
             return f"500 {str(exc)}"
 
         return "250 OK"
@@ -248,18 +291,21 @@ def send_email_via_smtp(account, envelope):
 ########################################################################
 #
 async def amain(
+    loop: asyncio.AbstractEventLoop,
     spool_dir: str,
     ssl_cert: str,
     ssl_key: str,
     listen_port: int = LISTEN_PORT,
 ):
+    print("Async main starting...")
     logger.info(
-        f"aiosmtpd: Listening on {listen_port}, cert:{ssl_cert}, "
-        f"key: {ssl_key}"
+        f"aiosmtpd: Listening on {listen_port} , cert: '{ssl_cert}', key: "
+        f"'{ssl_key}'"
     )
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.load_cert_chain(ssl_cert, ssl_key)
     handler = RelayHandler(spool_dir=spool_dir)
+    print("Handler created.. creating controller")
     cont = Controller(
         handler,
         hostname="",  # This means listens on all interfaces.
@@ -270,8 +316,15 @@ async def amain(
         require_starttls=True,
         auth_required=True,
     )
+    print("Starting controller")
+    cont.begin()
     try:
-        cont.start()
+        while True:
+            # Every 5 minutes, submit metrics
+            asyncio.sleep(300)
+            # await submit_collected_metrics()
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt, exiting")
     finally:
-        cont.stop()
+        await cont.finalize()
         await logger.shutdown()
