@@ -18,8 +18,8 @@ import sys
 # system imports
 #
 import time
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import List, Optional
 
 # 3rd party imports
 #
@@ -27,7 +27,7 @@ from typing import Dict, List, Optional
 from aiosmtpd.controller import Controller
 
 # from aiosmtpd.smtp import SMTP as SMTPServer
-from aiosmtpd.smtp import AuthResult
+from aiosmtpd.smtp import SMTP, AuthResult
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import LoginPassword
 from aiosmtpd.smtp import Session as SMTPSession
@@ -71,11 +71,8 @@ class DenyInfo(BaseModel):
     expiry: Optional[datetime]
 
 
-# XXX Maybe this should be a list with a capped size so if we get
-#     connections from millions of hosts we do not consume all memory.
-#     an LRU.. or we should use our redis server
-#
-DENY_PEER_LIST: Dict[str, DenyInfo] = {}
+MAX_NUM_AUTH_FAILURES = 5
+AUTH_FAILURE_EXPIRY = timedelta(hours=1)
 
 
 ########################################################################
@@ -115,17 +112,18 @@ class Command(BaseCommand):
 
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(ssl_cert_file, ssl_key_file)
-        handler = RelayHandler(spool_dir=spool_dir)
+        authenticator = Authenticator()
+        handler = RelayHandler(spool_dir=spool_dir, authenticator=authenticator)
         print("Handler created.. creating controller")
         controller = Controller(
             handler,
             hostname="0.0.0.0",  # This means listens on all interfaces.
             server_hostname=settings.SITE_NAME,
             port=listen_port,
-            authenticator=Authenticator(),
-            ssl_context=context,
-            require_starttls=True,
-            auth_required=True,
+            # authenticator=authenticator,
+            # ssl_context=context,
+            # require_starttls=True,
+            # auth_required=True,
         )
         logger.info("Starting controller")
         controller.start()
@@ -137,36 +135,75 @@ class Command(BaseCommand):
         finally:
             controller.stop()
 
-        # try:
-        #     loop = asyncio.get_running_loop()
-        # except RuntimeError:
-        #     loop = asyncio.new_event_loop()
-        #     asyncio.set_event_loop(loop)
-        # loop.run_until_complete(
-        #     amain(
-        #         loop,
-        #         ssl_cert=ssl_cert_file,
-        #         ssl_key=ssl_key_file,
-        #         spool_dir=spool_dir,
-        #         listen_port=listen_port,
-        #     )
-        # )
-        # loop.run_forever()
-        # with asyncio.Runner() as runner:
-        #     runner.run(
-        #         amain(
-        #             ssl_cert=ssl_cert_file,
-        #             ssl_key=ssl_key_file,
-        #             spool_dir=spool_dir,
-        #             listen_port=listen_port,
-        #         )
-        #     )
-
 
 ########################################################################
 ########################################################################
 #
 class Authenticator:
+    ####################################################################
+    #
+    def __init__(self):
+        """
+        The authenicator is what is used to check requests for access to
+        this smtp relay. It keeps track of failures and what peer sent them so
+        we can quickly deny repeated attempts by the same peer.
+        """
+        # To avoid race conditions when accessing or modifying the black list
+        # put it under a lock.
+        #
+        self.blacklist = {}
+        self.blacklist_lock = asyncio.Lock()
+
+    ####################################################################
+    #
+    def incr_fails(self, peer):
+        """
+        Increment fails for a session peer. Since this is called via the
+        "__call__" method when we fail an authentication no other coroutines
+        can run at the time (__call__ is not an async method.) so we do not
+        need to acquire the lock to check or modify the black list here.
+
+        Every auth failure extends the expiry time.
+        """
+        expiry = datetime.utcnow() + AUTH_FAILURE_EXPIRY
+        if peer not in self.blacklist:
+            deny = DenyInfo(num_fails=1, peer_name=peer, expiry=expiry)
+            self.blacklist[peer] = deny
+        else:
+            deny = self.blacklist[peer]
+            deny.num_fails += 1
+            deny.expiry = expiry
+
+    ####################################################################
+    #
+    async def check_deny(self, peer):
+        """
+        Check to see if the given peer has too many auth failures.  If a
+        DenyInfo exists and it is _before_ the expiry, and the number of fails
+        is above the limit then return True - this peer is denied.
+
+        If the number of fails is below the limit then return False - this peer
+        is allowed.
+
+        If the current time is beyond the expiry then return False - this peer
+        is allowed. Also delete their entry from the black list.
+
+        If there is no deny info at all, then this peer is allowed.
+        """
+        async with self.blacklist_lock:
+            if peer not in self.blacklist:
+                return False
+
+            now = datetime.utcnow()
+            deny = self.blacklist[peer]
+            if now > deny.expiry:
+                del self.blacklist[peer]
+                return False
+
+            if deny.num_fails < MAX_NUM_AUTH_FAILURES:
+                return False
+        return True
+
     ####################################################################
     #
     # XXX We should track metrics of number of emails sent, but which
@@ -182,10 +219,25 @@ class Authenticator:
         cache is invalidated whenever an email account is saved/deleted/added
         so that there are no delays in authentication changes.
         """
+        logger.debug(
+            "Authenticator: session: %r, mechanism: %s, auth data: %r",
+            session,
+            mechanism,
+            auth_data,
+        )
         fail_nothandled = AuthResult(success=False, handled=False)
         if mechanism not in ("LOGIN", "PLAIN"):
+            self.incr_fails(session.peer)
+            logger.info(
+                "Authenticator: FAIL: auth mechanism %s not accepted", mechanism
+            )
             return fail_nothandled
+
         if not isinstance(auth_data, LoginPassword):
+            self.incr_fails(session.peer)
+            logger.info(
+                "Authenticator: FAIL: '%r' not LoginPassword", auth_data
+            )
             return fail_nothandled
 
         username = auth_data.login
@@ -197,14 +249,22 @@ class Authenticator:
             #     that do not exist and if we get above a ceratin amount
             #     of them find a cheap way to block that connection for a
             #     period of time.
+            self.incr_fails(session.peer)
+            logger.info(
+                "Authenticator: FAIL: '%s' not a valid account", username
+            )
             return fail_nothandled
 
         # If the account is deactivated it is not allowed to relay email.
         #
         if account.deactivated:
+            self.incr_fails(session.peer)
+            logger.info("Authenticator: FAIL: '%s' is deactivated", account)
             return fail_nothandled
 
         if not account.check_password(password):
+            self.incr_fails(session.peer)
+            logger.info("Authenticator: FAIL: '%s' invalid password", account)
             return fail_nothandled
 
         # Upon success we pass the account back as the auth_data
@@ -212,6 +272,7 @@ class Authenticator:
         # and will let the RelayHandler know which account was used so
         # it will know which Server to send the email through.
         #
+        logger.info("Authenticator: Success for '%s'", account)
         return AuthResult(success=True, auth_data=account)
 
 
@@ -221,17 +282,20 @@ class Authenticator:
 class RelayHandler:
     ####################################################################
     #
-    def __init__(self, spool_dir: str):
+    def __init__(self, spool_dir: str, authenticator: Authenticator):
         """
         Sets up the spool_dir where we store messages if we are
         unable to send messages through postmark immediately.
         """
+        logger.debug("RelayHandler, init. Spool dir: '%s'", spool_dir)
         self.spool_dir = spool_dir
+        self.authenticator = authenticator
 
     ####################################################################
     #
     async def handle_EHLO(
         self,
+        smtp: SMTP,
         session: SMTPSession,
         envelope: SMTPEnvelope,
         hostname,
@@ -241,15 +305,27 @@ class RelayHandler:
         the primary purpose of having a handler for EHLO is to
         quickly deny hosts that have suffered repeated authentication failures
         """
+        logger.debug(
+            "handle_EHLO: smtp: %r, session: %r, envelope: %r, hostname: %s, responses: %r",
+            smtp,
+            session,
+            envelope,
+            hostname,
+            responses,
+        )
         # NOTE: We have to at least set session.host_name
         #
         session.host_name = hostname
-
         # XXX here is where our logic for failing a connection because
         #     it hit our black list.
         #
-        if session.peer in DENY_PEER_LIST:
-            responses.append("550 Too many failed auth attempts")
+        deny = await self.authenticator.check_deny(session.peer)
+        if deny:
+            logger.info(
+                "handle_EHLO: Denying %s due to many failed auth attempts",
+                session.peer,
+            )
+            responses.append("550 Too many failed attempts")
         return responses
 
     ####################################################################
@@ -258,17 +334,17 @@ class RelayHandler:
     # .. not sure why their example does not follow that convention.
     #
     async def handle_DATA(
-        self, session: SMTPSession, envelope: SMTPEnvelope
+        self, server: SMTP, session: SMTPSession, envelope: SMTPEnvelope
     ) -> str:
         # The as_email.models.EmailAccount object instance is passed in via
         # session.auth_data.
         #
         account = session.auth_data
-
+        logger.debug("handle_DATA: account: %s", account)
         try:
             await sync_to_async(send_email_via_smtp(account, envelope))
         except Exception as exc:
-            await logger.exception(f"Failed: {exc}")
+            logger.exception(f"Failed: {exc}")
             return f"500 {str(exc)}"
 
         return "250 OK"
@@ -288,49 +364,12 @@ def send_email_via_smtp(account, envelope):
     written to the spool directory to be sent at a later time.
     """
     msg = email.message_from_bytes(
-        envelope.raw_content,
+        envelope.original_content,
         policy=email.policy.default,
     )
-    account.send_email_via_smtp(envelope.rcpt_tos, msg)
-
-
-########################################################################
-#
-async def amain(
-    loop: asyncio.AbstractEventLoop,
-    spool_dir: str,
-    ssl_cert: str,
-    ssl_key: str,
-    listen_port: int = LISTEN_PORT,
-):
-    print("Async main starting...")
     logger.info(
-        f"aiosmtpd: Listening on {listen_port} , cert: '{ssl_cert}', key: "
-        f"'{ssl_key}'"
+        "send_email_via_smtp: account: %s, rcpt_tos: %s",
+        account,
+        envelope.rcpt_tos,
     )
-    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    context.load_cert_chain(ssl_cert, ssl_key)
-    handler = RelayHandler(spool_dir=spool_dir)
-    print("Handler created.. creating controller")
-    cont = Controller(
-        handler,
-        hostname="",  # This means listens on all interfaces.
-        server_hostname=settings.SITE_NAME,
-        port=listen_port,
-        authenticator=Authenticator(),
-        ssl_context=context,
-        require_starttls=True,
-        auth_required=True,
-    )
-    print("Starting controller")
-    cont.begin()
-    try:
-        while True:
-            # Every 5 minutes, submit metrics
-            asyncio.sleep(300)
-            # await submit_collected_metrics()
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt, exiting")
-    finally:
-        await cont.finalize()
-        await logger.shutdown()
+    account.send_email_via_smtp(envelope.rcpt_tos, msg)
