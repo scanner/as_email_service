@@ -9,5 +9,6 @@ echo "Running django migrations.."
 
 echo "Starting SMTP daemon"
 /venv/bin/python /app/manage.py aiosmtpd \
+                 --listen_port=587 \
                  --ssl_key=/mnt/ssl/ssl_key.pem \
                  --ssl_cert=/mnt/ssl/ssl_crt.pem

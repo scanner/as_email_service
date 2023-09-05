@@ -13,6 +13,7 @@ import email
 import email.policy
 import logging
 import ssl
+import sys
 
 # system imports
 #
@@ -22,7 +23,7 @@ from typing import Dict, List, Optional
 
 # 3rd party imports
 #
-from aiologger import Logger
+# from aiologger import Logger
 from aiosmtpd.controller import Controller
 
 # from aiosmtpd.smtp import SMTP as SMTPServer
@@ -42,7 +43,11 @@ from pydantic import BaseModel
 DEST_PORT = 587
 LISTEN_PORT = 19246
 
-logger = Logger.with_default_handlers(name=__file__, level=logging.DEBUG)
+logger = logging.getLogger("mail.log")
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+logger.addHandler(handler)
 
 
 ########################################################################
@@ -103,13 +108,18 @@ class Command(BaseCommand):
         ssl_key_file = options["ssl_key"]
         spool_dir = settings.EMAIL_SPOOL_DIR
 
+        logger.info(
+            f"aiosmtpd: Listening on {listen_port} , cert: '{ssl_cert_file}', "
+            f"key: '{ssl_key_file}'"
+        )
+
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(ssl_cert_file, ssl_key_file)
         handler = RelayHandler(spool_dir=spool_dir)
         print("Handler created.. creating controller")
         controller = Controller(
             handler,
-            hostname="",  # This means listens on all interfaces.
+            hostname="0.0.0.0",  # This means listens on all interfaces.
             server_hostname=settings.SITE_NAME,
             port=listen_port,
             authenticator=Authenticator(),
@@ -117,13 +127,13 @@ class Command(BaseCommand):
             require_starttls=True,
             auth_required=True,
         )
-        print("Starting controller")
+        logger.info("Starting controller")
         controller.start()
         try:
             while True:
                 time.sleep(300)
         except KeyboardInterrupt:
-            print("Keyboard interrupt, exiting")
+            logger.warning("Keyboard interrupt, exiting")
         finally:
             controller.stop()
 
@@ -217,10 +227,6 @@ class RelayHandler:
         unable to send messages through postmark immediately.
         """
         self.spool_dir = spool_dir
-        self.logger = Logger.with_default_handlers(
-            name=__file__,
-            level=logging.DEBUG,
-        )
 
     ####################################################################
     #
