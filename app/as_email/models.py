@@ -509,7 +509,22 @@ class EmailAccount(models.Model):
 
     # If account_type is ALIAS then messages are not delivered to this
     # account. Instead they are delivered to the accounts in the `alias_for`
-    # attribute. NOTE! This means you can alias across domains.
+    # attribute.
+    #
+    # NOTE: This means you can alias across domains as long as those domains
+    #       are hosted by this app.
+    #
+    # NOTE: We have no restrictions about what email account you can add to
+    #       alias_for. There are a number of valid cases where you want an
+    #       email address to alias for several different email addresses that
+    #       belong to EmailAccount's that are not the same one that is being
+    #       aliased from. In the world of this app there is very little chance
+    #       for abuse (it is just me, my family, and my friends) but if this
+    #       were a more open service it could be abused become someone could
+    #       make an account, alias_for your account, and then add you to many
+    #       email lists filling your account with unwanted mail and you have no
+    #       way to turn it off. So, this should be something requiring approval
+    #       by the account your adding to alias_for.
     #
     alias_for = models.ManyToManyField(
         "self",
@@ -517,6 +532,20 @@ class EmailAccount(models.Model):
         related_query_name="alias",
         through="Alias",
         symmetrical=False,
+        help_text=_(
+            "If the account type is `Alias` this is a list of the email "
+            "accounts that the email will be delivered to instead of this "
+            "email account. You are declaring that this account is an "
+            "`alias for` these other accounts. So, say `root@example.com` "
+            "is an alias for `admin@example.com`, or `thetwoofus@example.com` "
+            "is an alis for `me@example.com` and `you@example.com`. NOTE: "
+            "you can only alias to email accounts that are managed by this "
+            "system. If you want to have email forwarded to a email address "
+            "not managed by this system you need to choose the account type "
+            "`Forwarding` and properly specify the destination address in the "
+            "`forward_to` field. NOTE: `alias_for` is only relevant when "
+            "the account type is `Alias`. The field is otherwise ignored."
+        ),
     )
 
     # If account_type is FORWARDING then messages are not delivered
@@ -535,7 +564,16 @@ class EmailAccount(models.Model):
     #       saved. We should have some indicator along with a button
     #       you press to actually send the test email.
     #
-    forward_to = models.EmailField(null=True, blank=True)
+    forward_to = models.EmailField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "When the email account account type is set to `Forwarding` this "
+            "is the email address that this email is forwarded to. NOTE: "
+            "`forward_to` is only relevant when the account type is "
+            "`Forwarding`. The field is otherwise ignored."
+        ),
+    )
 
     forward_style = models.CharField(
         max_length=2,

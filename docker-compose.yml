@@ -28,6 +28,35 @@ services:
     profiles:
       - prod
 
+  smtpd:
+    image: as_email_service_app
+    container_name: smtpd
+    ports:
+      - "587:587"
+    command: /app/scripts/start_smtpd.sh
+    restart: always
+    env_file: .env
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
+      - "${HOST_SSL_DIR}:/mnt/ssl:ro"
+    profiles:
+      - prod
+
+  worker:
+    image: as_email_service_app
+    container_name: worker
+    command: /app/scripts/start_worker.sh
+    restart: always
+    env_file: .env
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
+    profiles:
+      - dev
+      - prod
+
   devweb:
     <<: *web
     image: as_email_service_app_dev:latest
@@ -55,36 +84,26 @@ services:
     profiles:
       - dev
 
-  smtpd:
-    image: as_email_service_app
-    container_name: smtpd
+  devsmtpd:
+    <<: *web
+    image: as_email_service_app_dev:latest
+    container_name: dev_smtpd
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: dev
     ports:
       - "587:587"
     command: /app/scripts/start_smtpd.sh
     restart: always
     env_file: .env
     volumes:
+      - ./app:/app:z
       - "${HOST_DB_DIR}:/mnt/db:z"
       - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
-      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
       - "${HOST_SSL_DIR}:/mnt/ssl:ro"
     profiles:
       - dev
-      - prod
-
-  worker:
-    image: as_email_service_app
-    container_name: worker
-    command: /app/scripts/start_worker.sh
-    restart: always
-    env_file: .env
-    volumes:
-      - "${HOST_DB_DIR}:/mnt/db:z"
-      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
-      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
-    profiles:
-      - dev
-      - prod
 
   redis:
     image: redis:latest
