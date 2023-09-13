@@ -236,6 +236,9 @@ class Authenticator:
             logger.info(
                 "Authenticator: FAIL: auth mechanism %s not accepted", mechanism
             )
+            fail_nothandled.message = (
+                f"Authenticator: FAIL: auth mechanism {mechanism} not accepted"
+            )
             return fail_nothandled
 
         if not isinstance(auth_data, LoginPassword):
@@ -243,6 +246,7 @@ class Authenticator:
             logger.info(
                 "Authenticator: FAIL: '%r' not LoginPassword", auth_data
             )
+            fail_nothandled.message = "Auth data not LoginPassword"
             return fail_nothandled
 
         username = str(auth_data.login, "utf-8")
@@ -258,6 +262,7 @@ class Authenticator:
             logger.info(
                 "Authenticator: FAIL: '%s' not a valid account", username
             )
+            fail_nothandled.message = "Invalid account"
             return fail_nothandled
 
         # If the account is deactivated it is not allowed to relay email.
@@ -265,11 +270,13 @@ class Authenticator:
         if account.deactivated:
             self.incr_fails(session.peer)
             logger.info("Authenticator: FAIL: '%s' is deactivated", account)
+            fail_nothandled.message = "Account deactivated"
             return fail_nothandled
 
         if not account.check_password(password):
             self.incr_fails(session.peer)
             logger.info("Authenticator: FAIL: '%s' invalid password", account)
+            fail_nothandled.message = "Authentication failed"
             return fail_nothandled
 
         # Upon success we pass the account back as the auth_data

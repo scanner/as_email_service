@@ -46,6 +46,37 @@ def test_authenticator_authenticate(email_account_factory, faker):
         )
         res = auth(None, sess, None, mechanism, auth_data)
         assert res.success
+        assert res.auth_data == ea
+    mechanism = "LOGIN"
+
+    # Test invalid password.
+    #
+    auth_data = LoginPassword(
+        login=bytes(ea.email_address, "utf-8"),
+        password=bytes(faker.pystr(), "utf-8"),
+    )
+    res = auth(None, sess, None, mechanism, auth_data)
+    assert res.success is False
+
+    # Test invalid account.
+    #
+    auth_data = LoginPassword(
+        login=bytes(faker.email(), "utf-8"),
+        password=bytes(password, "utf-8"),
+    )
+    res = auth(None, sess, None, mechanism, auth_data)
+    assert res.success is False
+
+    # Test deactivated account.
+    #
+    ea.deactivated = True
+    ea.save()
+    auth_data = LoginPassword(
+        login=bytes(ea.email_address, "utf-8"),
+        password=bytes(password, "utf-8"),
+    )
+    res = auth(None, sess, None, mechanism, auth_data)
+    assert res.success is False
 
     # We do not support these auth mechanisms. Also make sure random strings
     # fail. This is mostly so that when we DO support these mechanisms this
