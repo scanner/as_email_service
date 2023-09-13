@@ -19,7 +19,7 @@ import sys
 #
 import time
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 # 3rd party imports
 #
@@ -57,22 +57,14 @@ class DenyInfo(BaseModel):
     """
     Info for recording failure attempts by a peer.
 
-    NOTE: A peer is what we get back from `peername` for
+    NOTE: A peer is the first part of the tuple that we back from `peername` for
 
     https://docs.python.org/3/library/asyncio-protocol.html#asyncio.BaseTransport.get_extra_info
-
-    XXX Will flesh it out later but we want a certain number of auth
-        failures within a certain amount of time to cause them to be
-        denied any further attempts for a certain amount of time.
     """
 
     num_fails: int
-    peer: Tuple[str, int]
+    peer_addr: str
     expiry: Optional[datetime]
-
-
-MAX_NUM_AUTH_FAILURES = 5
-AUTH_FAILURE_EXPIRY = timedelta(hours=1)
 
 
 ########################################################################
@@ -140,6 +132,9 @@ class Command(BaseCommand):
 ########################################################################
 #
 class Authenticator:
+    MAX_NUM_AUTH_FAILURES = 5
+    AUTH_FAILURE_EXPIRY = timedelta(hours=1)
+
     ####################################################################
     #
     def __init__(self):
@@ -148,11 +143,9 @@ class Authenticator:
         this smtp relay. It keeps track of failures and what peer sent them so
         we can quickly deny repeated attempts by the same peer.
         """
-        # To avoid race conditions when accessing or modifying the black list
-        # put it under a lock.
+        # This blacklist is keyed by ip address.
         #
         self.blacklist = {}
-        self.blacklist_lock = asyncio.Lock()
 
     ####################################################################
     #
@@ -165,19 +158,22 @@ class Authenticator:
 
         Every auth failure extends the expiry time.
         """
-        expiry = datetime.utcnow() + AUTH_FAILURE_EXPIRY
-        if peer not in self.blacklist:
-            deny = DenyInfo(num_fails=1, peer=peer, expiry=expiry)
-            self.blacklist[peer] = deny
+        expiry = datetime.utcnow() + self.AUTH_FAILURE_EXPIRY
+        peer_addr = peer[0]
+        if peer_addr not in self.blacklist:
+            deny = DenyInfo(num_fails=1, peer_addr=peer[0], expiry=expiry)
+            self.blacklist[peer_addr] = deny
         else:
-            deny = self.blacklist[peer]
+            deny = self.blacklist[peer_addr]
             deny.num_fails += 1
             deny.expiry = expiry
 
     ####################################################################
     #
-    async def check_deny(self, peer):
+    def check_deny(self, peer):
         """
+        Return True if we ARE denying this connection.
+
         Check to see if the given peer has too many auth failures.  If a
         DenyInfo exists and it is _before_ the expiry, and the number of fails
         is above the limit then return True - this peer is denied.
@@ -190,18 +186,18 @@ class Authenticator:
 
         If there is no deny info at all, then this peer is allowed.
         """
-        async with self.blacklist_lock:
-            if peer not in self.blacklist:
-                return False
+        peer_addr = peer[0]
+        if peer_addr not in self.blacklist:
+            return False
 
-            now = datetime.utcnow()
-            deny = self.blacklist[peer]
-            if now > deny.expiry:
-                del self.blacklist[peer]
-                return False
+        now = datetime.utcnow()
+        deny = self.blacklist[peer_addr]
+        if now > deny.expiry:
+            del self.blacklist[peer_addr]
+            return False
 
-            if deny.num_fails < MAX_NUM_AUTH_FAILURES:
-                return False
+        if deny.num_fails < self.MAX_NUM_AUTH_FAILURES:
+            return False
         return True
 
     ####################################################################
@@ -225,16 +221,19 @@ class Authenticator:
         so that there are no delays in authentication changes.
         """
         logger.debug(
-            "Authenticator: session: %r, mechanism: %s, auth data: %r",
+            "Authenticator: session: %r, mechanism: %s, auth data: %r, peer: %s",
             session,
             mechanism,
             auth_data,
+            session.peer[0],
         )
         fail_nothandled = AuthResult(success=False, handled=False)
         if mechanism not in ("LOGIN", "PLAIN"):
             self.incr_fails(session.peer)
             logger.info(
-                "Authenticator: FAIL: auth mechanism %s not accepted", mechanism
+                "Authenticator: FAIL: auth mechanism %s not accepted, from: %s",
+                mechanism,
+                session.peer[0],
             )
             fail_nothandled.message = (
                 f"Authenticator: FAIL: auth mechanism {mechanism} not accepted"
@@ -244,7 +243,9 @@ class Authenticator:
         if not isinstance(auth_data, LoginPassword):
             self.incr_fails(session.peer)
             logger.info(
-                "Authenticator: FAIL: '%r' not LoginPassword", auth_data
+                "Authenticator: FAIL: '%r' not LoginPassword, from %s",
+                auth_data,
+                session.peer[0],
             )
             fail_nothandled.message = "Auth data not LoginPassword"
             return fail_nothandled
@@ -260,7 +261,9 @@ class Authenticator:
             #     period of time.
             self.incr_fails(session.peer)
             logger.info(
-                "Authenticator: FAIL: '%s' not a valid account", username
+                "Authenticator: FAIL: '%s' not a valid account, from: %s",
+                username,
+                session.peer[0],
             )
             fail_nothandled.message = "Invalid account"
             return fail_nothandled
@@ -269,13 +272,21 @@ class Authenticator:
         #
         if account.deactivated:
             self.incr_fails(session.peer)
-            logger.info("Authenticator: FAIL: '%s' is deactivated", account)
+            logger.info(
+                "Authenticator: FAIL: '%s' is deactivated, from: %s",
+                account,
+                session.peer[0],
+            )
             fail_nothandled.message = "Account deactivated"
             return fail_nothandled
 
         if not account.check_password(password):
             self.incr_fails(session.peer)
-            logger.info("Authenticator: FAIL: '%s' invalid password", account)
+            logger.info(
+                "Authenticator: FAIL: '%s' invalid password from %s",
+                account,
+                session.peer[0],
+            )
             fail_nothandled.message = "Authentication failed"
             return fail_nothandled
 
@@ -328,15 +339,15 @@ class RelayHandler:
         # NOTE: We have to at least set session.host_name
         #
         session.host_name = hostname
-        # XXX here is where our logic for failing a connection because
-        #     it hit our black list.
-        #
-        deny = await self.authenticator.check_deny(session.peer)
-        if deny:
+        if self.authenticator.check_deny(session.peer):
             logger.info(
                 "handle_EHLO: Denying %s due to many failed auth attempts",
-                session.peer,
+                session.peer[0],
             )
+            # If we deny this connection we also sleep for a short bit before
+            # returning the error to the client. This makes a mini-tarpit that
+            # will hopefully slow down connection attempts a little bit.
+            await asyncio.sleep(5)
             responses.append("550 Too many failed attempts")
         return responses
 
