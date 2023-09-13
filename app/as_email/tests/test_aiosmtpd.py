@@ -39,10 +39,30 @@ def test_authenticator_authenticate(email_account_factory, faker):
     #
     sess = SMTPSession(None)
     sess.peer = ("127.0.0.1", 1234)
-    mechanism = "LOGIN"
-    auth_data = LoginPassword(
-        login=bytes(ea.email_address, "utf-8"),
-        password=bytes(password, "utf-8"),
-    )
-    res = auth(None, sess, None, mechanism, auth_data)
-    assert res.success
+    for mechanism in ("LOGIN", "PLAIN"):
+        auth_data = LoginPassword(
+            login=bytes(ea.email_address, "utf-8"),
+            password=bytes(password, "utf-8"),
+        )
+        res = auth(None, sess, None, mechanism, auth_data)
+        assert res.success
+
+    # We do not support these auth mechanisms. Also make sure random strings
+    # fail. This is mostly so that when we DO support these mechanisms this
+    # test will fail to remind us to make sure this test is updated.
+    #
+    for mechanism in (
+        "CRAM-MD5",
+        "DIGEST-MD5",
+        "NTLM",
+        "GSSAPI",
+        "XOAUTH",
+        "XOAUTH2",
+        faker.pystr(),
+    ):
+        auth_data = LoginPassword(
+            login=bytes(ea.email_address, "utf-8"),
+            password=bytes(password, "utf-8"),
+        )
+        res = auth(None, sess, None, mechanism, auth_data)
+        assert res.success is False
