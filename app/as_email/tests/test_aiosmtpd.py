@@ -169,6 +169,8 @@ def test_authenticator_blacklist(email_account_factory, faker):
     #
     deny.expiry = now
     assert auth.check_deny(sess.peer) is False
+    assert sess.peer[0] not in auth.blacklist
 
     res = auth(None, sess, None, mechanism, auth_data)
     assert res.success is False
+    assert sess.peer[0] in auth.blacklist
