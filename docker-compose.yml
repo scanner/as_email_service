@@ -108,6 +108,7 @@ services:
   redis:
     image: redis:latest
     container_name: redis
+    restart: always
     volumes:
       - "redis_data:/data"
       - type: bind
@@ -122,6 +123,7 @@ services:
   mailhog:
     image: druidfi/mailhog:1.0.1
     container_name: mailhog
+    restart: always
     ports:
       - "8025:8025"
     profiles:

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 ####################################################################
 #
-def split_email_mailbox_hash(email_address: str) -> Tuple[str]:
+def split_email_mailbox_hash(email_address: str) -> Tuple[str, str | None]:
     """
     Split an email address in to the email address and its mailbox
     hash. Mailbox hash is None if there is none.

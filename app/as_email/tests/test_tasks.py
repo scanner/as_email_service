@@ -47,7 +47,8 @@ def test_expire_old_blocked_messages(blocked_message_factory):
     num = BlockedMessage.objects.count()
     assert num == 7
 
-    expire_old_blocked_messages()
+    res = expire_old_blocked_messages()
+    res()
 
     num = BlockedMessage.objects.count()
     assert num == 3

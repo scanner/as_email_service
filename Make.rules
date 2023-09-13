@@ -8,7 +8,7 @@ PYTHON ?= python3.11
 	@echo "pre-commit hooks installed!"
 	@touch .git/hooks/pre-commit .git/hooks/pre-push
 
-clean::
+clean::	## Swab the decks! Does not touch docker images or volumes.
 	@find $(ROOT_DIR) -name \*~ -exec rm '{}' +
 	@find $(ROOT_DIR) -name \*.pyc -exec rm '{}' +
 	@find $(ROOT_DIR) -name __pycache__ -prune -exec rm -fr '{}' +
@@ -30,7 +30,7 @@ requirements/lint.txt: requirements/lint.in
 requirements/development.txt: requirements/development.in requirements/lint.txt requirements/production.txt
 	@make -C requirements/ development.txt
 
-requirements: requirements/development.txt
+requirements: requirements/development.txt	## Rebuild out of date requirements
 
 $(ROOT_DIR)/venv: requirements/development.txt
 	@if [ -d "$@" ] ; then \
@@ -48,10 +48,10 @@ venv:: $(ROOT_DIR)/venv
 # need done for the pre-commit hook to pass. Squeegee runs the various
 # linting and formatting commands directly. It also runs mypy.
 #
-squeegee: venv isort black mypy
+squeegee: venv isort black mypy	## Manually run isort, black, mypy, and ruff over all project files
 	@$(ACTIVATE) ruff $(ROOT_DIR)/app/
 
-lint: venv .git/hooks/pre-commit
+lint: venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only runs over files in the git repo (and staged fiels)
 	@$(ACTIVATE) pre-commit run -a
 
 PY_FILES=$(shell find $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/ -type f -name '*.py')
@@ -63,11 +63,11 @@ PY_FILES=$(shell find $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/ -type f -name '*.py'
 	@$(ACTIVATE) isort $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
 	@touch .isorted
 
-formatting: isort black
+formatting: isort black	## Run `isort` and `black` over all files in project.
 isort: .isorted
 black: .blackened
 
-mypy: venv
+mypy: venv  ## Run `mypy` over `app/` and `scripts/`
 	@$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/ ./scripts/
 
 .PHONY: requirements formatting lint squeegee isort black mypy

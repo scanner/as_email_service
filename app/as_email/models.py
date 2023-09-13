@@ -424,13 +424,18 @@ class EmailAccount(models.Model):
         (DELIVER, "Deliver"),
     ]
 
-    # EmailAccount types - account, alias, forwarding
+    # EmailAccount types - local, imap, alias, forwarding
+    # XXX I think this should be 'delivery method' or something. It is not so
+    #     much about the type of Email Account this is but how the email that
+    #     this account receives is delivered.
     #
+    LOCAL_DELIVERY = "LD"
+    IMAP_DELIVERY = "IM"
     ALIAS = "AL"
     FORWARDING = "FW"
-    LOCAL_DELIVERY = "LD"
     ACCOUNT_TYPE_CHOICES = [
         (LOCAL_DELIVERY, "Local Delivery"),
+        # (IMAP_DELIVERY), "IMAP",
         (ALIAS, "Alias"),
         (FORWARDING, "Forwarding"),
     ]
@@ -461,7 +466,16 @@ class EmailAccount(models.Model):
         ),
     )
     account_type = models.CharField(
-        max_length=2, choices=ACCOUNT_TYPE_CHOICES, default=LOCAL_DELIVERY
+        max_length=2,
+        choices=ACCOUNT_TYPE_CHOICES,
+        default=LOCAL_DELIVERY,
+        help_text=_(
+            "Account type indicates how email for this account is delivered. "
+            "This is either delivery to a local mailbox, delivery to an "
+            "IMAP mailbox, an alias to another email account on this system "
+            "or forwarding to an email address by encapsulating the message "
+            "or rewriting the headers."
+        ),
     )
 
     mail_dir = models.CharField(
