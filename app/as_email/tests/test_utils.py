@@ -16,7 +16,7 @@ from ..utils import split_email_mailbox_hash
 
 ####################################################################
 #
-def test_split_hash(faker):
+def test_split_hash():
     email_addrs = [
         ("foo@example.com", ("foo@example.com", None)),
         ("foo+inbox@example.com", ("foo@example.com", "inbox")),

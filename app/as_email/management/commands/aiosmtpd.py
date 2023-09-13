@@ -19,7 +19,7 @@ import sys
 #
 import time
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # 3rd party imports
 #
@@ -67,7 +67,7 @@ class DenyInfo(BaseModel):
     """
 
     num_fails: int
-    peer_name: str
+    peer: Tuple[str, int]
     expiry: Optional[datetime]
 
 
@@ -167,7 +167,7 @@ class Authenticator:
         """
         expiry = datetime.utcnow() + AUTH_FAILURE_EXPIRY
         if peer not in self.blacklist:
-            deny = DenyInfo(num_fails=1, peer_name=peer, expiry=expiry)
+            deny = DenyInfo(num_fails=1, peer=peer, expiry=expiry)
             self.blacklist[peer] = deny
         else:
             deny = self.blacklist[peer]
@@ -215,6 +215,11 @@ class Authenticator:
         slow. Since our initial implementation uses a local sqlite db and there
         should not be that much contention we expect it to be quick.
 
+        NOTE: We only support `plain` and `login` auth methods. CRAM-MD5
+        requires that we know the clear text of the password. This requires
+        that we only access encrypted connections from the SMTP client trying
+        to authenticate.
+
         If we were to use some sort of cache, we need to make sure that the
         cache is invalidated whenever an email account is saved/deleted/added
         so that there are no delays in authentication changes.
@@ -240,10 +245,10 @@ class Authenticator:
             )
             return fail_nothandled
 
-        username = auth_data.login
-        password = auth_data.password
+        username = str(auth_data.login, "utf-8")
+        password = str(auth_data.password, "utf-8")
         try:
-            account = EmailAccount.objects.get(address=username)
+            account = EmailAccount.objects.get(email_address=username)
         except EmailAccount.DoesNotExist:
             # XXX We need to keep a count of failures for accounts
             #     that do not exist and if we get above a ceratin amount
