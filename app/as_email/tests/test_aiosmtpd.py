@@ -184,8 +184,8 @@ def test_handler_valid_email(
     email_account_factory,
     email_factory,
     smtp,
-    smtp_client,
     plain_controller,
+    smtp_client,
     faker,
 ):
     password = faker.pystr(min_chars=8, max_chars=32)
