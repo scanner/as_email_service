@@ -15,7 +15,8 @@ from aiosmtpd.smtp import Session as SMTPSession
 
 # Project imports
 #
-from ..management.commands.aiosmtpd import Authenticator
+from ..management.commands.aiosmtpd import Authenticator, RelayHandler
+from .conftest import handler_data
 
 pytestmark = pytest.mark.django_db
 
@@ -174,3 +175,27 @@ def test_authenticator_blacklist(email_account_factory, faker):
     res = auth(None, sess, None, mechanism, auth_data)
     assert res.success is False
     assert sess.peer[0] in auth.blacklist
+
+
+####################################################################
+#
+@handler_data(class_=RelayHandler)
+def test_handler_valid_email(
+    email_account_factory,
+    email_factory,
+    smtp,
+    smtp_client,
+    plain_controller,
+    faker,
+):
+    password = faker.pystr(min_chars=8, max_chars=32)
+    ea = email_account_factory(password=password)
+    ea.save()
+    msg = email_factory(frm=ea.email_address)
+    rcpt_tos = msg.get_all("to")
+
+    handler = plain_controller.handler
+    assert isinstance(handler, RelayHandler)
+
+    smtp_client.login(ea.email_address, password)
+    smtp_client.send_message(msg, from_addr=ea.email_account, to_addrs=rcpt_tos)

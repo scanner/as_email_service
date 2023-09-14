@@ -7,7 +7,9 @@ so we can use them in other modules without running the code in app.
 # system imports
 #
 import logging
-from typing import Tuple
+from email._header_value_parser import get_addr_spec, get_angle_addr
+from email.errors import HeaderParseError
+from typing import Optional, Tuple
 
 # Project imports
 #
@@ -45,3 +47,28 @@ def spooled_email(recipient, msg_id, date, raw_email):
         "date": date,
         "raw_email": raw_email,
     }
+
+
+####################################################################
+#
+# NOTE: Cribbed from
+#    https://github.com/aio-libs/aiosmtpd/blob/83168cdc057d9d63b6f212f330fafecb4fbfe662/aiosmtpd/smtp.py#L1145
+#
+def parse_email_addr(arg: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Try to parse address given in SMTP command.
+
+    Returns address=None if arg can't be parsed properly (get_angle_addr /
+    get_addr_spec raised HeaderParseError)
+    """
+    if not arg:
+        return "", ""
+    try:
+        if arg.lstrip().startswith("<"):
+            address, rest = get_angle_addr(arg)
+        else:
+            address, rest = get_addr_spec(arg)
+    except HeaderParseError:
+        return None, None
+    address = address.addr_spec
+    return address, rest

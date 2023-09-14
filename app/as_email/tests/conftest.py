@@ -3,15 +3,19 @@
 """
 pytest fixtures for our tests
 """
-from email.headerregistry import Address
-
 # system imports
 #
+import socket
+from contextlib import suppress
+from email.headerregistry import Address
 from email.message import EmailMessage
+from smtplib import SMTP as SMTPClient
+from typing import Callable, Generator, NamedTuple
 
 # 3rd party imports
 #
 import pytest
+from aiosmtpd.controller import Controller
 from pytest_factoryboy import register
 
 # Project imports
@@ -195,3 +199,82 @@ def smtp(mocker):
     mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
     mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP)
     return mock_SMTP
+
+
+# We need to test our handler against various email messages, email accounts,
+# and from addresses. These fixtures have been imported with some modifications
+# from aiosmtpd:
+#   https://github.com/aio-libs/aiosmtpd/blob/master/aiosmtpd/tests/conftest.py
+#
+
+handler_data = pytest.mark.handler_data
+
+
+####################################################################
+####################################################################
+#
+class HostPort(NamedTuple):
+    host: str = "localhost"
+    port: int = 8025
+
+
+####################################################################
+####################################################################
+#
+class Global:
+    SrvAddr: HostPort = HostPort()
+    FQDN: str = socket.getfqdn()
+
+    @classmethod
+    def set_addr_from(cls, contr: Controller):
+        cls.SrvAddr = HostPort(contr.hostname, contr.port)
+
+
+####################################################################
+#
+@pytest.fixture
+def smtp_client(
+    request: pytest.FixtureRequest,
+) -> Generator[SMTPClient, None, None]:
+    """
+    Generic SMTP Client,
+    will connect to the ``host:port`` defined in ``Global.SrvAddr``
+    unless overriden using :func:`client_data` marker.
+    """
+    marker = request.node.get_closest_marker("client_data")
+    if marker:
+        markerdata = marker.kwargs or {}
+    else:
+        markerdata = {}
+    addrport = markerdata.get("connect_to", Global.SrvAddr)
+    with SMTPClient(*addrport) as client:
+        yield client
+
+
+####################################################################
+#
+@pytest.fixture
+def plain_controller(
+    get_handler: Callable, get_controller: Callable
+) -> Generator[Controller, None, None]:
+    """
+    Returns a aiosmtpd Controller that, by default, gets invoked with no
+    optional args.  Hence the moniker "plain".
+
+    Internally uses the :fixture:`get_controller` and :fixture:`get_handler`
+    fixtures, so optional args/kwargs can be specified for the Controller and
+    the handler via the :func:`controller_data` and :func:`handler_data`
+    markers, respectively.
+    """
+    handler = get_handler()
+    controller = get_controller(handler)
+    controller.start()
+    Global.set_addr_from(controller)
+    #
+    yield controller
+    #
+    # Some test cases need to .stop() the controller inside themselves
+    # in such cases, we must suppress Controller's raise of AssertionError
+    # because Controller doesn't like .stop() to be invoked more than once
+    with suppress(AssertionError):
+        controller.stop()

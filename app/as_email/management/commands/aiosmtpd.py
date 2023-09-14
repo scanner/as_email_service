@@ -8,25 +8,22 @@ It gets the mailprovider info from the django configuration.
 It authenticates mail accounts from the django as_email.models.Account
 object.
 """
+# system imports
+#
 import asyncio
 import email
 import email.policy
 import logging
 import ssl
 import sys
-
-# system imports
-#
 import time
 from datetime import datetime, timedelta
+from email.message import EmailMessage
 from typing import List, Optional
 
 # 3rd party imports
 #
-# from aiologger import Logger
 from aiosmtpd.controller import Controller
-
-# from aiosmtpd.smtp import SMTP as SMTPServer
 from aiosmtpd.smtp import SMTP, AuthResult
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import LoginPassword
@@ -35,6 +32,7 @@ from aiosmtpd.smtp import Session as SMTPSession
 # Project imports
 #
 from as_email.models import EmailAccount
+from as_email.utils import parse_email_addr
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -353,8 +351,34 @@ class RelayHandler:
 
     ####################################################################
     #
-    # XXX according to docs this should be `async def handle_DATA`
-    # .. not sure why their example does not follow that convention.
+    def handle_MAIL(
+        self,
+        server: SMTP,
+        session: SMTPSession,
+        envelope: SMTPEnvelope,
+        address: str,
+        mail_options: List[str],
+    ) -> str:
+        """
+        You can ONLY send email _from_ the email address of the email
+        account that authenticated to the relay.
+        """
+        account = session.auth_data
+        valid_from = account.email_address.lower()
+        logger.debug("handle_MAIL: account: %s, address: %s", account, address)
+        frm, _ = parse_email_addr(address)
+        if frm is None or frm.lower() != valid_from:
+            logger.info(
+                "handle_MAIL: For account %s, FROM %s is not valid "
+                "(from address %s)",
+                account,
+                frm,
+                session.peer[0],
+            )
+            return f"550 FROM must be '{valid_from}', not '{frm}'"
+        return "250 FROM OK"
+
+    ####################################################################
     #
     async def handle_DATA(
         self, server: SMTP, session: SMTPSession, envelope: SMTPEnvelope
@@ -364,18 +388,40 @@ class RelayHandler:
         #
         account = session.auth_data
         logger.debug("handle_DATA: account: %s", account)
+
+        # Do a double check to make sure that any 'From' headers are the email
+        # account sending the message.
+        #
+        # NOTE: "president of the universe <foo@example.com>" is still
+        #       considered a valid "from" address for "foo@example.com"
+        #
+        msg = email.message_from_bytes(
+            envelope.original_content,
+            policy=email.policy.default,
+        )
+        froms = msg.get_all("from")
+        valid_from = account.email_address.lower()
+        if froms:
+            for msg_from in froms:
+                frm, _ = parse_email_addr(msg_from)
+                if frm is None or frm.lower() != valid_from:
+                    return f"550 FROM must be '{valid_from}', not '{frm}'"
         try:
-            await sync_to_async(send_email_via_smtp(account, envelope))
+            await sync_to_async(
+                send_email_via_smtp(account, envelope.rcpt_tos, msg)
+            )
         except Exception as exc:
             logger.exception(f"Failed: {exc}")
-            return f"500 {str(exc)}"
+            return f"500 {exc}"
 
         return "250 OK"
 
 
 ########################################################################
 #
-def send_email_via_smtp(account, envelope):
+def send_email_via_smtp(
+    account: EmailAccount, rcpt_tos: List[str], msg: EmailMessage
+):
     """
     Use smtplib.SMTP to send the given email. Use the token to authenticate
     to the smtp server.
@@ -386,13 +432,9 @@ def send_email_via_smtp(account, envelope):
     If we fail to send the message due to a network issue the message will be
     written to the spool directory to be sent at a later time.
     """
-    msg = email.message_from_bytes(
-        envelope.original_content,
-        policy=email.policy.default,
-    )
     logger.info(
         "send_email_via_smtp: account: %s, rcpt_tos: %s",
         account,
-        envelope.rcpt_tos,
+        rcpt_tos,
     )
-    account.send_email_via_smtp(envelope.rcpt_tos, msg)
+    account.send_email_via_smtp(rcpt_tos, msg)
