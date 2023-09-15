@@ -363,6 +363,13 @@ class RelayHandler:
         You can ONLY send email _from_ the email address of the email
         account that authenticated to the relay.
         """
+        # handle_MAIL is responsible for setting the mail_from and mail_options
+        # on the envelope! I am not sure if we should or should not do this
+        # when we are going to possibly deny this request.
+        #
+        envelope.mail_from = address
+        envelope.mail_options.extend(mail_options)
+
         account = session.auth_data
         valid_from = account.email_address.lower()
         logger.debug("handle_MAIL: account: %s, address: %s", account, address)
@@ -375,7 +382,8 @@ class RelayHandler:
                 frm,
                 session.peer[0],
             )
-            return f"550 FROM must be '{valid_from}', not '{frm}'"
+            return f"551 FROM must be your account: '{valid_from}', not '{frm}'"
+
         return "250 FROM OK"
 
     ####################################################################

@@ -3,6 +3,8 @@
 """
 pytest fixtures for our tests
 """
+import email.policy
+
 # system imports
 #
 import inspect
@@ -18,6 +20,8 @@ from typing import Any, Callable, Generator, NamedTuple, Optional, Type
 import pytest
 from aiosmtpd.controller import Controller
 from aiosmtpd.handlers import Sink
+from aiosmtpd.smtp import Envelope as SMTPEnvelope
+from aiosmtpd.smtp import Session as SMTPSession
 from pytest_factoryboy import register
 
 # Project imports
@@ -203,12 +207,62 @@ def smtp(mocker):
     return mock_SMTP
 
 
+####################################################################
+#
+@pytest.fixture
+def aiosmtp_session(faker):
+    """
+    When testing handlers and authenticators we need a aiosmtp.smtp.Session
+
+    XXX We should make this return a callable and let the user pass in things
+        like the peer.
+    """
+    sess = SMTPSession(None)
+    sess.peer = (faker.ipv4(), faker.pyint(0, 65535))
+    return sess
+
+
+####################################################################
+#
+@pytest.fixture
+def aiosmtp_envelope(email_factory):
+    """
+    Similar to (and uses) email_factory to create a SMTPEnvelope.
+    """
+
+    def make_envelope(**kwargs):
+        """
+        if kwargs for 'subject', 'from' or 'to' are provided use those in
+        the message instead of faker generated ones. If they are `None` that
+        field is not set at all. Useful for generating envelopes that are pre
+        `handle_MAIL` that sets the `mail_from` attribute.
+
+        NOTE: `from` is a reserverd word in python so you need to specify
+              `frm`
+        """
+        env = SMTPEnvelope()
+        if "msg_from" in kwargs and kwargs["msg_from"] is not None:
+            env.mail_from = kwargs["msg_from"]
+            del kwargs["msg_from"]
+        if "mail_options" in kwargs:
+            env.mail_options = kwargs["mail_options"]
+            del kwargs["mail_options"]
+        if "to" in kwargs:
+            env.rcpt_tos.append(kwargs["to"])
+
+        msg = email_factory(**kwargs)
+        env.content = msg.as_string(policy=email.policy.default)
+        env.original_content = msg.as_bytes(policy=email.policy.default)
+        return env
+
+    return make_envelope
+
+
 # We need to test our handler against various email messages, email accounts,
 # and from addresses. These fixtures have been imported with some modifications
 # from aiosmtpd:
 #   https://github.com/aio-libs/aiosmtpd/blob/master/aiosmtpd/tests/conftest.py
 #
-
 handler_data = pytest.mark.handler_data
 
 

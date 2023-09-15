@@ -10,8 +10,7 @@ from datetime import datetime
 # 3rd party imports
 #
 import pytest
-from aiosmtpd.smtp import LoginPassword
-from aiosmtpd.smtp import Session as SMTPSession
+from aiosmtpd.smtp import SMTP, LoginPassword
 
 # Project imports
 #
@@ -23,24 +22,22 @@ pytestmark = pytest.mark.django_db
 
 ####################################################################
 #
-def test_authenticator_authenticate(email_account_factory, faker):
+def test_authenticator_authenticate(
+    email_account_factory, faker, aiosmtp_session
+):
     """
     Given an email account check various authentication attempts and its
     failure methods.
     """
+    sess = aiosmtp_session
     password = faker.pystr(min_chars=8, max_chars=32)
     ea = email_account_factory(password=password)
     ea.save()
     auth = Authenticator()
 
     # Our authenticator only uses the `session`, `mechanism`, and `auth_data`
-    # parameters to check authentication. For `session` it only cares about
-    # session.peer.. we do not even care what peer is as long as it can be used
-    # as a key to a dict. It takes an asyncio event loop, but we never use that
-    # in our test so we do not bother passing one in.
+    # parameters to check authentication.
     #
-    sess = SMTPSession(None)
-    sess.peer = ("127.0.0.1", 1234)
     for mechanism in ("LOGIN", "PLAIN"):
         auth_data = LoginPassword(
             login=bytes(ea.email_address, "utf-8"),
@@ -103,24 +100,19 @@ def test_authenticator_authenticate(email_account_factory, faker):
 
 ####################################################################
 #
-def test_authenticator_blacklist(email_account_factory, faker):
+def test_authenticator_blacklist(email_account_factory, faker, aiosmtp_session):
     """
     Test the Authenticator blacklist mechanism that blocks too many
     authentication failures.
     """
+    # Our authenticator only uses the `session`, `mechanism`, and `auth_data`
+    # parameters to check authentication.
+    #
+    sess = aiosmtp_session
     password = faker.pystr(min_chars=8, max_chars=32)
     ea = email_account_factory(password=password)
     ea.save()
     auth = Authenticator()
-
-    # Our authenticator only uses the `session`, `mechanism`, and `auth_data`
-    # parameters to check authentication. For `session` it only cares about
-    # session.peer.. we do not even care what peer is as long as it can be used
-    # as a key to a dict. It takes an asyncio event loop, but we never use that
-    # in our test so we do not bother passing one in.
-    #
-    sess = SMTPSession(None)
-    sess.peer = ("127.0.0.1", 1234)
 
     # A time before any failed attempts (so we can check expiry against this)
     #
@@ -179,7 +171,42 @@ def test_authenticator_blacklist(email_account_factory, faker):
 
 ####################################################################
 #
-@handler_data(class_=RelayHandler)
+@pytest.mark.asyncio
+async def test_relayhandler_ehlo(
+    tmp_path, faker, aiosmtp_session, aiosmtp_envelope
+):
+    """
+    the EHLO handler is where we deny connections from hosts on the
+    authenticator's blacklist.
+    """
+    sess = aiosmtp_session
+    authenticator = Authenticator()
+    handler = RelayHandler(tmp_path, authenticator)
+    smtp = SMTP(handler, authenticator=authenticator)
+    envelope = aiosmtp_envelope()
+    hostname = faker.hostname()
+
+    # does a `check_deny()` against the session.peer. Okay on the first access.
+    responses = await handler.handle_EHLO(smtp, sess, envelope, hostname, [])
+    assert len(responses) == 0
+    assert sess.host_name == hostname
+
+    # However, if this peer has failed to authenticate multiple times then we
+    # will deny them.
+    #
+    authenticator.incr_fails(sess.peer)
+    authenticator.blacklist[sess.peer[0]].num_fails = (
+        Authenticator.MAX_NUM_AUTH_FAILURES + 1
+    )
+
+    responses = await handler.handle_EHLO(smtp, sess, envelope, hostname, [])
+    assert len(responses) == 1
+    assert responses[0].startswith("550 ")
+
+
+####################################################################
+#
+@handler_data(class_=RelayHandler, args_=("tmp", Authenticator()))
 def test_handler_valid_email(
     email_account_factory,
     email_factory,
@@ -195,6 +222,7 @@ def test_handler_valid_email(
     rcpt_tos = msg.get_all("to")
 
     handler = plain_controller.handler
+    handler.spool_dir = ea.server.outgoing_spool_dir
     assert isinstance(handler, RelayHandler)
 
     smtp_client.login(ea.email_address, password)
