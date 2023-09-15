@@ -351,7 +351,7 @@ class RelayHandler:
 
     ####################################################################
     #
-    def handle_MAIL(
+    async def handle_MAIL(
         self,
         server: SMTP,
         session: SMTPSession,
@@ -373,18 +373,19 @@ class RelayHandler:
         account = session.auth_data
         valid_from = account.email_address.lower()
         logger.debug("handle_MAIL: account: %s, address: %s", account, address)
-        frm, _ = parse_email_addr(address)
+        frm = parse_email_addr(address)
         if frm is None or frm.lower() != valid_from:
             logger.info(
-                "handle_MAIL: For account %s, FROM %s is not valid "
+                "handle_MAIL: For account '%s', FROM '%s' (%s) is not valid "
                 "(from address %s)",
                 account,
                 frm,
+                address,
                 session.peer[0],
             )
-            return f"551 FROM must be your account: '{valid_from}', not '{frm}'"
+            return f"551 FROM must be your email account's email address: '{valid_from}', not '{frm}'"
 
-        return "250 FROM OK"
+        return "250 OK valid FROM"
 
     ####################################################################
     #

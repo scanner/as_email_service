@@ -11,6 +11,7 @@ from datetime import datetime
 #
 import pytest
 from aiosmtpd.smtp import SMTP, LoginPassword
+from asgiref.sync import sync_to_async
 
 # Project imports
 #
@@ -172,7 +173,7 @@ def test_authenticator_blacklist(email_account_factory, faker, aiosmtp_session):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_relayhandler_ehlo(
+async def test_relayhandler_handle_EHLO(
     tmp_path, faker, aiosmtp_session, aiosmtp_envelope
 ):
     """
@@ -202,6 +203,60 @@ async def test_relayhandler_ehlo(
     responses = await handler.handle_EHLO(smtp, sess, envelope, hostname, [])
     assert len(responses) == 1
     assert responses[0].startswith("550 ")
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_relayhandler_handle_MAIL(
+    email_account_factory, faker, aiosmtp_session, aiosmtp_envelope
+):
+    """
+    the `handle_MAIL` is where we set the `mail_from` attribute of the
+    SMTPEnvelolope. This is where we make sure that the email account relaying
+    through aiosmtpd is using their FROM address (because we only allow them to
+    send email from the email address associated with their email account.
+    """
+    ea = await sync_to_async(email_account_factory)()
+    await ea.asave()
+
+    sess = aiosmtp_session
+    sess.auth_data = ea
+    authenticator = Authenticator()
+    handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+    smtp = SMTP(handler, authenticator=authenticator)
+    envelope = aiosmtp_envelope()
+
+    # from address is valid as long as the email part is the same as the
+    # ea.email_address.
+    #
+    from_address = ea.email_address
+    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
+    assert response.startswith("250 OK")
+    assert envelope.mail_from == from_address
+
+    # Even saying you are someone else is okay, as long as your email address
+    # is your email address.
+    #
+    from_address = f"{faker.name()} <{ea.email_address}>"
+    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
+    assert response.startswith("250 OK")
+    assert envelope.mail_from == from_address
+
+    # However anyother email address, even from the same domain will be denied.
+    #
+    from_address = faker.email()
+    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
+    assert response.startswith("551 ")
+    # NOTE: mail_from is set even if we deny them.
+    assert envelope.mail_from == from_address
+
+    # Different username, same domain.
+    #
+    from_address = f"{faker.user_name()}@{ea.email_address.split('@')[1]}"
+    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
+    assert response.startswith("551 ")
+    assert envelope.mail_from == from_address
 
 
 ####################################################################
