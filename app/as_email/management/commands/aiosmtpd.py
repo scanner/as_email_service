@@ -396,7 +396,11 @@ class RelayHandler:
         # session.auth_data.
         #
         account = session.auth_data
-        logger.debug("handle_DATA: account: %s", account)
+        logger.debug(
+            "handle_DATA: account: %s, envelope from: %s",
+            account,
+            envelope.mail_from,
+        )
 
         # Do a double check to make sure that any 'From' headers are the email
         # account sending the message.
@@ -412,12 +416,17 @@ class RelayHandler:
         valid_from = account.email_address.lower()
         if froms:
             for msg_from in froms:
-                frm, _ = parse_email_addr(msg_from)
-                if frm is None or frm.lower() != valid_from:
-                    return f"550 FROM must be '{valid_from}', not '{frm}'"
+                frm = parse_email_addr(msg_from)
+                if frm is None or frm != valid_from:
+                    logger.info(
+                        "handle_DATA: `from` header in email not valid: '%s' (must be from '%s')",
+                        frm,
+                        valid_from,
+                    )
+                    return f"551 FROM must be '{valid_from}', not '{frm}'"
         try:
-            await sync_to_async(
-                send_email_via_smtp(account, envelope.rcpt_tos, msg)
+            await sync_to_async(send_email_via_smtp)(
+                account, envelope.rcpt_tos, msg
             )
         except Exception as exc:
             logger.exception(f"Failed: {exc}")

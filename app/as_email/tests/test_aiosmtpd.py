@@ -261,6 +261,36 @@ async def test_relayhandler_handle_MAIL(
 
 ####################################################################
 #
+@pytest.mark.asyncio
+async def test_relayhandler_handle_DATA(
+    email_account_factory, faker, smtp, aiosmtp_session, aiosmtp_envelope
+):
+    ea = await sync_to_async(email_account_factory)()
+    await ea.asave()
+
+    to = faker.email()
+
+    sess = aiosmtp_session
+    sess.auth_data = ea
+    authenticator = Authenticator()
+    handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+    smtp = SMTP(handler, authenticator=authenticator)
+    envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
+    envelope.mail_from = ea.email_address
+
+    response = await handler.handle_DATA(smtp, sess, envelope)
+    assert response.startswith("250 ")
+
+    send_message = smtp.return_value.send_message
+    assert send_message.call_count == 1
+    assert send_message.call_args.kwargs == {
+        "from_addr": ea.email_address,
+        "to_addrs": [to],
+    }
+
+
+####################################################################
+#
 @handler_data(class_=RelayHandler, args_=("tmp", Authenticator()))
 def test_handler_valid_email(
     email_account_factory,

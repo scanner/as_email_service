@@ -79,7 +79,7 @@ def email_factory(faker):
             username, domain_name = faker.email().split("@")
             msg["From"] = Address(faker.name(), username, domain_name)
         else:
-            msg["From"] = kwargs["frm"]
+            msg["From"] = kwargs["msg_from"]
 
         if "to" not in kwargs:
             username, domain_name = faker.email().split("@")
@@ -243,7 +243,6 @@ def aiosmtp_envelope(email_factory):
         env = SMTPEnvelope()
         if "msg_from" in kwargs and kwargs["msg_from"] is not None:
             env.mail_from = kwargs["msg_from"]
-            del kwargs["msg_from"]
         if "mail_options" in kwargs:
             env.mail_options = kwargs["mail_options"]
             del kwargs["mail_options"]

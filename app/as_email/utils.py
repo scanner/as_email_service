@@ -51,15 +51,12 @@ def spooled_email(recipient, msg_id, date, raw_email):
 
 ####################################################################
 #
-# NOTE: Cribbed from
-#    https://github.com/aio-libs/aiosmtpd/blob/83168cdc057d9d63b6f212f330fafecb4fbfe662/aiosmtpd/smtp.py#L1145
 #
 def parse_email_addr(arg: str) -> Optional[str]:
     """
-    Try to parse address given in SMTP command.
-
-    Returns address=None if arg can't be parsed properly (get_angle_addr /
-    get_addr_spec raised HeaderParseError)
+    Try to parse address given in SMTP command. This will be a "mailbox"
+    formatted address. All we care about is the addr spec parse of this address
+    ie: the `local` @ `domain` part.
     """
     if not arg:
         return ""
