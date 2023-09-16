@@ -19,50 +19,9 @@ from ..deliver import (
     deliver_message_locally,
 )
 from ..models import EmailAccount, MessageFilterRule
+from .conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
-
-
-####################################################################
-#
-def assert_email_equal(msg1, msg2, ignore_headers=False):
-    """
-    Because we can not directly compare a Message and EmailMessage object
-    we need to compare their parts. Since an EmailMessage is a sub-class of
-    Message it will have all the same methods necessary for comparison.
-    """
-    # Compare all headers, unless we are ignoring them.
-    #
-    if ignore_headers is False:
-        assert len(msg1.items()) == len(msg2.items())
-        for header, value in msg1.items():
-            value = value.replace("\n", "")
-            assert msg2[header].replace("\n", "") == value
-
-    # If we are ignoring only some headers, then skip those.
-    #
-    if isinstance(ignore_headers, list):
-        ignore_headers = [x.lower() for x in ignore_headers]
-        for header, value in msg1.items():
-            if header.lower() in ignore_headers:
-                continue
-            assert msg2[header] != value
-
-    assert msg1.is_multipart() == msg2.is_multipart()
-
-    # If not multipart, the payload should be the same.
-    #
-    if not msg1.is_multipart():
-        assert msg1.get_payload() == msg2.get_payload()
-
-    # Otherwise, compare each part.
-    #
-    parts1 = msg1.get_payload()
-    parts2 = msg2.get_payload()
-    assert len(parts1) == len(parts2)
-
-    for part1, part2 in zip(parts1, parts2):
-        assert part1.get_payload() == part2.get_payload()
 
 
 ####################################################################

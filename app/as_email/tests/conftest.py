@@ -7,19 +7,12 @@ import email.policy
 
 # system imports
 #
-import inspect
-import socket
-from contextlib import suppress
 from email.headerregistry import Address
 from email.message import EmailMessage
-from smtplib import SMTP as SMTPClient
-from typing import Any, Callable, Generator, NamedTuple, Optional, Type
 
 # 3rd party imports
 #
 import pytest
-from aiosmtpd.controller import Controller
-from aiosmtpd.handlers import Sink
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import Session as SMTPSession
 from pytest_factoryboy import register
@@ -46,6 +39,48 @@ register(UserFactory)
 register(ProviderFactory)
 register(BlockedMessageFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+def assert_email_equal(msg1, msg2, ignore_headers=False):
+    """
+    Because we can not directly compare a Message and EmailMessage object
+    we need to compare their parts. Since an EmailMessage is a sub-class of
+    Message it will have all the same methods necessary for comparison.
+    """
+    # Compare all headers, unless we are ignoring them.
+    #
+    if ignore_headers is False:
+        assert len(msg1.items()) == len(msg2.items())
+        for header, value in msg1.items():
+            value = value.replace("\n", "")
+            assert msg2[header].replace("\n", "") == value
+
+    # If we are ignoring only some headers, then skip those.
+    #
+    if isinstance(ignore_headers, list):
+        ignore_headers = [x.lower() for x in ignore_headers]
+        for header, value in msg1.items():
+            if header.lower() in ignore_headers:
+                continue
+            assert msg2[header] != value
+
+    assert msg1.is_multipart() == msg2.is_multipart()
+
+    # If not multipart, the payload should be the same.
+    #
+    if not msg1.is_multipart():
+        assert msg1.get_payload() == msg2.get_payload()
+
+    # Otherwise, compare each part.
+    #
+    parts1 = msg1.get_payload()
+    parts2 = msg2.get_payload()
+    assert len(parts1) == len(parts2)
+
+    for part1, part2 in zip(parts1, parts2):
+        assert part1.get_payload() == part2.get_payload()
 
 
 ####################################################################
@@ -255,185 +290,3 @@ def aiosmtp_envelope(email_factory):
         return env
 
     return make_envelope
-
-
-# We need to test our handler against various email messages, email accounts,
-# and from addresses. These fixtures have been imported with some modifications
-# from aiosmtpd:
-#   https://github.com/aio-libs/aiosmtpd/blob/master/aiosmtpd/tests/conftest.py
-#
-handler_data = pytest.mark.handler_data
-
-
-####################################################################
-####################################################################
-#
-class HostPort(NamedTuple):
-    host: str = "localhost"
-    port: int = 8025
-
-
-####################################################################
-####################################################################
-#
-class Global:
-    SrvAddr: HostPort = HostPort()
-    FQDN: str = socket.getfqdn()
-
-    @classmethod
-    def set_addr_from(cls, contr: Controller):
-        cls.SrvAddr = HostPort(contr.hostname, contr.port)
-
-
-####################################################################
-#
-@pytest.fixture
-def smtp_client(
-    request: pytest.FixtureRequest,
-) -> Generator[SMTPClient, None, None]:
-    """
-    Generic SMTP Client,
-    will connect to the ``host:port`` defined in ``Global.SrvAddr``
-    unless overriden using :func:`client_data` marker.
-    """
-    marker = request.node.get_closest_marker("client_data")
-    if marker:
-        markerdata = marker.kwargs or {}
-    else:
-        markerdata = {}
-    addrport = markerdata.get("connect_to", Global.SrvAddr)
-    with SMTPClient(*addrport) as client:
-        yield client
-
-
-####################################################################
-#
-@pytest.fixture
-def get_controller(request: pytest.FixtureRequest) -> Callable[..., Controller]:
-    """
-    Provides a function that will return an instance of a controller.
-
-    Default class of the controller is Controller,
-    but can be changed via the ``class_`` parameter to the function,
-    or via the ``class_`` parameter of :func:`controller_data`
-
-    Example usage::
-
-        def test_case(get_controller):
-            handler = SomeHandler()
-            controller = get_controller(handler, class_=SomeController)
-            ...
-    """
-    default_class = Controller
-    marker = request.node.get_closest_marker("controller_data")
-    if marker and marker.kwargs:
-        # Must copy so marker data do not change between test cases if marker is
-        # applied to test class
-        markerdata = marker.kwargs.copy()
-    else:
-        markerdata = {}
-
-    def getter(
-        handler: Any,
-        class_: Optional[Type[Controller]] = None,
-        **server_kwargs,
-    ) -> Controller:
-        """
-        :param handler: The handler object
-        :param class_: If set to None, check controller_data(class_).
-            If both are none, defaults to Controller.
-        """
-        assert not inspect.isclass(handler)
-        marker_class: Optional[Type[Controller]]
-        marker_class = markerdata.pop("class_", default_class)
-        class_ = class_ or marker_class
-        if class_ is None:
-            raise RuntimeError(
-                f"Fixture '{request.fixturename}' needs controller_data to specify "
-                f"what class to use"
-            )
-        ip_port: HostPort = markerdata.pop("host_port", HostPort())
-        # server_kwargs takes precedence, so it's rightmost (PEP448)
-        server_kwargs = {**markerdata, **server_kwargs}
-        server_kwargs.setdefault("hostname", ip_port.host)
-        server_kwargs.setdefault("port", ip_port.port)
-        return class_(
-            handler,
-            **server_kwargs,
-        )
-
-    return getter
-
-
-####################################################################
-#
-@pytest.fixture
-def get_handler(request: pytest.FixtureRequest) -> Callable:
-    """
-    Provides a function that will return an instance of
-    a :ref:`handler class <handlers>`.
-
-    Default class of the handler is Sink,
-    but can be changed via the ``class_`` parameter to the function,
-    or via the ``class_`` parameter of :func:`handler_data`
-
-    Example usage::
-
-        def test_case(get_handler):
-            handler = get_handler(class_=SomeHandler)
-            controller = Controller(handler)
-            ...
-    """
-    default_class = Sink
-    marker = request.node.get_closest_marker("handler_data")
-    if marker and marker.kwargs:
-        # Must copy so marker data do not change between test cases if marker is
-        # applied to test class
-        markerdata = marker.kwargs.copy()
-    else:
-        markerdata = {}
-
-    def getter(*args, **kwargs) -> Any:
-        if marker:
-            class_ = markerdata.pop("class_", default_class)
-            # *args overrides args_ in handler_data()
-            args_ = markerdata.pop("args_", tuple())
-            # Do NOT inline the above into the line below! We *need* to pop "args_"!
-            args = args or args_
-            # **kwargs override markerdata, so it's rightmost (PEP448)
-            kwargs = {**markerdata, **kwargs}
-        else:
-            class_ = default_class
-        # noinspection PyArgumentList
-        return class_(*args, **kwargs)
-
-    return getter
-
-
-####################################################################
-#
-@pytest.fixture
-def plain_controller(
-    get_handler: Callable, get_controller: Callable
-) -> Generator[Controller, None, None]:
-    """
-    Returns a aiosmtpd Controller that, by default, gets invoked with no
-    optional args.  Hence the moniker "plain".
-
-    Internally uses the :fixture:`get_controller` and :fixture:`get_handler`
-    fixtures, so optional args/kwargs can be specified for the Controller and
-    the handler via the :func:`controller_data` and :func:`handler_data`
-    markers, respectively.
-    """
-    handler = get_handler()
-    controller = get_controller(handler)
-    controller.start()
-    Global.set_addr_from(controller)
-    #
-    yield controller
-    #
-    # Some test cases need to .stop() the controller inside themselves
-    # in such cases, we must suppress Controller's raise of AssertionError
-    # because Controller doesn't like .stop() to be invoked more than once
-    with suppress(AssertionError):
-        controller.stop()

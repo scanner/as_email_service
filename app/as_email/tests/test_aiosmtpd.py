@@ -3,6 +3,9 @@
 """
 Test the aiosmtpd daemon/django command.
 """
+import email
+import email.policy
+
 # system imports
 #
 from datetime import datetime
@@ -16,7 +19,7 @@ from asgiref.sync import sync_to_async
 # Project imports
 #
 from ..management.commands.aiosmtpd import Authenticator, RelayHandler
-from .conftest import handler_data
+from .conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
 
@@ -263,7 +266,7 @@ async def test_relayhandler_handle_MAIL(
 #
 @pytest.mark.asyncio
 async def test_relayhandler_handle_DATA(
-    email_account_factory, faker, smtp, aiosmtp_session, aiosmtp_envelope
+    email_account_factory, faker, aiosmtp_session, aiosmtp_envelope, smtp
 ):
     ea = await sync_to_async(email_account_factory)()
     await ea.asave()
@@ -274,11 +277,11 @@ async def test_relayhandler_handle_DATA(
     sess.auth_data = ea
     authenticator = Authenticator()
     handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-    smtp = SMTP(handler, authenticator=authenticator)
+    aio_smtp = SMTP(handler, authenticator=authenticator)
     envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
     envelope.mail_from = ea.email_address
 
-    response = await handler.handle_DATA(smtp, sess, envelope)
+    response = await handler.handle_DATA(aio_smtp, sess, envelope)
     assert response.startswith("250 ")
 
     send_message = smtp.return_value.send_message
@@ -288,27 +291,13 @@ async def test_relayhandler_handle_DATA(
         "to_addrs": [to],
     }
 
+    msg = email.message_from_bytes(
+        envelope.original_content,
+        policy=email.policy.default,
+    )
+    sent_message = send_message.call_args.args[0]
+    assert sent_message["From"] == ea.email_address
+    assert sent_message["To"] == to
+    assert sent_message["Subject"] == msg["Subject"]
 
-####################################################################
-#
-@handler_data(class_=RelayHandler, args_=("tmp", Authenticator()))
-def test_handler_valid_email(
-    email_account_factory,
-    email_factory,
-    smtp,
-    plain_controller,
-    smtp_client,
-    faker,
-):
-    password = faker.pystr(min_chars=8, max_chars=32)
-    ea = email_account_factory(password=password)
-    ea.save()
-    msg = email_factory(frm=ea.email_address)
-    rcpt_tos = msg.get_all("to")
-
-    handler = plain_controller.handler
-    handler.spool_dir = ea.server.outgoing_spool_dir
-    assert isinstance(handler, RelayHandler)
-
-    smtp_client.login(ea.email_address, password)
-    smtp_client.send_message(msg, from_addr=ea.email_account, to_addrs=rcpt_tos)
+    assert_email_equal(msg, sent_message, ignore_headers=True)
