@@ -301,3 +301,18 @@ async def test_relayhandler_handle_DATA(
     assert sent_message["Subject"] == msg["Subject"]
 
     assert_email_equal(msg, sent_message, ignore_headers=True)
+
+    # If you stick a `From` header in to the message that is NOT your valid
+    # from email address, this will fail and the email will not be sent.  (By
+    # not supplying msg_from the email generated will have a random from
+    # email address)
+    envelope = aiosmtp_envelope()
+    envelope.mail_from = ea.email_address
+
+    response = await handler.handle_DATA(aio_smtp, sess, envelope)
+    assert response.startswith("551 ")
+
+    # '1' because this is the same mock object as before, and its count should
+    # not have increased from the previous time in this test.
+    #
+    assert send_message.call_count == 1
