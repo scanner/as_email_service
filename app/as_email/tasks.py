@@ -88,14 +88,14 @@ def dispatch_spooled_outgoing_email():
 ####################################################################
 #
 @db_periodic_task(crontab(day="*", hour="1"))
-def decrement_num_bounces_counters():
+def decrement_num_bounces_counter():
     """
     EmailAccount.num_bounces decays over time, and this is the task that
     does that decay logic.
 
     Currently set to decay by one ever 24 hours.
     """
-    for ea in EmailAccount.objects.query(num_bounces__gt=0):
+    for ea in EmailAccount.objects.filter(num_bounces__gt=0):
         ea.num_bounces -= 1
 
         # if the account was deactivated due to number of bounces
