@@ -100,7 +100,7 @@ def test_email_account_mail_dir(email_account_factory):
 
 ####################################################################
 #
-def test_alias_self(email_account_factory):
+def test_email_account_alias_self(email_account_factory):
     """
     We make sure an EmailAccount can not alias itself.
 
@@ -127,7 +127,9 @@ def test_alias_self(email_account_factory):
 
 ####################################################################
 #
-def test_email_via_smtp(email_account_factory, email_factory, smtp):
+def test_email_account_email_via_smtp(
+    email_account_factory, email_factory, smtp
+):
     ea = email_account_factory()
     msg = email_factory(frm=ea.email_address)
     from_addr = ea.email_address
@@ -149,7 +151,7 @@ def test_email_via_smtp(email_account_factory, email_factory, smtp):
 
 ####################################################################
 #
-def test_email_via_smtp_invalid_from(
+def test_email_account_email_via_smtp_invalid_from(
     email_account_factory, email_factory, faker
 ):
     """
@@ -169,7 +171,7 @@ def test_email_via_smtp_invalid_from(
 
 ####################################################################
 #
-def test_create_rule_from_text(faker, email_account_factory):
+def test_message_filter_rule_create_from_text(faker, email_account_factory):
     """
     message filter rules are all about filtering messages and are based on
     the `maildelivery` file from mh/nmh using slocal for delivery of messages
@@ -200,7 +202,7 @@ def test_create_rule_from_text(faker, email_account_factory):
 
 ####################################################################
 #
-def test_message_rule_match(faker, message_filter_rule_factory):
+def test_message_filter_rule_match(faker, message_filter_rule_factory):
     # Generate a random file directory path
     #
     destination = str(Path(faker.file_path(faker.random_digit())).parent)

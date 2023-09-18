@@ -120,6 +120,14 @@ class Server(models.Model):
         ),
         max_length=40,
     )
+    last_blocked_message_run = models.DateTimeField(
+        auto_now_add=True,
+        help_text=_(
+            "When we scan the server for blocked messages we only care about "
+            "blocked messages that have arrived after our last scan for "
+            "blocked messages. This is the field used to keep track of that."
+        ),
+    )
     incoming_spool_dir = models.CharField(
         help_text=_(
             "The directory incoming messages are temporarily spooled to before "
@@ -417,6 +425,13 @@ class EmailAccount(models.Model):
           delivered locally instead of being forwarded!
     """
 
+    # The number of bounced emails that you are allowed before your account
+    # gets deactivated. NOTE: A deactivated account can still receive email but
+    # it can no longer send email.
+    #
+    NUM_EMAIL_BOUNCE_LIMIT = 10
+    DEACTIVATED_DUE_TO_BOUNCES_REASON = "Deactivated due to excessive bounces"
+
     BLOCK = "BL"
     DELIVER = "DE"
     BLOCK_CHOICES = [
@@ -518,6 +533,16 @@ class EmailAccount(models.Model):
         help_text=_(
             "If `blocked_messages` is set to `Deliver` then this is the mail "
             "folder that they are delivered to."
+        ),
+    )
+    spam_assassin_score_threshold = models.IntegerField(
+        default=15,
+        help_text=_(
+            "If you select automatic spam filing for delivered email this is"
+            "the SpamAssassin X-Spam-Score value used. If the X-Spam-Score is "
+            "over this value then the email will be delivered to the blocked "
+            "message delivery folder (instead of the default `inbox`). Set "
+            "this to 0 if you basically want no automatic spam filtering."
         ),
     )
 
@@ -627,7 +652,18 @@ class EmailAccount(models.Model):
     # receive email) (maybe it should be some sort of percentage of total
     # emails sent by this account.)
     #
-    num_bounces = models.IntegerField(default=0)
+    num_bounces = models.IntegerField(
+        default=0,
+        help_text=_(
+            "Every time this email account sends an email and it results in a "
+            "bounce this counter will increment. The mail provider does not "
+            "allow excessive bounced email and this is a check to make sure "
+            "that does not happen. An asynchronous task will go through all "
+            "accounts that have a non-zero number of bounces and reduce them "
+            "by 1 once a day. If you have more than the limit your account "
+            "will be deactivated until it goes under the limit."
+        ),
+    )
     deactivated_reason = models.TextField(
         help_text=_("Reason for the account being deactivated"),
         null=True,
@@ -693,11 +729,22 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def _setup_mh_mail_dir(self):
+    def _pre_save_logic(self):
         """
-        Common function for setting the mail_dir attribute and
-        creating the assocaited mailbox.MH.
+        Common function for doing any pre-save processing of the email
+        account such as automatic deactivation due to excessive bounces,
+        setting the mail_dir attribute and creating the assocaited mailbox.MH.
         """
+        # If number of bounces exceeds the limit, deactivate the account.
+        #
+        # XXX Hm.. we should probaby move this in to the bounce receive web
+        #     hook view. That way it can also send email using a huey task.
+        #
+        if not self.deactivated:
+            if self.num_bounces >= self.NUM_EMAIL_BOUNCE_LIMIT:
+                self.deactivated = True
+                self.deactivated_reason = self.DEACTIVATED_DUE_TO_BOUNCES_REASON
+
         # If the object has not been created yet and if the mail_dir
         # is not set set it based on the associated Server's parent
         # mail dir and email address.
@@ -719,7 +766,7 @@ class EmailAccount(models.Model):
         """
         Make sure the mail_dir field is set (and if not fill it in)
         """
-        self._setup_mh_mail_dir()
+        self._pre_save_logic()
         super().save(*args, **kwargs)
 
     ####################################################################
@@ -728,7 +775,7 @@ class EmailAccount(models.Model):
         """
         Make sure the mail_dir field is set (and if not fill it in)
         """
-        self._setup_mh_mail_dir()
+        self._pre_save_logic()
         await super().asave(*args, **kwargs)
 
     ####################################################################
@@ -938,6 +985,10 @@ class MessageFilterRule(OrderedModel):
     #     filter rule, and no other rules, then the message will be delivered
     #     to the inbox.
     #
+    # XXX Maybe every email account should get a default message filter rule
+    #     that looks for the header from postmark indicating that this email is
+    #     spam and deliver it to their Junk mailbox.
+    #
     FOLDER = "folder"
     DESTROY = "destroy"
     ACTION_CHOICES = [
@@ -1006,6 +1057,35 @@ class MessageFilterRule(OrderedModel):
             )
         else:
             return f"Match: '{self.header}', '{self.pattern}' destroy"
+
+    #######################
+    #######################
+    #
+    # Permissions:
+    #
+    # Only owners can list, retrieve message filter rules that are associated
+    # with an email account that they own.
+    #
+    ####################################################################
+    #
+    @staticmethod
+    def has_write_permission(self):
+        return True
+
+    ####################################################################
+    #
+    @staticmethod
+    def has_read_permission(self):
+        return True
+
+    ####################################################################
+    #
+    def has_object_read_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to retrieve/list the
+        object if they are the owner of the associated email account
+        """
+        return request.user == self.email_account.owner
 
     ####################################################################
     #
