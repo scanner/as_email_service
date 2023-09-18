@@ -12,7 +12,7 @@ aiosmtpd==1.4.4.post2
     # via -r production.in
 annotated-types==0.5.0
     # via pydantic
-anyio==3.7.1
+anyio==4.0.0
     # via httpcore
 asgiref==3.7.2
     # via django
@@ -40,7 +40,7 @@ cryptography==41.0.3
     #   django-cryptography
     #   fido2
     #   python-u2flib-server
-django==4.2.4
+django==4.2.5
     # via
     #   -r production.in
     #   django-anymail
@@ -61,11 +61,11 @@ django-cryptography==1.1
     # via -r production.in
 django-dry-rest-permissions==1.2.0
     # via -r production.in
-django-environ==0.10.0
+django-environ==0.11.2
     # via -r production.in
 django-extensions==3.2.3
     # via -r production.in
-django-filter==23.2
+django-filter==23.3
     # via -r production.in
 django-guardian==2.4.0
     # via -r production.in
@@ -93,9 +93,9 @@ h11==0.14.0
     # via
     #   httpcore
     #   uvicorn
-httpcore==0.17.3
+httpcore==0.18.0
     # via httpx
-httpx==0.24.1
+httpx==0.25.0
     # via -r production.in
 huey==2.4.5
     # via -r production.in
@@ -140,7 +140,7 @@ python-jose==3.3.0
     # via django-mfa2
 python-u2flib-server==5.0.1
     # via django-mfa2
-pytz==2023.3
+pytz==2023.3.post1
     # via
     #   -r production.in
     #   djangorestframework
@@ -154,7 +154,7 @@ requests==2.31.0
     # via
     #   django-anymail
     #   postmarker
-rich==13.5.2
+rich==13.5.3
     # via -r production.in
 rsa==4.9
     # via python-jose
@@ -173,7 +173,7 @@ sniffio==1.3.0
     #   httpx
 sqlparse==0.4.4
     # via django
-typing-extensions==4.7.1
+typing-extensions==4.8.0
     # via
     #   asgiref
     #   pydantic
