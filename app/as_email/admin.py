@@ -46,7 +46,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "password",
         "autofile_spam",
         "spam_delivery_folder",
-        "spam_assassin_score_threshold",
+        "spam_score_threshold",
         "forward_to",
         "forward_style",
         "deactivated",

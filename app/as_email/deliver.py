@@ -169,14 +169,33 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
             )
 
     # If the message was not delivered to any folders in the above loop,
-    # deliver it to the inbox. Creating the inbox if it does not already exist.
+    # deliver it to the inbox, unless auto filing for spam is turned on and it
+    # is spam.
     #
     if not delivered_to:
-        try:
-            folder = mh.get_folder("inbox")
-        except NoSuchMailboxError:
-            folder = mh.add_folder("inbox")
-        _add_msg_to_folder(folder, msg)
+        spam_score = 0
+        if "X-Spam-Score" in msg:
+            try:
+                spam_score = int(float(msg["X-Spam-Score"].strip()))
+            except ValueError:
+                spam_score = 0
+
+        if (
+            email_account.autofile_spam
+            and spam_score >= email_account.spam_score_threshold
+        ):
+            junk = email_account.spam_delivery_folder
+            try:
+                folder = mh.get_folder(junk)
+            except NoSuchMailboxError:
+                folder = mh.add_folder(junk)
+            _add_msg_to_folder(folder, msg)
+        else:
+            try:
+                folder = mh.get_folder("inbox")
+            except NoSuchMailboxError:
+                folder = mh.add_folder("inbox")
+            _add_msg_to_folder(folder, msg)
 
 
 ####################################################################

@@ -506,7 +506,7 @@ class EmailAccount(models.Model):
         default=True,
         help_text=_(
             "When incoming mail exceeds the threshold set in "
-            "`spam_assassin_score_threshold` then this email will "
+            "`spam_score_threshold` then this email will "
             "automatically files in the `spam_delivery_folder` mailbox. "
             "NOTE: This only apply if local or IMAP delivery is selected "
             "in `delivery_method`."
@@ -520,7 +520,7 @@ class EmailAccount(models.Model):
             "folder that they are delivered to."
         ),
     )
-    spam_assassin_score_threshold = models.IntegerField(
+    spam_score_threshold = models.IntegerField(
         default=15,
         help_text=_(
             "If you select automatic spam filing for delivered email this is"
@@ -878,6 +878,8 @@ class MessageFilterRule(OrderedModel):
     # "qpipe" which offer various actions. We are only supporting 'folder' and
     # 'destroy' for now.
     #
+    # MessageFilterRule's apply to local and imap delivery.
+    #
     # TODO: Consider a 'forward' action that lets matches have the
     #       message forward to another address. (it will act as an
     #       alias if the destination address is one handled by this
@@ -894,6 +896,14 @@ class MessageFilterRule(OrderedModel):
     # XXX Maybe every email account should get a default message filter rule
     #     that looks for the header from postmark indicating that this email is
     #     spam and deliver it to their Junk mailbox.
+    #
+    # XXX consider a better langauge for tests.. so we can do soomething like
+    #    `if x-spam-assassin-score is >= 15`. This would let us remove
+    #     the special attributes about spam filtering for EmailAccounts.
+    #
+    # NOTE: Due to the plan to have spam filtering handled by message filter
+    #       rules, spam filtering is done AFTER message filter rules are
+    #       processed on message delivery.
     #
     FOLDER = "folder"
     DESTROY = "destroy"

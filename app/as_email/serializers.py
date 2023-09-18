@@ -30,7 +30,7 @@ class EmailAccountSerializer(HyperlinkedModelSerializer):
             "delivery_method",
             "autofile_spam",
             "spam_delivery_folder",
-            "spam_assassin_score_threshold",
+            "spam_score_threshold",
             "alias_for",
             "forward_to",
             "forward_style",

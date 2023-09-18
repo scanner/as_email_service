@@ -93,6 +93,41 @@ def test_deliver_message_locally(
 
 ####################################################################
 #
+def test_deliver_spam_locally(email_account_factory, email_factory):
+    ea = email_account_factory()
+    ea.save()
+
+    # Low spam score. Should be delivered to inbox
+    #
+    msg = email_factory()
+    msg["X-Spam-Score"] = "-0.0"
+
+    deliver_message_locally(ea, msg)
+
+    # The message should have been delivered to the inbox since there are no
+    # mail filter rules. And it should be the only message in the mailbox.
+    #
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert_email_equal(msg, stored_msg)
+
+    # Set the spam score over the limit in the email account.
+    #
+    msg.replace_header("X-Spam-Score", str(ea.spam_score_threshold))
+    deliver_message_locally(ea, msg)
+
+    # The message should have been delivered to Junk since there are no
+    # mail filter rules. And it should be the only message in the mailbox.
+    #
+    mh = ea.MH()
+    folder = mh.get_folder(ea.spam_delivery_folder)
+    stored_msg = folder.get(1)
+    assert_email_equal(msg, stored_msg)
+
+
+####################################################################
+#
 def test_deliver_alias(email_account_factory, email_factory):
     ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
     ea_1.save()
