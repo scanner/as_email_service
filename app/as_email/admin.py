@@ -5,13 +5,7 @@ from ordered_model.admin import OrderedModelAdmin
 
 # Project imports
 #
-from .models import (
-    BlockedMessage,
-    EmailAccount,
-    MessageFilterRule,
-    Provider,
-    Server,
-)
+from .models import EmailAccount, MessageFilterRule, Provider, Server
 
 
 @admin.register(Provider)
@@ -28,6 +22,7 @@ class ServerAdmin(admin.ModelAdmin):
         "id",
         "domain_name",
         "provider",
+        "api_key",
         "incoming_spool_dir",
         "outgoing_spool_dir",
         "mail_dir_parent",
@@ -46,12 +41,14 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "owner",
         "server",
         "email_address",
-        "account_type",
+        "delivery_method",
         "mail_dir",
         "password",
-        "handle_blocked_messages",
-        "blocked_messages_delivery_folder",
+        "autofile_spam",
+        "spam_delivery_folder",
+        "spam_assassin_score_threshold",
         "forward_to",
+        "forward_style",
         "deactivated",
         "num_bounces",
         "deactivated_reason",
@@ -61,7 +58,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
     list_filter = (
         "owner",
         "server",
-        "account_type",
+        "delivery_method",
         "deactivated",
         "created_at",
         "modified_at",
@@ -71,25 +68,6 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "email_address",
     )
     raw_id_fields = ("alias_for",)
-    date_hierarchy = "created_at"
-
-
-@admin.register(BlockedMessage)
-class BlockedMessageAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "email_account",
-        "message_id",
-        "status",
-        "from_address",
-        "subject",
-        "cc",
-        "blocked_reason",
-        "created_at",
-        "modified_at",
-    )
-    list_filter = ("email_account", "status", "created_at", "modified_at")
-    search_fields = ("blocked_reason", "from_address", "cc", "email_account")
     date_hierarchy = "created_at"
 
 

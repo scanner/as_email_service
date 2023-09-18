@@ -4,7 +4,7 @@
   {% if email_accounts %}
     <ul>
       {% for email_account in email_accounts %}
-        <li>{{ email_account.email_address }}, type: {{ email_account.account_type }}, {{ email_account.handle_blocked_messages }}</li>
+        <li>{{ email_account.email_address }}, type: {{ email_account.delivery_method }}, {{ email_account.handle_blocked_messages }}</li>
       {% endfor %}
     </ul>
   {% else  %}

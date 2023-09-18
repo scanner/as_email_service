@@ -22,7 +22,6 @@ from pytest_factoryboy import register
 from rest_framework.test import APIClient
 
 from .factories import (
-    BlockedMessageFactory,
     EmailAccountFactory,
     MessageFilterRuleFactory,
     ProviderFactory,
@@ -37,7 +36,6 @@ from .factories import (
 #
 register(UserFactory)
 register(ProviderFactory)
-register(BlockedMessageFactory)
 register(MessageFilterRuleFactory)
 
 

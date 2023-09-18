@@ -10,7 +10,6 @@ import logging
 
 # system imports
 #
-from datetime import datetime, timedelta
 from pathlib import Path
 
 # 3rd party imports
@@ -23,10 +22,8 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 # Project imports
 #
 from .deliver import deliver_message
-from .models import BlockedMessage, EmailAccount, Server
+from .models import EmailAccount, Server
 
-MESSAGE_HORIZON = 44  # 44 days, because postmark's horizon is 45 days.
-MESSAGE_HORIZON_TD = timedelta(days=MESSAGE_HORIZON)
 TZ = pytz.timezone(settings.TIME_ZONE)
 EST = pytz.timezone("EST")  # Postmark API is in EST! Really!
 # How many messages do we try to dispatch during a single run of any of the
@@ -38,22 +35,6 @@ EST = pytz.timezone("EST")  # Postmark API is in EST! Really!
 DISPATCH_NUM_PER_RUN = 100
 
 logger = logging.getLogger(__name__)
-
-
-####################################################################
-#
-@db_periodic_task(crontab(day="*", hour="4"))
-def expire_old_blocked_messages():
-    """
-    Find all blocked message objects that are older than the
-    horizon and delete them.
-    """
-    horizon = datetime.now(tz=TZ) - MESSAGE_HORIZON_TD
-    num_deleted, _ = BlockedMessage.objects.filter(
-        created_at__lt=horizon
-    ).delete()
-    if num_deleted > 0:
-        logger.info("expired_old_blocked_messages: Deleted %d", num_deleted)
 
 
 ####################################################################
@@ -102,44 +83,6 @@ def dispatch_spooled_outgoing_email():
 
             if msg_count > DISPATCH_NUM_PER_RUN:
                 return
-
-
-####################################################################
-#
-# XXX This whole mess is because I wonder how many times we will get email for
-#     invalid addresses and I want to lighten the laod on this server. I could
-#     instead just have postmark forward all incoming email, even spam, and
-#     discard it if it is not for a valid account. This entire system maybe a
-#     horribly premature optimization and we should just get all email, and
-#     just ignore the invalid accounts.
-#
-# XXX Also, if someone typo's an email address this also means that their email
-#     silently dies. Maybe we should send a message from mailer-daemon@server
-#     when we get email for an account that does not exist.. however senders of
-#     spam will just give us an address that bounces anyways. I think for now
-#     we will just track metrics on how many messages we get for invalid vs
-#     valid accounts.
-#
-@db_periodic_task(crontab(minute="*/5"))
-def check_new_blocked_messages():
-    """
-    How we deal with spam email is a little special. Because postmark will
-    deliver email for all email addresses on a domain that I have told it to
-    receive email for, this means we will receive email for accounts that do
-    not exist. Postmark does not give us a way to error back to the
-    sender. Now, almost all email to incorrect accounts is spam. There is
-    little point in having postmark invoke our incoming email web hook for all
-    these spam messages. So we configure postmark to _NOT_ deliver email that
-    is marked as spam. However, we still want to deliver spam email to actual
-    valid email accounts (and automatically deliver it to their Junk mailbox if
-    they are doing local delivery.) So we need to poll postmark at a regular
-    interval to get all new email since the last poll that has been blocked
-    (and thus not delivered) by postmark. We will loop over all servers, and
-    for each one check for any new blocked messages since the last time we ran
-    this for that server.
-    """
-    for server in Server.objects.all():
-        now = datetime.utcnow()  # noqa: F841
 
 
 ####################################################################

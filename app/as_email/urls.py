@@ -11,7 +11,6 @@ from rest_framework_nested import routers
 # Project imports
 #
 from .views import (
-    BlockedMessageViewSet,
     EmailAccountViewSet,
     MessageFilterRuleViewSet,
     hook_forward_valid,
@@ -35,17 +34,13 @@ router.register(
 
 ###########
 # generate:
-#  /email_accounts/{pk}/blocked_messages/
-#  /email_accounts/{pk}/blocked_messages/{pk}/
 #  /email_accounts/{pk}/message_filter_rules/
 #  /email_accounts/{pk}/message_filter_rules/{pk}/
 #
 email_account_router = routers.NestedSimpleRouter(
     router, r"email_accounts", lookup="email_account"
 )
-email_account_router.register(
-    r"blocked_messages", BlockedMessageViewSet, basename="blocked_messages"
-)
+
 email_account_router.register(
     r"message_filter_rules",
     MessageFilterRuleViewSet,

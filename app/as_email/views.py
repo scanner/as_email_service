@@ -40,12 +40,8 @@ from rest_framework.viewsets import ModelViewSet
 
 # Project imports
 #
-from .models import BlockedMessage, EmailAccount, MessageFilterRule, Server
-from .serializers import (
-    BlockedMessageSerializer,
-    EmailAccountSerializer,
-    MessageFilterRuleSerializer,
-)
+from .models import EmailAccount, MessageFilterRule, Server
+from .serializers import EmailAccountSerializer, MessageFilterRuleSerializer
 from .tasks import dispatch_incoming_email
 from .utils import split_email_mailbox_hash, spooled_email
 
@@ -266,16 +262,6 @@ class EmailAccountOwnerFilterBackend(DRYPermissionFiltersBase):
         associated email account.
         """
         return queryset.filter(email_account__owner=request.user)
-
-
-########################################################################
-########################################################################
-#
-class BlockedMessageViewSet(ModelViewSet):
-    permission_classes = (DRYPermissions,)
-    serializer_class = BlockedMessageSerializer
-    queryset = BlockedMessage.objects.all()
-    filter_backends = (EmailAccountOwnerFilterBackend,)
 
 
 ########################################################################

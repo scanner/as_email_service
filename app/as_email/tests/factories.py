@@ -18,13 +18,7 @@ from faker import Faker  # XXX should we move to `factory.Faker()`?
 
 # Project imports
 #
-from ..models import (
-    BlockedMessage,
-    EmailAccount,
-    MessageFilterRule,
-    Provider,
-    Server,
-)
+from ..models import EmailAccount, MessageFilterRule, Provider, Server
 
 User = get_user_model()
 fake = Faker()
@@ -94,22 +88,6 @@ class EmailAccountFactory(DjangoModelFactory):
         model = EmailAccount
         skip_postgeneration_save = True  # Saved when `set_password()` is called
         django_get_or_create = ("owner", "email_address", "server")
-
-
-########################################################################
-########################################################################
-#
-class BlockedMessageFactory(DjangoModelFactory):
-    email_account = factory.SubFactory(EmailAccountFactory)
-    message_id = factory.Sequence(lambda n: n)
-    status = "Blocked"
-    subject = factory.Faker("sentence")
-    from_address = factory.Faker("email")
-    cc = factory.Faker("email")
-    blocked_reason = factory.Faker("sentence")
-
-    class Meta:
-        model = BlockedMessage
 
 
 ########################################################################

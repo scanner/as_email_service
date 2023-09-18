@@ -16,13 +16,7 @@ import pytest
 #
 from django.contrib.auth import get_user_model
 
-from ..models import (
-    BlockedMessage,
-    EmailAccount,
-    MessageFilterRule,
-    Provider,
-    Server,
-)
+from ..models import EmailAccount, MessageFilterRule, Provider, Server
 
 pytestmark = pytest.mark.django_db
 
@@ -63,13 +57,6 @@ def test_server_factory_client(server_factory):
 def test_email_account_factory(email_account_factory):
     email_account = email_account_factory()
     assert isinstance(email_account, EmailAccount)
-
-
-####################################################################
-#
-def test_blocked_message_factory(blocked_message_factory):
-    blocked_message = blocked_message_factory()
-    assert isinstance(blocked_message, BlockedMessage)
 
 
 ####################################################################

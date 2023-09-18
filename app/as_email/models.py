@@ -114,19 +114,11 @@ class Server(models.Model):
     #
     api_key = models.CharField(
         help_text=_(
-            "In order for the server to be able to post data to the web hooks "
-            "provided by this service, they need an API key that is unique to "
-            "this server."
+            "In order for the mail provider to be able to post data to the "
+            "web hooks provided by this service, they need an API key that "
+            "is unique to this server."
         ),
         max_length=40,
-    )
-    last_blocked_message_run = models.DateTimeField(
-        auto_now_add=True,
-        help_text=_(
-            "When we scan the server for blocked messages we only care about "
-            "blocked messages that have arrived after our last scan for "
-            "blocked messages. This is the field used to keep track of that."
-        ),
     )
     incoming_spool_dir = models.CharField(
         help_text=_(
@@ -432,25 +424,15 @@ class EmailAccount(models.Model):
     NUM_EMAIL_BOUNCE_LIMIT = 10
     DEACTIVATED_DUE_TO_BOUNCES_REASON = "Deactivated due to excessive bounces"
 
-    BLOCK = "BL"
-    DELIVER = "DE"
-    BLOCK_CHOICES = [
-        (BLOCK, "Block"),
-        (DELIVER, "Deliver"),
-    ]
-
-    # EmailAccount types - local, imap, alias, forwarding
-    # XXX I think this should be 'delivery method' or something. It is not so
-    #     much about the type of Email Account this is but how the email that
-    #     this account receives is delivered.
+    # EmailAccount delivery methods - local, imap, alias, forwarding
     #
     LOCAL_DELIVERY = "LD"
     IMAP_DELIVERY = "IM"
     ALIAS = "AL"
     FORWARDING = "FW"
-    ACCOUNT_TYPE_CHOICES = [
+    DELIVERY_METHOD_CHOICES = [
         (LOCAL_DELIVERY, "Local Delivery"),
-        # (IMAP_DELIVERY), "IMAP",
+        # (IMAP_DELIVERY), "IMAP",   # Un````````````
         (ALIAS, "Alias"),
         (FORWARDING, "Forwarding"),
     ]
@@ -472,6 +454,8 @@ class EmailAccount(models.Model):
     #     field, but auto-fill the domain name part from the server attribute.
     #     For now we are just going to require that the domain name's match.
     #
+    # NOTE: this field needs to be marked disabled so user's can not edit it.
+    #
     email_address = models.EmailField(
         unique=True,
         help_text=_(
@@ -480,26 +464,31 @@ class EmailAccount(models.Model):
             "It must have the same domin name as the associated server"
         ),
     )
-    account_type = models.CharField(
+    delivery_method = models.CharField(
         max_length=2,
-        choices=ACCOUNT_TYPE_CHOICES,
+        choices=DELIVERY_METHOD_CHOICES,
         default=LOCAL_DELIVERY,
         help_text=_(
-            "Account type indicates how email for this account is delivered. "
-            "This is either delivery to a local mailbox, delivery to an "
-            "IMAP mailbox, an alias to another email account on this system "
-            "or forwarding to an email address by encapsulating the message "
-            "or rewriting the headers."
+            "Delivery method indicates how email for this account is "
+            "delivered. This is either delivery to a local mailbox, delivery "
+            "to an IMAP mailbox, an alias to another email account on this "
+            "system or forwarding to an email address by encapsulating the "
+            "message or rewriting the headers."
         ),
     )
 
+    # NOTE: In a system with arbitrary user's this field should not be settable
+    #       by users. Probably should not even be visible. So I guess make sure
+    #       it is not in the serializer, not in any forms. (ie: mark it
+    #       disabled in user forms)
+    #
     mail_dir = models.CharField(
         help_text=_(
-            "The root folder of the mail directory for this email account. "
-            "This should be left blank and it will be auto-filled in when "
-            "the email account is created. Only fill it in if you have a "
-            "specific location in the file system you want this user's "
-            "mailbox to be stored at."
+            "The root folder for the local mail delivery for this email "
+            "account. This should be left blank and it will be auto-filled "
+            "in when the email account is created. Only fill it in if you "
+            "have a specific location in the file system you want this user's "
+            "local mailbox to be stored at."
         ),
         max_length=1000,
         null=True,
@@ -513,21 +502,17 @@ class EmailAccount(models.Model):
         ),
         default="XXX",
     )
-    handle_blocked_messages = models.CharField(
-        max_length=2,
-        choices=BLOCK_CHOICES,
-        default=DELIVER,
+    autofile_spam = models.BooleanField(
+        default=True,
         help_text=_(
-            "When the email provider blocks a message because it is thought "
-            "to be spam you can choose to have the email delivered to the "
-            "folder set in the `blocked messages delivery folder` or you can"
-            "choose them to be blocked. ie: not delivered to your mail box "
-            "at all. They will be viewable in the email account's blocked "
-            "messages list where you can choose to have them delivered to your "
-            "mail box on a message by message basis."
+            "When incoming mail exceeds the threshold set in "
+            "`spam_assassin_score_threshold` then this email will "
+            "automatically files in the `spam_delivery_folder` mailbox. "
+            "NOTE: This only apply if local or IMAP delivery is selected "
+            "in `delivery_method`."
         ),
     )
-    blocked_messages_delivery_folder = models.CharField(
+    spam_delivery_folder = models.CharField(
         default="Junk",
         max_length=1024,
         help_text=_(
@@ -546,7 +531,7 @@ class EmailAccount(models.Model):
         ),
     )
 
-    # If account_type is ALIAS then messages are not delivered to this
+    # If delivery_method is ALIAS then messages are not delivered to this
     # account. Instead they are delivered to the accounts in the `alias_for`
     # attribute.
     #
@@ -572,7 +557,7 @@ class EmailAccount(models.Model):
         through="Alias",
         symmetrical=False,
         help_text=_(
-            "If the account type is `Alias` this is a list of the email "
+            "If the delivery method is `Alias` this is a list of the email "
             "accounts that the email will be delivered to instead of this "
             "email account. You are declaring that this account is an "
             "`alias for` these other accounts. So, say `root@example.com` "
@@ -580,14 +565,14 @@ class EmailAccount(models.Model):
             "is an alis for `me@example.com` and `you@example.com`. NOTE: "
             "you can only alias to email accounts that are managed by this "
             "system. If you want to have email forwarded to a email address "
-            "not managed by this system you need to choose the account type "
+            "not managed by this system you need to choose the delivery method "
             "`Forwarding` and properly specify the destination address in the "
             "`forward_to` field. NOTE: `alias_for` is only relevant when "
-            "the account type is `Alias`. The field is otherwise ignored."
+            "the delivery method is `Alias`. The field is otherwise ignored."
         ),
     )
 
-    # If account_type is FORWARDING then messages are not delivered
+    # If delivery_method is FORWARDING then messages are not delivered
     # locally. Instead a new email message is generated and sent to the
     # `forward_to` address.
     #
@@ -607,9 +592,9 @@ class EmailAccount(models.Model):
         null=True,
         blank=True,
         help_text=_(
-            "When the email account account type is set to `Forwarding` this "
+            "When the email account delivery method is set to `Forwarding` this "
             "is the email address that this email is forwarded to. NOTE: "
-            "`forward_to` is only relevant when the account type is "
+            "`forward_to` is only relevant when the delivery method is "
             "`Forwarding`. The field is otherwise ignored."
         ),
     )
@@ -637,6 +622,8 @@ class EmailAccount(models.Model):
     # need to add logging and metrics for when we receive emails for accounts
     # that do not exist.)
     #
+    # NOTE: disabled in user forms.
+    #
     deactivated = models.BooleanField(
         help_text=_(
             "If an account is deactivated it can still receive email. However "
@@ -652,6 +639,8 @@ class EmailAccount(models.Model):
     # receive email) (maybe it should be some sort of percentage of total
     # emails sent by this account.)
     #
+    # NOTE: Disabled in user forms.
+    #
     num_bounces = models.IntegerField(
         default=0,
         help_text=_(
@@ -664,6 +653,9 @@ class EmailAccount(models.Model):
             "will be deactivated until it goes under the limit."
         ),
     )
+
+    # NOTE: disabled in user forms
+    #
     deactivated_reason = models.TextField(
         help_text=_("Reason for the account being deactivated"),
         null=True,
@@ -876,92 +868,6 @@ class Alias(models.Model):
                 ),
             ),
         ]
-
-
-########################################################################
-########################################################################
-#
-class BlockedMessage(models.Model):
-    """
-    we provide our own UI to all of the blocked emails for users
-    to look at. This is a crude front end over postmark's ui. The main
-    thing is store a blockd email object by user so user's only see
-    their own blocked email. We will have a huey cron task poll
-    postmark for blocked emails for all domains and users for those
-    domains (so we only store ones for which there are actual users.)
-
-    We will only maintain blocked email objects for a certain amount
-    of time (probably 45 days, like postmark's default retention.) A
-    huey job will delete all blocked email's that are older than that.
-    """
-
-    email_account = models.ForeignKey(EmailAccount, on_delete=models.CASCADE)
-    message_id = models.IntegerField(unique=True)
-    status = models.CharField(max_length=32)
-    from_address = models.EmailField(max_length=256)
-    subject = models.CharField(blank=True, max_length=1024)
-    cc = models.CharField(blank=True, max_length=1024)
-    blocked_reason = models.TextField(blank=True, max_length=1024)
-    created_at = models.DateTimeField(auto_now_add=True)
-    modified_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["email_account"]),
-            models.Index(fields=["created_at", "email_account"]),
-            models.Index(fields=["status", "email_account"]),
-        ]
-        ordering = ("email_account", "created_at")
-
-    ####################################################################
-    #
-    def __str__(self):
-        return f"{self.email_account.email_address} - {self.from_address}: {self.subject} ({self.created_at})"
-
-    #######################
-    #######################
-    #
-    # Permissions:
-    #
-    # Only owners can list, retrieve blocked messages that are associated with
-    # an email account that they own.
-    #
-    # Only owners of the associated email account can "deliver" a blocked
-    # message
-    #
-    ####################################################################
-    #
-    @staticmethod
-    def has_write_permission(self):
-        return True
-
-    ####################################################################
-    #
-    @staticmethod
-    def has_read_permission(self):
-        return True
-
-    ####################################################################
-    #
-    def has_object_read_permission(self, request):
-        """
-        Using DRY Rest Permissions, allow the user to retrieve/list the
-        object if they are the owner of the associated email account
-        """
-        return request.user == self.email_account.owner
-
-    ####################################################################
-    #
-    # XXX Need to define the 'deliver' permission.
-    #
-    @staticmethod
-    def has_deliver_permission(request):
-        return True
-
-    ####################################################################
-    #
-    def has_object_deliver_permission(self, request):
-        return request.user == self.email_account.owner
 
 
 ########################################################################

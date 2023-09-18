@@ -13,7 +13,7 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 # Project imports
 #
-from .models import BlockedMessage, EmailAccount, MessageFilterRule
+from .models import EmailAccount, MessageFilterRule
 
 
 ########################################################################
@@ -24,33 +24,22 @@ class EmailAccountSerializer(HyperlinkedModelSerializer):
         model = EmailAccount
         fields = [
             "url",
+            "owner",
+            "server",
             "email_address",
-            "account_type",
-            "handle_blocked_messages",
-            "blocked_message_delivery_folder",
+            "delivery_method",
+            "autofile_spam",
+            "spam_delivery_folder",
+            "spam_assassin_score_threshold",
             "alias_for",
             "forward_to",
+            "forward_style",
             "deactivated",
-            "blocked_messages",
+            "num_bounces",
+            "deactivated_reason",
             "message_filter_rules",
-        ]
-
-
-########################################################################
-########################################################################
-#
-class BlockedMessageSerializer(NestedHyperlinkedModelSerializer):
-    parent_lookup_kwargs = {"email_account_pk": "email_account__pk"}
-
-    class Meta:
-        model = BlockedMessage
-        fields = [
-            "status",
-            "from_address",
-            "subject",
-            "cc",
-            "blocked_reason",
             "created_at",
+            "modified_at",
         ]
 
 
@@ -62,4 +51,11 @@ class MessageFilterRuleSerializer(NestedHyperlinkedModelSerializer):
 
     class Meta:
         model = MessageFilterRule
-        fields = ["header", "pattern", "action", "destination", "order"]
+        fields = [
+            "email_account",
+            "header",
+            "pattern",
+            "action",
+            "destination",
+            "order",
+        ]

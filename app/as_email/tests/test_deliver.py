@@ -94,7 +94,7 @@ def test_deliver_message_locally(
 ####################################################################
 #
 def test_deliver_alias(email_account_factory, email_factory):
-    ea_1 = email_account_factory(account_type=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
@@ -116,7 +116,7 @@ def test_deliver_alias(email_account_factory, email_factory):
     ea_3 = email_account_factory()
     ea_3.save()
     ea_2.alias_for.add(ea_3)
-    ea_2.account_type = EmailAccount.ALIAS
+    ea_2.delivery_method = EmailAccount.ALIAS
     ea_2.save()
 
     # message sent to ea_1 will be delivered to ea_3
@@ -132,7 +132,7 @@ def test_deliver_alias(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
-    ea_1 = email_account_factory(account_type=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
@@ -169,7 +169,7 @@ def test_email_account_alias_depth(
     email_accounts = []
     prev_ea = None
     for i in range(EmailAccount.MAX_ALIAS_DEPTH + 2):
-        ea = email_account_factory(account_type=EmailAccount.ALIAS)
+        ea = email_account_factory(delivery_method=EmailAccount.ALIAS)
         ea.save()
         email_accounts.append(ea)
 
@@ -200,7 +200,7 @@ def test_resent_forwarding(email_account_factory, email_factory, smtp):
     subject modified but the message otherwise sent on as it is.
     """
     ea_1 = email_account_factory(
-        account_type=EmailAccount.FORWARDING,
+        delivery_method=EmailAccount.FORWARDING,
         forward_style=EmailAccount.FORWARD_RESEND,
         forward_to=factory.Faker("email"),
     )
@@ -244,7 +244,7 @@ def test_encapsulate_forwarding(email_account_factory, email_factory, smtp):
     message.
     """
     ea_1 = email_account_factory(
-        account_type=EmailAccount.FORWARDING,
+        delivery_method=EmailAccount.FORWARDING,
         forward_style=EmailAccount.FORWARD_ENCAPSULTE,
         forward_to=factory.Faker("email"),
     )
@@ -294,7 +294,7 @@ def test_deactivated_forward(email_account_factory, email_factory):
     delivered locally.
     """
     ea_1 = email_account_factory(
-        account_type=EmailAccount.FORWARDING,
+        delivery_method=EmailAccount.FORWARDING,
         forward_to=factory.Faker("email"),
         deactivated=True,
     )
