@@ -78,6 +78,7 @@ coverage==7.3.0
 cryptography==41.0.3
     # via
     #   -r production.txt
+    #   django-cryptography
     #   fido2
     #   python-u2flib-server
     #   trustme
@@ -92,6 +93,8 @@ django==4.2.4
     #   -r lint.txt
     #   -r production.txt
     #   django-anymail
+    #   django-appconf
+    #   django-cryptography
     #   django-extensions
     #   django-filter
     #   django-guardian
@@ -102,6 +105,12 @@ django==4.2.4
     #   drf-nested-routers
     #   jsonfield
 django-anymail==10.1
+    # via -r production.txt
+django-appconf==1.0.5
+    # via
+    #   -r production.txt
+    #   django-cryptography
+django-cryptography==1.1
     # via -r production.txt
 django-dry-rest-permissions==1.2.0
     # via -r production.txt

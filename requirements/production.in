@@ -4,6 +4,7 @@ aiosmtpd
 cryptography>=41.0.2
 django
 django-anymail
+django-cryptography
 django-dry-rest-permissions
 django-environ
 django-extensions
