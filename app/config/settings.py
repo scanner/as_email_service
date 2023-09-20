@@ -251,7 +251,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "basic": {
-            "format": "{asctime} {levelname} {module}: {message}",
+            "format": "[{asctime}] {levelname}:{module}:{message}",
             "style": "{",
         },
     },
@@ -263,6 +263,13 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "DEBUG" if DEBUG else "INFO",
+        "level": "DEBUG",
     },
+    # "loggers": {
+    #     "django": {
+    #         "handlers": ["console"],
+    #         "level": "DEBUG",
+    #         "propagate": True,
+    #     },
+    # },
 }

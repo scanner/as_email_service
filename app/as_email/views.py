@@ -209,7 +209,7 @@ def hook_postmark_bounce(request, domain_name):
     try:
         ea = EmailAccount.objects.get(email_address=bounce["From"])
     except EmailAccount.DoesNotExist:
-        logger.warning(
+        logger.info(
             "postmark bounce: %s from email address that does not belong "
             "to any EmailAccount: %s, server: %s, bounce id: %d, to: %s, "
             "description: %s",
@@ -218,6 +218,7 @@ def hook_postmark_bounce(request, domain_name):
             server,
             bounce["ID"],
             bounce["Email"],
+            bounce["Description"],
             extra=bounce,
         )
         # NOTE: This does not return an error. Not their fault unless they are
