@@ -72,6 +72,8 @@ def test_bounce_webhook(email_account_factory, api_client, faker):
         resp_data["message"]
         == f"received bounce for {server.domain_name}/{ea.email_address}"
     )
+    ea.refresh_from_db()
+    assert ea.num_bounces == 1
 
     # If we get a bounce message from an address that is not covered by our
     # server, we get a different message from the response.
@@ -88,11 +90,15 @@ def test_bounce_webhook(email_account_factory, api_client, faker):
         resp_data["message"]
         == f"`from` address '{bounce_data['From']}' is not an EmailAccount on server {server.domain_name}. Bounce message ignored."
     )
+    ea.refresh_from_db()
+    assert ea.num_bounces == 1
 
     # Requests with bad data return 400 - bad request
     #
     r = client.post(url, "HAHANO", content_type="application/json")
     assert r.status_code == 400
+    ea.refresh_from_db()
+    assert ea.num_bounces == 1
 
     # Make sure for requests to servers that do not exist return a 404
     #
@@ -110,3 +116,5 @@ def test_bounce_webhook(email_account_factory, api_client, faker):
         url, json.dumps(bounce_data), content_type="application/json"
     )
     assert r.status_code == 404
+    ea.refresh_from_db()
+    assert ea.num_bounces == 1
