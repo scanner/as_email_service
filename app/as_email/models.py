@@ -725,16 +725,6 @@ class EmailAccount(models.Model):
         account such as automatic deactivation due to excessive bounces,
         setting the mail_dir attribute and creating the assocaited mailbox.MH.
         """
-        # If number of bounces exceeds the limit, deactivate the account.
-        #
-        # XXX Hm.. we should probaby move this in to the bounce receive web
-        #     hook view. That way it can also send email using a huey task.
-        #
-        if not self.deactivated:
-            if self.num_bounces >= self.NUM_EMAIL_BOUNCE_LIMIT:
-                self.deactivated = True
-                self.deactivated_reason = self.DEACTIVATED_DUE_TO_BOUNCES_REASON
-
         # If the object has not been created yet and if the mail_dir
         # is not set set it based on the associated Server's parent
         # mail dir and email address.
