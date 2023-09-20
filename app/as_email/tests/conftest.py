@@ -3,10 +3,9 @@
 """
 pytest fixtures for our tests
 """
-import email.policy
-
 # system imports
 #
+import email.policy
 from email.headerregistry import Address
 from email.message import EmailMessage
 
@@ -16,11 +15,10 @@ import pytest
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import Session as SMTPSession
 from pytest_factoryboy import register
+from rest_framework.test import APIClient, RequestsClient
 
 # Project imports
 #
-from rest_framework.test import APIClient
-
 from .factories import (
     EmailAccountFactory,
     MessageFilterRuleFactory,
@@ -222,6 +220,16 @@ def api_client():
     fixture for DRF's APIClient object.
     """
     return APIClient
+
+
+####################################################################
+#
+@pytest.fixture
+def requests_client():
+    """
+    fixture for DRF's RequestsClient object.
+    """
+    return RequestsClient
 
 
 ####################################################################

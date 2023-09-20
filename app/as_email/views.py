@@ -27,12 +27,17 @@ from pathlib import Path
 
 # 3rd party imports
 #
-import aiofiles
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseBadRequest,
+    JsonResponse,
+)
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
@@ -90,7 +95,8 @@ def index(request):
 ####################################################################
 #
 @csrf_exempt
-async def hook_postmark_incoming(request, domain_name):
+@require_POST
+def hook_postmark_incoming(request, domain_name):
     """
     Incoming email being POST'd to us by a postmark provider.
 
@@ -106,18 +112,12 @@ async def hook_postmark_incoming(request, domain_name):
     In all cases the key `OriginalRecipient` will contain the email address a
     specific POST is being made for.
     """
-    # XXX usually we would have used @require_POST decorator.. but async.
-    #     maybe in django 5.0
-    #
-    if request.method != "POST":
-        raise PermissionDenied("must be POST")
-
-    server = await _validate_server_api_key(request, domain_name)
+    server = _validate_server_api_key(request, domain_name)
     email = json.loads(request.body)
     message_id = email["MessageID"] if "MessageID" in email else None
 
     if "OriginalRecipient" not in email:
-        await logger.warning(
+        logger.warning(
             "email received from postmark without `OriginalRecipient`, "
             "message id: %s",
             message_id,
@@ -141,9 +141,9 @@ async def hook_postmark_incoming(request, domain_name):
     #
     addr = split_email_mailbox_hash(email["OriginalRecipient"])
     try:
-        email_account = await EmailAccount.objects.aget(email_address=addr)
+        email_account = EmailAccount.objects.get(email_address=addr)
     except EmailAccount.DoesNotExist:
-        await logger.info(
+        logger.info(
             "Received email for email account that does not exist: %s", addr
         )
         # XXX here we would log metrics for getting email that no one is going
@@ -172,8 +172,7 @@ async def hook_postmark_incoming(request, domain_name):
     # response back to Postmark.. but we should not block other async
     # processing while waiting for the file to be written.
     #
-    async with aiofiles.open(fname, "w") as f:
-        await f.write(email_json)
+    Path(fname).write(email_json)
 
     # Fire off async huey task to dispatch the email we just wrote to the spool
     # directory.
@@ -185,19 +184,29 @@ async def hook_postmark_incoming(request, domain_name):
 ####################################################################
 #
 @csrf_exempt
+@require_POST
 def hook_postmark_bounce(request, domain_name):
     """
     Bounce notification POST'd to us by the provider.
     """
-    if request.method != "POST":
-        raise PermissionDenied("must be POST")
-
     server = _validate_server_api_key(request, domain_name)
-    bounce = json.loads(request.body)
+    try:
+        bounce = json.loads(request.body.decode("utf-8"))
+        print(f"bounce is: {bounce}")
+    except json.decoder.JSONDecodeError as exc:
+        logger.warning(
+            f"Bad json from caller: {exc}", extra={"body": request.body}
+        )
+        return HttpResponseBadRequest(f"invalid json: {exc}")
+
+    # Make sure the json message from postmark contains at least the keys
+    # we expect.
+    #
     if not all(
         [x in bounce for x in ("From", "Type", "ID", "Email", "Description")]
     ):
-        raise Http404("submitted json missing expected keys")
+        print("missing keys from request")
+        return HttpResponseBadRequest("submitted json missing expected keys")
 
     logger.info(
         "message from %s to %s: %s",
@@ -223,10 +232,14 @@ def hook_postmark_bounce(request, domain_name):
         )
         # NOTE: This does not return an error. Not their fault unless they are
         #       buggesed, but we should log it. Maybe we just deleted that
-        #       EmailAccount.
+        #       EmailAccount. Hmm.. maybe we should send the bounce message
+        #       to the django support email address.
         #
         return JsonResponse(
-            {"status": "all good", "message": f"received bounced for {server}"}
+            {
+                "status": "all good",
+                "message": f"`from` address '{bounce['From']}' is not an EmailAccount on server {server.domain_name}. Bounce message ignored.",
+            }
         )
 
     ea.num_bounces += 1
@@ -239,30 +252,29 @@ def hook_postmark_bounce(request, domain_name):
     process_email_bounce(ea.pk, bounce)
 
     return JsonResponse(
-        {"status": "all good", "message": f"received bounced for {server}"}
+        {
+            "status": "all good",
+            "message": f"received bounce for {server}/{ea.email_address}",
+        }
     )
 
 
 ####################################################################
 #
 @csrf_exempt
-async def hook_postmark_spam(request, domain_name):
+@require_POST
+def hook_postmark_spam(request, domain_name):
     """
     Spam notificaiton POST'd to us by the provider.
     """
-    # XXX usually we would have used @require_POST decorator.. but async.
-    #     maybe in django 5.0
-    #
-    if request.method != "POST":
-        raise PermissionDenied("must be POST")
-
-    server = await _validate_server_api_key(request, domain_name)
+    server = _validate_server_api_key(request, domain_name)
     return HttpResponse(f"received spam notification for {server}")
 
 
 ####################################################################
 #
-async def hook_forward_valid(request):
+@csrf_exempt
+def hook_forward_valid(request):
     """
     A return call by a user trying to establish an email forward. A link to
     this is sent when the user attempts to validate that an email address used
