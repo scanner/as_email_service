@@ -264,12 +264,12 @@ LOGGING = {
     "loggers": {
         "as_email": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "DEBUG" if DEBUG else "INFO",
             "propagate": True,
         },
         "mail": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "DEBUG" if DEBUG else "INFO",
             "propagate": True,
         },
     },
