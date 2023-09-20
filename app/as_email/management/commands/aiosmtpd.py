@@ -15,7 +15,6 @@ import email
 import email.policy
 import logging
 import ssl
-import sys
 import time
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -41,11 +40,7 @@ from pydantic import BaseModel
 DEST_PORT = 587
 LISTEN_PORT = 19246
 
-logger = logging.getLogger("mail.log")
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-logger.addHandler(handler)
+logger = logging.getLogger("as_email.aiosmtpd")
 
 
 ########################################################################

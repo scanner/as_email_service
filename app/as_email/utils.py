@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 # Project imports
 #
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("as_email.utils")
 
 
 ####################################################################

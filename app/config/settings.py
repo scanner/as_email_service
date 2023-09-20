@@ -251,7 +251,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "basic": {
-            "format": "[{asctime}] {levelname}:{module}:{message}",
+            "format": "[{asctime}] {levelname}:{module}.{funcName}: {message}",
             "style": "{",
         },
     },
@@ -261,15 +261,16 @@ LOGGING = {
             "formatter": "basic",
         },
     },
-    "root": {
-        "handlers": ["console"],
-        "level": "DEBUG",
+    "loggers": {
+        "as_email": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+        "mail": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
     },
-    # "loggers": {
-    #     "django": {
-    #         "handlers": ["console"],
-    #         "level": "DEBUG",
-    #         "propagate": True,
-    #     },
-    # },
 }

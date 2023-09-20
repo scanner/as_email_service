@@ -46,7 +46,7 @@ from .serializers import EmailAccountSerializer, MessageFilterRuleSerializer
 from .tasks import dispatch_incoming_email, process_email_bounce
 from .utils import split_email_mailbox_hash, spooled_email
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("as_email.views")
 
 
 ####################################################################
@@ -200,7 +200,7 @@ def hook_postmark_bounce(request, domain_name):
         raise Http404("submitted json missing expected keys")
 
     logger.info(
-        "postmark bounce: message from %s to %s: %s",
+        "message from %s to %s: %s",
         bounce["From"],
         bounce["Email"],
         bounce["Description"],
@@ -210,7 +210,7 @@ def hook_postmark_bounce(request, domain_name):
         ea = EmailAccount.objects.get(email_address=bounce["From"])
     except EmailAccount.DoesNotExist:
         logger.info(
-            "postmark bounce: %s from email address that does not belong "
+            "%s from email address that does not belong "
             "to any EmailAccount: %s, server: %s, bounce id: %d, to: %s, "
             "description: %s",
             bounce["Type"],

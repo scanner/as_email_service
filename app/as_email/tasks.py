@@ -34,7 +34,7 @@ EST = pytz.timezone("EST")  # Postmark API is in EST! Really!
 #
 DISPATCH_NUM_PER_RUN = 100
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("as_email.tasks")
 
 
 ####################################################################

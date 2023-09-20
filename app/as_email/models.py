@@ -22,7 +22,6 @@ from typing import List
 #
 import aiofiles
 import pytz
-from aiologger import Logger as AIOLogger
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
@@ -37,8 +36,7 @@ from requests import RequestException
 # Various models that belong to a specific user need the User object.
 #
 User = get_user_model()
-logger = logging.getLogger(__name__)
-alogger = AIOLogger.with_default_handlers(name=__name__)
+logger = logging.getLogger("as_email.models")
 
 
 ####################################################################
