@@ -1,4 +1,4 @@
-"""
+""""
 The simplistic set of views for the users of the as_email app.
 
 For adminstrative functions this is supported by the django admin interface.
@@ -21,17 +21,18 @@ These views are for users. It needs to provide functions to:
 # System imports
 #
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
 # 3rd party imports
 #
 import aiofiles
-from aiologger import Logger
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
 from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
@@ -42,22 +43,23 @@ from rest_framework.viewsets import ModelViewSet
 #
 from .models import EmailAccount, MessageFilterRule, Server
 from .serializers import EmailAccountSerializer, MessageFilterRuleSerializer
-from .tasks import dispatch_incoming_email
+from .tasks import dispatch_incoming_email, process_email_bounce
 from .utils import split_email_mailbox_hash, spooled_email
 
-logger = Logger.with_default_handlers(name=__file__)
+logger = logging.getLogger(__name__)
 
 
 ####################################################################
 #
-async def _validate_server_api_key(request, domain_name: str) -> Server:
+def _validate_server_api_key(request, domain_name: str) -> Server:
     """
     Given the request and domain_name from the URL we will look up the
     server object and verify that there is an `api_key` on the request that
     matches server.api_key.
     """
+    logger.debug("validate, request: %s", request)
     try:
-        server = await Server.objects.aget(domain_name=domain_name)
+        server = Server.objects.get(domain_name=domain_name)
     except Server.DoesNotExist:
         raise Http404(f"No server found for domain_name `{domain_name}`")
 
@@ -88,6 +90,7 @@ def index(request):
 
 ####################################################################
 #
+@csrf_exempt
 async def hook_postmark_incoming(request, domain_name):
     """
     Incoming email being POST'd to us by a postmark provider.
@@ -115,7 +118,7 @@ async def hook_postmark_incoming(request, domain_name):
     message_id = email["MessageID"] if "MessageID" in email else None
 
     if "OriginalRecipient" not in email:
-        logger.warning(
+        await logger.warning(
             "email received from postmark without `OriginalRecipient`, "
             "message id: %s",
             message_id,
@@ -141,7 +144,7 @@ async def hook_postmark_incoming(request, domain_name):
     try:
         email_account = await EmailAccount.objects.aget(email_address=addr)
     except EmailAccount.DoesNotExist:
-        logger.info(
+        await logger.info(
             "Received email for email account that does not exist: %s", addr
         )
         # XXX here we would log metrics for getting email that no one is going
@@ -182,22 +185,67 @@ async def hook_postmark_incoming(request, domain_name):
 
 ####################################################################
 #
-async def hook_postmark_bounce(request, domain_name):
+@csrf_exempt
+def hook_postmark_bounce(request, domain_name):
     """
     Bounce notification POST'd to us by the provider.
     """
-    # XXX usually we would have used @require_POST decorator.. but async.
-    #     maybe in django 5.0
-    #
     if request.method != "POST":
         raise PermissionDenied("must be POST")
 
-    server = await _validate_server_api_key(request, domain_name)
-    return HttpResponse(f"received bounced for {server}")
+    server = _validate_server_api_key(request, domain_name)
+    bounce = json.loads(request.body)
+    if not all(
+        [x in bounce for x in ("From", "Type", "ID", "Email", "Description")]
+    ):
+        raise Http404("submitted json missing expected keys")
+
+    logger.info(
+        "postmark bounce: message from %s to %s: %s",
+        bounce["From"],
+        bounce["Email"],
+        bounce["Description"],
+    )
+
+    try:
+        ea = EmailAccount.objects.get(email_address=bounce["From"])
+    except EmailAccount.DoesNotExist:
+        logger.warning(
+            "postmark bounce: %s from email address that does not belong "
+            "to any EmailAccount: %s, server: %s, bounce id: %d, to: %s, "
+            "description: %s",
+            bounce["Type"],
+            bounce["From"],
+            server,
+            bounce["ID"],
+            bounce["Email"],
+            extra=bounce,
+        )
+        # NOTE: This does not return an error. Not their fault unless they are
+        #       buggesed, but we should log it. Maybe we just deleted that
+        #       EmailAccount.
+        #
+        return JsonResponse(
+            {"status": "all good", "message": f"received bounced for {server}"}
+        )
+
+    ea.num_bounces += 1
+    ea.save()
+
+    # We do the rest of the processing in an async huey task (this will involve
+    # querying postmark's bounce API, and sending a notification email to the
+    # email account in question.)
+    #
+    process_email_bounce(ea.pk, bounce)
+
+    return JsonResponse(
+        {"status": "all good", "message": f"received bounced for {server}"}
+    )
 
 
 ####################################################################
 #
+@csrf_exempt
 async def hook_postmark_spam(request, domain_name):
     """
     Spam notificaiton POST'd to us by the provider.

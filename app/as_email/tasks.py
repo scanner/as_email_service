@@ -154,3 +154,30 @@ def dispatch_incoming_email(email_account_pk, email_fname):
         )
     finally:
         email_file.unlink()
+
+
+####################################################################
+#
+@db_task()
+def process_email_bounce(email_account_pk: int, bounce: dict):
+    """
+    We have received an incoming bounce notification from postmark. The web
+    front end decoded the bounce message and verified the email account that
+    sent the message that generated the bounce and incremented the email
+    accounts bounce count. This task handles the rest of the associated work:
+      - if the number of bounces has been exceeded deactivate the account
+      - send a notification email of the bounce to the account.
+    """
+    ea = EmailAccount.objects.get(pk=email_account_pk)
+    if not ea.deactivated:
+        if ea.num_bounces >= ea.NUM_EMAIL_BOUNCE_LIMIT:
+            ea.deactivated = True
+            ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BOUNCES_REASON
+            ea.save()
+            logger.info(
+                "process_email_bounce: Account %s deactivated due to "
+                "excessive bounces",
+                ea,
+            )
+
+    # XXX generate bounce email.

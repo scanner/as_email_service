@@ -245,3 +245,24 @@ MAIL_DIRS = Path(env("MAIL_DIRS"))
 EXTERNAL_AUTH_DB = (
     Path(env("EXTERNAL_AUTH_DB")) if "EXTERNAL_AUTH_DB" in env else None
 )
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "basic": {
+            "format": "{asctime} {levelname} {module}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "basic",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "DEBUG" if DEBUG else "INFO",
+    },
+}
