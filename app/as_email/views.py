@@ -57,15 +57,14 @@ def _validate_server_api_key(request, domain_name: str) -> Server:
     server object and verify that there is an `api_key` on the request that
     matches server.api_key.
     """
-    logger.debug("validate, request: %s", request)
     try:
         server = Server.objects.get(domain_name=domain_name)
     except Server.DoesNotExist:
         raise Http404(f"No server found for domain_name `{domain_name}`")
 
-    if "api_key" not in request:
+    if "api_key" not in request.GET:
         raise PermissionDenied("no api_key specified in request")
-    if request["api_key"] != server.api_key:
+    if request.GET["api_key"].strip() != server.api_key:
         raise PermissionDenied("invalid api_key specified in request")
     return server
 
