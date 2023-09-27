@@ -21,7 +21,7 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 
 # Project imports
 #
-from .deliver import deliver_message
+from .deliver import deliver_message, make_delivery_status_notification
 from .models import EmailAccount, Server
 
 TZ = pytz.timezone(settings.TIME_ZONE)
@@ -169,6 +169,44 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
       - send a notification email of the bounce to the account.
     """
     ea = EmailAccount.objects.get(pk=email_account_pk)
+    client = ea.server.client
+
+    # Get the bounce details if they are available.
+    #
+    to_addr = bounce["Email"]
+    from_addr = bounce["From"]
+    bounce_details = client.bounces.get(int(bounce["ID"]))
+
+    # We generate the human readable 'report_text' by constructing a list of
+    # messages that will concatenated into a single string and passed as the
+    # 'report_text' when making the DSN. This lets us stack up several parts of
+    # the message and make it all at once instead of having to make several
+    # different DSN's depending on the circumstances.
+    #
+    report_text = [f"Email from {from_addr} to {to_addr} has bounced."]
+
+    # If `Inactive` is true then this bounce has caused postmark to disable
+    # this email address.
+    #
+    if bounce["Inactive"]:
+        ea.deactivated = True
+        ea.deactivated_reason = "Postmark deactivated due to bounced email"
+        ea.save()
+        logger.info(
+            "Account %s deactivated by postmark due to bounce to %s: %s",
+            ea,
+            to_addr,
+            bounce["Description"],
+        )
+
+        report_text.append(
+            f"Postmark has marked this account ({from_addr}) as inactive and "
+            "it can not send any more emails. Contact the system adminstrator "
+            "to see if this can be resolved. The email account can still "
+            "receive messages. It just can not send any messages while "
+            "deactivated."
+        )
+
     if not ea.deactivated:
         if ea.num_bounces >= ea.NUM_EMAIL_BOUNCE_LIMIT:
             ea.deactivated = True
@@ -179,5 +217,30 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
                 "excessive bounces",
                 ea,
             )
+            report_text.append(
+                f"This account ({from_addr}) has been deactivated from sending "
+                "email due to excessive bounced email messages. email account "
+                "Will automatically be reactivated after in at most a day."
+            )
 
-    # XXX generate bounce email.
+    report_text.append(f"Bounce type: {bounce['Type']}")
+    report_text.append(f"Bounce description: {bounce['Description']}")
+    report_text.append(f"Bounce details: {bounce['Details']}")
+    if bounce_details.dump:
+        report_text.append(bounce_details.dump)
+
+    report_text = "\n".join(report_text)
+
+    bounced_message = email.message_from_string(
+        bounce_details.get_dump(), policy=email.policy.default
+    )
+    dsn = make_delivery_status_notification(  # noqa: F841
+        ea,
+        report_text,
+        f"Email from {from_addr} to {to_addr} has "
+        f"bounced: {bounce['Description']}",
+        "failed",
+        f"smtp; {bounce['Details']}",
+        "5.1.1",
+        bounced_message,
+    )

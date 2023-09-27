@@ -238,7 +238,9 @@ def hook_postmark_bounce(request, domain_name):
         return JsonResponse(
             {
                 "status": "all good",
-                "message": f"`from` address '{bounce['From']}' is not an EmailAccount on server {server.domain_name}. Bounce message ignored.",
+                "message": f"`from` address '{bounce['From']}' is not an "
+                f"EmailAccount on server {server.domain_name}. "
+                "Bounce message ignored.",
             }
         )
 

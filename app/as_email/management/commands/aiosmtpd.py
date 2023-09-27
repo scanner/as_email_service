@@ -18,6 +18,7 @@ import ssl
 import time
 from datetime import datetime, timedelta
 from email.message import EmailMessage
+from email.utils import parseaddr
 from typing import List, Optional
 
 # 3rd party imports
@@ -31,7 +32,6 @@ from aiosmtpd.smtp import Session as SMTPSession
 # Project imports
 #
 from as_email.models import EmailAccount
-from as_email.utils import parse_email_addr
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -368,7 +368,7 @@ class RelayHandler:
         account = session.auth_data
         valid_from = account.email_address.lower()
         logger.debug("handle_MAIL: account: %s, address: %s", account, address)
-        frm = parse_email_addr(address)
+        _, frm = parseaddr(address)
         if frm is None or frm.lower() != valid_from:
             logger.info(
                 "handle_MAIL: For account '%s', FROM '%s' (%s) is not valid "
@@ -411,8 +411,8 @@ class RelayHandler:
         valid_from = account.email_address.lower()
         if froms:
             for msg_from in froms:
-                frm = parse_email_addr(msg_from)
-                if frm is None or frm != valid_from:
+                _, frm = parseaddr(msg_from)
+                if frm is None or frm.lower() != valid_from:
                     logger.info(
                         "handle_DATA: `from` header in email not valid: '%s' (must be from '%s')",
                         frm,

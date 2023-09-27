@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 #
 """
-Utilitities used by our app. We want to separate them from views and models
-so we can use them in other modules without running the code in app.
+Utilitities used by our app. We want to separate them from views, models,
+and tasks so we can import them in all of those other modules without loops and
+weirdness.
 """
 # system imports
 #
 import logging
-from email._header_value_parser import get_mailbox
-from email.errors import HeaderParseError
-from typing import Optional, Tuple
+from typing import Dict, Tuple
 
 # Project imports
 #
@@ -33,7 +32,9 @@ def split_email_mailbox_hash(email_address: str) -> Tuple[str, str | None]:
 
 ####################################################################
 #
-def spooled_email(recipient, msg_id, date, raw_email):
+def spooled_email(
+    recipient: str, msg_id: str, date: str, raw_email: str
+) -> Dict[str, str]:
     """
     Incoming email is written to a spool directory as json files. It has a
     specific format and this function returns a dict in that format.
@@ -47,21 +48,3 @@ def spooled_email(recipient, msg_id, date, raw_email):
         "date": date,
         "raw_email": raw_email,
     }
-
-
-####################################################################
-#
-#
-def parse_email_addr(arg: str) -> Optional[str]:
-    """
-    Try to parse address given in SMTP command. This will be a "mailbox"
-    formatted address. All we care about is the addr spec parse of this address
-    ie: the `local` @ `domain` part.
-    """
-    if not arg:
-        return ""
-    try:
-        address, rest = get_mailbox(arg)
-    except HeaderParseError:
-        return None, None
-    return address.addr_spec.lower()

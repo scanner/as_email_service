@@ -25,11 +25,12 @@ There are three main entry points:
 
   NOTE: https://www.iana.org/assignments/message-headers/message-headers.xhtml
 """
-import logging
-from email.message import EmailMessage
-
 # system imports
 #
+import email.utils
+import logging
+from email.message import EmailMessage
+from email.mime.text import MIMEText
 from mailbox import MH, NoSuchMailboxError
 from typing import List
 
@@ -292,3 +293,95 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
         msg["From"] = email_account.email_address
 
     email_account.send_email_via_smtp([email_account.forward_to], msg)
+
+
+####################################################################
+#
+def make_delivery_status_notification(
+    email_account: EmailAccount,
+    report_text: str,
+    subject: str,
+    from_addr: str,
+    action: str,
+    diagnostic: str,
+    status: str,
+    reported_msg: EmailMessage,
+) -> EmailMessage:
+    """
+    Create an email message that is a delivery status notification.
+
+    The DSN follows the standards in:
+    - https://www.rfc-editor.org/rfc/rfc3464
+    - https://www.rfc-editor.org/rfc/rfc3463
+
+    `report_text` is the over all human readable report.
+
+    - from_addr: the destination email address that the bounce message was
+                 being sent to.
+    - action: typically the string 'failed'
+    - status: status, three digit code.
+              5.1.1 - bad dest mailbox,
+              5.1.2 - bad dest domain name
+    - diagnostic code: typically something like 'smtp; ### <blah blah blah>'
+
+    The `reported_msg` will be attached as an inline message/rfc822.
+
+    The DSN is always from 'mailer-daemon@<account.server.domain_name>'
+    """
+    server = email_account.server
+    to_addr = email_account.email_address
+
+    dsn = EmailMessage(policy=email.policy.default)
+    dsn.preamble = "This is a MIME-encapsulated message"
+    dsn["From"] = f"mailer-daemon@{server.domain_name}"
+    dsn["Subject"] = subject
+    dsn["To"] = to_addr
+    dsn["Date"] = email.utils.localtime()
+
+    if "Date" in reported_msg:
+        arrival_date = reported_msg["Date"]
+    else:
+        arrival_date = email.utils.formatdate(localtime=True)
+
+    dsn.set_content(report_text)
+
+    last_attempt_date = email.utils.formatdate(localtime=True)
+    delivery_status = [
+        f"Reporting-MTA: dns; {server.domain_name}",
+        f"Arrival-Date: {arrival_date}",
+        "",
+        f"Original-Recipient: rfc822; {from_addr}",
+        f"Final-Recipient: rfc822; {from_addr}",
+        f"Action: {action}",
+        f"Status: {status}",
+        f"Diagnostic-Code: {status}",
+        f"Last-Attempt-Date: {last_attempt_date}",
+    ]
+    status = MIMEText("\n".join(delivery_status), policy=email.policy.default)
+
+    # We delete the MIMEText's headers because we are attaching this, and
+    # replacing the attachment's content-type with
+    # 'message/delivery-status'. If we do not do this we have extraneous MIME
+    # headers appearing in the message/delivery-status part of the message.
+    #
+    for header in status.keys():
+        del status[header]
+
+    dsn.add_attachment(status, cte="7bit")
+    dsn.add_attachment(reported_msg)
+
+    # Update the content-type to reflect that this is a dsn multipart/report
+    #
+    dsn.replace_header("Content-Type", "multipart/report")
+    dsn.set_param("report-type", "delivery-status", replace=True)
+
+    # Make sure our message/delivery-status and message/rfc822 attachments are
+    # 'inline'. Also fix the header of the message/delivery-status part to
+    # actaully be message/delivery-status.
+    #
+    parts = list(dsn.iter_attachments())
+    parts[-1].replace_header("Content-Disposition", "inline")
+    parts[-2].replace_header("Content-Type", "message/delivery-status")
+    parts[-2].replace_header("Content-Disposition", "inline")
+
+    return dsn
