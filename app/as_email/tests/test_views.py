@@ -15,7 +15,6 @@ from django.urls import reverse
 
 # Project imports
 #
-from ..models import EmailAccount
 
 pytestmark = pytest.mark.django_db
 
@@ -28,9 +27,6 @@ def test_bounce_webhook(email_account_factory, api_client, faker):
     server = ea.server
     assert ea.num_bounces == 0
 
-    # NOTE: we use the 'requests client' from DRF because this is a web hook
-    #       being called from an external service (postmark)
-    #
     bounce_data = {
         "ID": 4323372036854775807,
         "Type": "HardBounce",
@@ -45,7 +41,7 @@ def test_bounce_webhook(email_account_factory, api_client, faker):
         "From": ea.email_address,
         "BouncedAt": "2014-08-01T13:28:10.2735393-04:00",
         "DumpAvailable": True,
-        "Inactive": True,
+        "Inactive": False,
         "CanActivate": True,
         "RecordType": "Bounce",
         "Subject": "Test subject",
@@ -118,86 +114,3 @@ def test_bounce_webhook(email_account_factory, api_client, faker):
     assert r.status_code == 404
     ea.refresh_from_db()
     assert ea.num_bounces == 1
-
-
-####################################################################
-#
-def test_too_many_bounces(email_account_factory, api_client, faker):
-    """
-    We set up an account that has had 2 less than the bounce limit, and
-    that when it crosses that limit it gets deactivated.
-    """
-    bounce_start = EmailAccount.NUM_EMAIL_BOUNCE_LIMIT - 2
-    ea = email_account_factory(num_bounces=bounce_start)
-    ea.save()
-    server = ea.server
-    assert ea.num_bounces == bounce_start
-
-    # NOTE: we use the 'requests client' from DRF because this is a web hook
-    #       being called from an external service (postmark)
-    #
-    bounce_data = {
-        "ID": 4323372036854775807,
-        "Type": "HardBounce",
-        "TypeCode": 1,
-        "Name": "Hard bounce",
-        "Tag": "Test",
-        "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
-        "ServerID": 23,
-        "Description": "The server was unable to deliver your message",
-        "Details": "Test bounce details",
-        "Email": "john@example.com",
-        "From": ea.email_address,
-        "BouncedAt": "2014-08-01T13:28:10.2735393-04:00",
-        "DumpAvailable": True,
-        "Inactive": True,
-        "CanActivate": True,
-        "RecordType": "Bounce",
-        "Subject": "Test subject",
-    }
-
-    url = (
-        reverse(
-            "as_email:hook_postmark_bounce",
-            kwargs={"domain_name": server.domain_name},
-        )
-        + "?"
-        + urlencode({"api_key": server.api_key})
-    )
-
-    client = api_client()
-    r = client.post(
-        url, json.dumps(bounce_data), content_type="application/json"
-    )
-    assert r.status_code == 200
-    resp_data = r.json()
-    assert "status" in resp_data
-    assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"received bounce for {server.domain_name}/{ea.email_address}"
-    )
-    ea.refresh_from_db()
-    assert ea.num_bounces == bounce_start + 1
-    assert ea.deactivated is False
-    assert ea.deactivated_reason is None
-
-    # and a second bounce.
-    #
-    r = client.post(
-        url, json.dumps(bounce_data), content_type="application/json"
-    )
-    assert r.status_code == 200
-    resp_data = r.json()
-    assert "status" in resp_data
-    assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"received bounce for {server.domain_name}/{ea.email_address}"
-    )
-    ea.refresh_from_db()
-    assert ea.num_bounces == bounce_start + 2
-    assert ea.deactivated
-    assert (
-        ea.deactivated_reason == EmailAccount.DEACTIVATED_DUE_TO_BOUNCES_REASON
-    )

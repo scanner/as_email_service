@@ -176,6 +176,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
     bounce_details = client.bounces.get(int(bounce["ID"]))
+    print(f"Bounce details: {bounce_details}")
 
     # We generate the human readable 'report_text' by constructing a list of
     # messages that will concatenated into a single string and passed as the
@@ -227,20 +228,23 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     report_text.append(f"Bounce description: {bounce['Description']}")
     report_text.append(f"Bounce details: {bounce['Details']}")
     if bounce_details.dump:
+        print(f"bounce dump: {bounce_details.dump}")
         report_text.append(bounce_details.dump)
 
     report_text = "\n".join(report_text)
 
+    outbound_message = bounce_details.message
+    print(f"Bounce details message: {outbound_message}")
     bounced_message = email.message_from_string(
-        bounce_details.get_dump(), policy=email.policy.default
+        outbound_message.get_dump(), policy=email.policy.default
     )
     dsn = make_delivery_status_notification(  # noqa: F841
         ea,
-        report_text,
-        f"Email from {from_addr} to {to_addr} has "
-        f"bounced: {bounce['Description']}",
-        "failed",
-        f"smtp; {bounce['Details']}",
-        "5.1.1",
-        bounced_message,
+        report_text=report_text,
+        subject=f"Email from {from_addr} to {to_addr} has bounced",
+        from_addr=from_addr,
+        action="failed",
+        status="5.1.1",
+        diagnostic=f"smtp; {bounce['Details']}",
+        reported_msg=bounced_message,
     )
