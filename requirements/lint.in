@@ -1,5 +1,8 @@
+autopep8
 black
 coverage
+django-stubs[compatible-mypy]
+flake8
 isort
 mypy
 pip-tools
@@ -9,4 +12,4 @@ types-cachetools
 types-pytz
 types-requests
 types-setuptools
-django-stubs[compatible-mypy]
+yapf

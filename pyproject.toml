@@ -30,7 +30,7 @@ ignore = [
 ]
 
 [tool.mypy]
-mypy_path = "./app/"
+mypy_path = "./app"
 exclude = [
     '__pycache__',
     '^\.mnt',
@@ -47,6 +47,9 @@ exclude = [
 plugins = ["mypy_django_plugin.main"]
 strict_optional = true
 ignore_missing_imports = true
+
+[[mypy.plugins.django-stubs]]
+django_settings_module = "config.settings"
 
 [tool.django-stubs]
 django_settings_module = "config.settings"
