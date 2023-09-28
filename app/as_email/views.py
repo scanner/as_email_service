@@ -244,9 +244,6 @@ def hook_postmark_bounce(request, domain_name):
             }
         )
 
-    ea.num_bounces += 1
-    ea.save()
-
     # We do the rest of the processing in an async huey task (this will involve
     # querying postmark's bounce API, and sending a notification email to the
     # email account in question.)

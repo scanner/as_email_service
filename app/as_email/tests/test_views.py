@@ -21,7 +21,13 @@ pytestmark = pytest.mark.django_db
 
 ####################################################################
 #
-def test_bounce_webhook(email_account_factory, api_client, faker):
+def test_bounce_webhook(
+    email_account_factory,
+    api_client,
+    faker,
+    postmark_request,
+    postmark_request_bounce,
+):
     ea = email_account_factory()
     ea.save()
     server = ea.server
@@ -46,6 +52,11 @@ def test_bounce_webhook(email_account_factory, api_client, faker):
         "RecordType": "Bounce",
         "Subject": "Test subject",
     }
+
+    # Make sure when we query postmark for the bounce info it matches what we
+    # are expecting here.
+    #
+    postmark_request_bounce(email_account=ea, **bounce_data)
 
     url = (
         reverse(

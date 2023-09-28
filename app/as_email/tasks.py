@@ -23,6 +23,7 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 #
 from .deliver import deliver_message, make_delivery_status_notification
 from .models import EmailAccount, Server
+from .utils import BOUNCE_TYPES_BY_TYPE_CODE
 
 TZ = pytz.timezone(settings.TIME_ZONE)
 EST = pytz.timezone("EST")  # Postmark API is in EST! Really!
@@ -176,6 +177,16 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
     bounce_details = client.bounces.get(int(bounce["ID"]))
+
+    # IF this bounce is not a transient bounce, then increment the number of
+    # bounces this EmailAccount has generated.
+    #
+    if (
+        bounce_details.TypeCode in BOUNCE_TYPES_BY_TYPE_CODE
+        and not BOUNCE_TYPES_BY_TYPE_CODE[bounce_details.TypeCode]["transient"]
+    ):
+        ea.num_bounces += 1
+        ea.save()
 
     # We generate the human readable 'report_text' by constructing a list of
     # messages that will concatenated into a single string and passed as the
