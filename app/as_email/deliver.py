@@ -357,17 +357,19 @@ def make_delivery_status_notification(
         f"Diagnostic-Code: {status}",
         f"Last-Attempt-Date: {last_attempt_date}",
     ]
-    status = MIMEText("\n".join(delivery_status), policy=email.policy.default)
+    status_text = MIMEText(
+        "\n".join(delivery_status), policy=email.policy.default
+    )
 
     # We delete the MIMEText's headers because we are attaching this, and
     # replacing the attachment's content-type with
     # 'message/delivery-status'. If we do not do this we have extraneous MIME
     # headers appearing in the message/delivery-status part of the message.
     #
-    for header in status.keys():
-        del status[header]
+    for header in status_text.keys():
+        del status_text[header]
 
-    dsn.add_attachment(status, cte="7bit")
+    dsn.add_attachment(status_text, cte="7bit")
     dsn.add_attachment(reported_msg)
 
     # Update the content-type to reflect that this is a dsn multipart/report

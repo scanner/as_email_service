@@ -176,7 +176,6 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
     bounce_details = client.bounces.get(int(bounce["ID"]))
-    print(f"Bounce details: {bounce_details}")
 
     # We generate the human readable 'report_text' by constructing a list of
     # messages that will concatenated into a single string and passed as the
@@ -189,7 +188,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     # If `Inactive` is true then this bounce has caused postmark to disable
     # this email address.
     #
-    if bounce["Inactive"]:
+    if bounce_details.Inactive:
         ea.deactivated = True
         ea.deactivated_reason = "Postmark deactivated due to bounced email"
         ea.save()
@@ -197,7 +196,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             "Account %s deactivated by postmark due to bounce to %s: %s",
             ea,
             to_addr,
-            bounce["Description"],
+            bounce_details.Description,
         )
 
         report_text.append(
@@ -224,27 +223,21 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
                 "Will automatically be reactivated after in at most a day."
             )
 
-    report_text.append(f"Bounce type: {bounce['Type']}")
-    report_text.append(f"Bounce description: {bounce['Description']}")
-    report_text.append(f"Bounce details: {bounce['Details']}")
-    if bounce_details.dump:
-        print(f"bounce dump: {bounce_details.dump}")
-        report_text.append(bounce_details.dump)
-
+    report_text.append(f"Bounce type: {bounce_details.Type}")
+    report_text.append(f"Bounce description: {bounce_details.Description}")
+    report_text.append(f"Bounce details: {bounce_details.Details}")
     report_text = "\n".join(report_text)
 
-    outbound_message = bounce_details.message
-    print(f"Bounce details message: {outbound_message}")
     bounced_message = email.message_from_string(
-        outbound_message.get_dump(), policy=email.policy.default
+        bounce_details.Content, policy=email.policy.default
     )
     dsn = make_delivery_status_notification(  # noqa: F841
         ea,
         report_text=report_text,
-        subject=f"Email from {from_addr} to {to_addr} has bounced",
+        subject=bounce_details.Subject,
         from_addr=from_addr,
         action="failed",
         status="5.1.1",
-        diagnostic=f"smtp; {bounce['Details']}",
+        diagnostic=f"smtp; {bounce_details.Details}",
         reported_msg=bounced_message,
     )

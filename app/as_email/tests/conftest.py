@@ -3,11 +3,15 @@
 """
 pytest fixtures for our tests
 """
+import email.policy
+
 # system imports
 #
-import email.policy
+import json
+from datetime import datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
+from email.utils import parseaddr
 
 # 3rd party imports
 #
@@ -15,6 +19,7 @@ import pytest
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import Session as SMTPSession
 from pytest_factoryboy import register
+from requests import Response
 from rest_framework.test import APIClient, RequestsClient
 
 # Project imports
@@ -296,3 +301,109 @@ def aiosmtp_envelope(email_factory):
         return env
 
     return make_envelope
+
+
+####################################################################
+#
+@pytest.fixture
+def postmark_request_bounce(
+    postmark_request, email_account_factory, email_factory, faker
+):
+    """
+    This sets up a fixture that will allow us to use the postmarker client
+    for getting information about a bounce that is consistent with the
+    provided EmailAccount.
+    """
+
+    def setup_responses(email_account=None, email_message=None, **kwargs):
+        """
+        The fixture returns this function which sets up a side effect on
+        the postmark_client mock such that a generated bounce detail is set
+        back to the client.
+
+        The EmailAccount to use, the EmailMessage to use, the bounce id that is
+        to be request can be passed in.
+
+        Also the caller can setup several fields in the response like
+        Description, Details, Inactive, etc so that several different bounces
+        can be tested against.
+        """
+        if email_account is None:
+            email_account = email_account_factory()
+        from_addr = email_account.email_address
+        if email_message is None:
+            email_message = email_factory(msg_from=from_addr)
+
+        to_addr = parseaddr(email_message["From"])[1].lower()
+
+        # We construct a dict that will be used to `update` the response we
+        # send to the mock postmark client when it requests the bounce
+        # details. This lets the person using this fixture setup various values
+        # in the response appropriate to their test.
+        #
+        response_update = {
+            k: v
+            for k, v in kwargs.items()
+            if k
+            in (
+                "BouncedAt",
+                "Description",
+                "Details",
+                "DumpAvailable",
+                "ID",
+                "Inactive",
+                "MessageID",
+                "Name",
+                "RecordType",
+                "Subject",
+                "Type",
+                "TypeCode",
+            )
+        }
+        print(f"Response update: {response_update}")
+
+        response = {
+            "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "CanActivate": True,
+            "Content": email_message.as_string(policy=email.policy.default),
+            "Description": "The server was unable to deliver your message (ex: unknown user, mailbox not found).",
+            "Details": "action: failed",
+            "DumpAvailable": False,
+            "Email": to_addr,
+            "From": from_addr,
+            "ID": faker.pyint(1_000_000_000, 9_999_999_999),
+            "Inactive": False,
+            "MessageID": faker.uuid4(),
+            "MessageStream": "outbound",
+            "Name": "Hard bounce",
+            "RecordType": "Bounce",
+            "ServerID": 23,
+            "Subject": "The server was unable to deliver your message (ex: unknown user, mailbox not found).",
+            "Type": "HardBounce",
+            "TypeCode": 1,
+        }
+
+        response.update(response_update)
+
+        # A map of responses by the URL being requested.
+        #
+        responses = {
+            f"https://api.postmarkapp.com/bounces/{response['ID']}": response,
+        }
+
+        def postmarker_requests(method, url, **kwargs):
+            """
+            The `postmark_request` fixture substitutes a mock object for
+            the `requests.Session().get` function. What we are doing here is
+            based on expected URL's return an appropriate response. We use the
+            `email_account` and `email_message` values from our wrapping
+            function to fill in values in the expected responses.
+            """
+            resp = Response()
+            resp.status_code = 200
+            resp._content = bytes(json.dumps(responses[url]), "utf-8")
+            return resp
+
+        postmark_request.side_effect = postmarker_requests
+
+    return setup_responses
