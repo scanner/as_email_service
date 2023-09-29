@@ -266,7 +266,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             "deactivated and can not send email",
             report_msg,
             None,
-            [ea.email_address],
+            [ea.owner.email],
             fail_silently=True,
         )
 
@@ -280,7 +280,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             policy=email.policy.default,
         ),
     )
-    dsn = make_delivery_status_notification(  # noqa: F841
+    dsn = make_delivery_status_notification(
         ea,
         report_text=report_msg,
         subject=bounce_details.Subject,

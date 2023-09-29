@@ -242,7 +242,7 @@ def test_bounce_inactive(
     assert ea.deactivated is True
     assert ea.deactivated_reason == ea.DEACTIVATED_BY_POSTMARK
     assert len(django_outbox) == 1
-    assert django_outbox[0].to[0] == ea.email_address
+    assert django_outbox[0].to[0] == ea.owner.email
 
 
 ####################################################################
