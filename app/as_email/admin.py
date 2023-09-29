@@ -48,7 +48,6 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "spam_delivery_folder",
         "spam_score_threshold",
         "forward_to",
-        "forward_style",
         "deactivated",
         "num_bounces",
         "deactivated_reason",

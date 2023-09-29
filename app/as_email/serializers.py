@@ -33,7 +33,6 @@ class EmailAccountSerializer(HyperlinkedModelSerializer):
             "spam_score_threshold",
             "alias_for",
             "forward_to",
-            "forward_style",
             "deactivated",
             "num_bounces",
             "deactivated_reason",

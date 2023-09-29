@@ -18,6 +18,7 @@ from ..deliver import (
     deliver_message,
     deliver_message_locally,
     make_delivery_status_notification,
+    make_encapsulated_fwd_msg,
 )
 from ..models import EmailAccount, MessageFilterRule
 from .conftest import assert_email_equal
@@ -230,50 +231,7 @@ def test_email_account_alias_depth(
 
 ####################################################################
 #
-def test_resent_forwarding(email_account_factory, email_factory, smtp):
-    """
-    Test forwarding of the message by having some headers re-written, the
-    subject modified but the message otherwise sent on as it is.
-    """
-    ea_1 = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
-        forward_style=EmailAccount.FORWARD_RESEND,
-        forward_to=factory.Faker("email"),
-    )
-    ea_1.save()
-
-    msg = email_factory()
-    original_to = msg["To"]
-    original_from = msg["From"]
-    original_subj = msg["Subject"]
-
-    deliver_message(ea_1, msg)
-
-    # The message should have been delivered to our smtp mock using the
-    # `send_message` call.
-    #
-    send_message = smtp.return_value.send_message
-    assert send_message.call_count == 1
-    assert send_message.call_args.kwargs == {
-        "from_addr": ea_1.email_address,
-        "to_addrs": [ea_1.forward_to],
-    }
-
-    sent_message = send_message.call_args.args[0]
-    assert sent_message["Original-From"] == original_from
-    assert sent_message["Original-Recipient"] == ea_1.email_address
-    assert sent_message["Resent-From"] == ea_1.email_address
-    assert sent_message["Resent-To"] == ea_1.forward_to
-    assert sent_message["From"] == ea_1.email_address
-    assert sent_message["To"] == original_to
-    assert sent_message["Subject"] == f"Fwd: {original_subj}"
-
-    assert_email_equal(msg, sent_message, ignore_headers=True)
-
-
-####################################################################
-#
-def test_encapsulate_forwarding(email_account_factory, email_factory, smtp):
+def test_forwarding(email_account_factory, email_factory, smtp):
     """
     Test forwarding of the message by having the original message attached
     as an rfc822 attachment, the original content text being in the new
@@ -281,7 +239,6 @@ def test_encapsulate_forwarding(email_account_factory, email_factory, smtp):
     """
     ea_1 = email_account_factory(
         delivery_method=EmailAccount.FORWARDING,
-        forward_style=EmailAccount.FORWARD_ENCAPSULTE,
         forward_to=factory.Faker("email"),
     )
     ea_1.save()
@@ -311,14 +268,6 @@ def test_encapsulate_forwarding(email_account_factory, email_factory, smtp):
     assert sent_message["From"] == ea_1.email_address
     assert sent_message["To"] == ea_1.forward_to
     assert sent_message["Subject"] == f"Fwd: {original_subj}"
-
-    # Look for the first message/rfc822 attachement. That should be our
-    # forwarded message.
-    #
-    for attachment in sent_message.iter_attachments():
-        if attachment.get_content_type() == "message/rfc822":
-            print(attachment.get_payload(decode=True))
-            assert attachment.get_payload(decode=True) == msg.as_bytes()
 
 
 ####################################################################
@@ -386,9 +335,57 @@ def test_generate_dsn(email_account_factory, email_factory):
         "text/plain",
         "message/delivery-status",
         "text/plain",
+        "message/rfc822",
+        "multipart/alternative",
+        "text/plain",
+        "text/html",
+    ]
+    results = [part.get_content_type() for part in dsn.walk()]
+    assert expected == results
+
+
+####################################################################
+#
+def test_generate_forwarded_message(
+    email_account_factory,
+    email_factory,
+    faker,
+):
+    """
+    Do a cursory test of our function that generates a forwarded email
+    """
+    forward_to = faker.email()
+    ea = email_account_factory(
+        delivery_method=EmailAccount.FORWARDING, forward_to=forward_to
+    )
+    ea.save()
+    msg = email_factory(msg_from=ea.email_address)
+
+    forwarded_msg = make_encapsulated_fwd_msg(ea, msg)
+
+    assert forwarded_msg["From"] == ea.email_address
+    assert forwarded_msg["To"] == ea.forward_to
+    assert forwarded_msg["Reply-To"] == msg["From"]
+    assert forwarded_msg["Original-From"] == msg["From"]
+    assert forwarded_msg["Original-Recipient"] == ea.email_address
+    assert forwarded_msg["Resent-From"] == ea.email_address
+    assert forwarded_msg["Resent-To"] == ea.forward_to
+
+    expected = [
+        "multipart/mixed",
         "text/plain",
         "message/rfc822",
+        "multipart/alternative",
         "text/plain",
+        "text/html",
     ]
-    for part, expected_ct in zip(dsn.walk(), expected):
-        part.get_content_type() == expected_ct
+    results = [part.get_content_type() for part in forwarded_msg.walk()]
+    assert expected == results
+
+    # Look for the first message/rfc822 part. That should be our
+    # forwarded message. It should be the third part of our message.
+    #
+    for part in forwarded_msg.walk():
+        if part.get_content_type == "message/rfc822":
+            assert part.get_content().as_bytes() == msg.as_bytes()
+            break
