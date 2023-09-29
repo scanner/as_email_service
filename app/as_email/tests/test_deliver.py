@@ -17,6 +17,7 @@ from ..deliver import (
     apply_message_filter_rules,
     deliver_message,
     deliver_message_locally,
+    make_delivery_status_notification,
 )
 from ..models import EmailAccount, MessageFilterRule
 from .conftest import assert_email_equal
@@ -345,3 +346,49 @@ def test_deactivated_forward(email_account_factory, email_factory):
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
+
+
+####################################################################
+#
+def test_generate_dsn(email_account_factory, email_factory):
+    ea = email_account_factory()
+    ea.save()
+    msg = email_factory()
+
+    from_addr = f"mailer-daemon@{ea.server.domain_name}"
+    action = "failed"
+    status = "5.1.1"
+    subject = "DSN Message!"
+    report_text = "Hey there"
+    diagnostic = "smtp; email bad!"
+
+    dsn = make_delivery_status_notification(
+        ea,
+        report_text=report_text,
+        subject=subject,
+        from_addr=from_addr,
+        action=action,
+        status=status,
+        diagnostic=diagnostic,
+        reported_msg=msg,
+    )
+
+    assert dsn["From"] == from_addr
+    assert dsn["To"] == ea.email_address
+    assert dsn["Subject"] == subject
+    assert dsn.is_multipart()
+
+    # And not going to really look at the parts.. just make sure they match
+    # what we expect.
+    #
+    expected = [
+        "multipart/report",
+        "text/plain",
+        "message/delivery-status",
+        "text/plain",
+        "text/plain",
+        "message/rfc822",
+        "text/plain",
+    ]
+    for part, expected_ct in zip(dsn.walk(), expected):
+        part.get_content_type() == expected_ct
