@@ -131,16 +131,6 @@ def test_decrement_num_bounces_counter(email_account_factory):
 
 ####################################################################
 #
-def test_bounce_deactivated_due_to_inactive(email_account_factory, faker):
-    """
-    If postmark sets 'Inactive' on its bounce webhook call then it means
-    that postmark has deactivated that email address from sending.
-    """
-    pass
-
-
-####################################################################
-#
 def test_too_many_bounces(
     email_account_factory,
     email_factory,
@@ -253,3 +243,52 @@ def test_bounce_inactive(
     assert ea.deactivated_reason == ea.DEACTIVATED_BY_POSTMARK
     assert len(django_outbox) == 1
     assert django_outbox[0].to[0] == ea.email_address
+
+
+####################################################################
+#
+def test_transient_bounce_notifications(
+    email_account_factory,
+    email_factory,
+    postmark_request,
+    postmark_request_bounce,
+    faker,
+):
+    """
+    Some bounce notifcations are transient - these do not cause the num
+    bounces for an email account to go up.
+    """
+    ea = email_account_factory()
+    ea.save()
+    assert ea.num_bounces == 0
+    assert ea.deactivated is False
+    bounced_msg = email_factory(msg_from=ea.email_address)
+    bounce_id = faker.pyint(1_000_000_000, 9_999_999_999)
+    bounce_data = {
+        "ID": bounce_id,
+        "Type": "Transient",
+        "TypeCode": 2,
+        "Name": "Transient",
+        "Tag": "Test",
+        "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
+        "ServerID": 23,
+        "Description": "A transient failure",
+        "Details": "Test bounce details",
+        "Email": "john@example.com",
+        "From": ea.email_address,
+        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "DumpAvailable": False,
+        "Inactive": False,
+        "CanActivate": True,
+        "RecordType": "Transient",
+        "Subject": "Test subject",
+    }
+    postmark_request_bounce(
+        email_account=ea, email_message=bounced_msg, **bounce_data
+    )
+
+    res = process_email_bounce(ea.pk, bounce_data)
+    res()
+    ea.refresh_from_db()
+    assert ea.num_bounces == 0
+    assert ea.deactivated is False
