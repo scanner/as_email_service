@@ -3,19 +3,21 @@
 """
 Huey dispatchable (and periodic) tasks.
 """
+# system imports
+#
 import email
 import email.policy
 import json
 import logging
-
-# system imports
-#
+from email.message import EmailMessage
 from pathlib import Path
+from typing import cast
 
 # 3rd party imports
 #
 import pytz
 from django.conf import settings
+from django.core.mail import send_mail
 from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, db_task
 
@@ -169,6 +171,15 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
       - if the number of bounces has been exceeded deactivate the account
       - send a notification email of the bounce to the account.
     """
+    # When an email account is deactivated we also send a message with just the
+    # report text to the email address attached to the user account that is the
+    # owner of the email account. This way if the user is unable to access
+    # emails sent to their email account (because they have forwarding turned
+    # on!) we will at least try to notify them via their user account that
+    # there email account has been deactivated.
+    #
+    notify_user = False
+
     ea = EmailAccount.objects.get(pk=email_account_pk)
     client = ea.server.client
 
@@ -177,6 +188,14 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
     bounce_details = client.bounces.get(int(bounce["ID"]))
+
+    # We generate the human readable 'report_text' by constructing a list of
+    # messages that will concatenated into a single string and passed as the
+    # 'report_text' when making the DSN. This lets us stack up several parts of
+    # the message and make it all at once instead of having to make several
+    # different DSN's depending on the circumstances.
+    #
+    report_text = [f"Email from {from_addr} to {to_addr} has bounced."]
 
     # IF this bounce is not a transient bounce, then increment the number of
     # bounces this EmailAccount has generated.
@@ -187,21 +206,20 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     ):
         ea.num_bounces += 1
         ea.save()
-
-    # We generate the human readable 'report_text' by constructing a list of
-    # messages that will concatenated into a single string and passed as the
-    # 'report_text' when making the DSN. This lets us stack up several parts of
-    # the message and make it all at once instead of having to make several
-    # different DSN's depending on the circumstances.
-    #
-    report_text = [f"Email from {from_addr} to {to_addr} has bounced."]
+        report_text.append(f"Number of bounced emails: {ea.num_bounces}")
+        report_text.append(
+            f"Email account will be deactivated from sending emails if this "
+            f"number exceeds {ea.NUM_EMAIL_BOUNCE_LIMIT} in a day "
+            "(the number of bounces will automatically decrease by 1 each day.)"
+        )
 
     # If `Inactive` is true then this bounce has caused postmark to disable
     # this email address.
     #
     if bounce_details.Inactive:
+        notify_user = True
         ea.deactivated = True
-        ea.deactivated_reason = "Postmark deactivated due to bounced email"
+        ea.deactivated_reason = ea.DEACTIVATED_BY_POSTMARK
         ea.save()
         logger.info(
             "Account %s deactivated by postmark due to bounce to %s: %s",
@@ -220,6 +238,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
 
     if not ea.deactivated:
         if ea.num_bounces >= ea.NUM_EMAIL_BOUNCE_LIMIT:
+            notify_user = True
             ea.deactivated = True
             ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BOUNCES_REASON
             ea.save()
@@ -229,22 +248,41 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
                 ea,
             )
             report_text.append(
-                f"This account ({from_addr}) has been deactivated from sending "
+                f"The account ({from_addr}) has been deactivated from sending "
                 "email due to excessive bounced email messages. email account "
-                "Will automatically be reactivated after in at most a day."
+                "Will automatically be reactivated after in at most a day. "
+                "\nNOTE: This account can still receive email. It just can not "
+                "send new emails."
             )
 
     report_text.append(f"Bounce type: {bounce_details.Type}")
     report_text.append(f"Bounce description: {bounce_details.Description}")
     report_text.append(f"Bounce details: {bounce_details.Details}")
-    report_text = "\n".join(report_text)
+    report_msg = "\n".join(report_text)
 
-    bounced_message = email.message_from_string(
-        bounce_details.Content, policy=email.policy.default
+    if notify_user:
+        send_mail(
+            f"NOTICE: The email account {ea.email_address} has been "
+            "deactivated and can not send email",
+            report_msg,
+            None,
+            [ea.email_address],
+            fail_silently=True,
+        )
+
+    # B-/ email.policy.default really makes this return an EmailMessage, not a
+    # Message. This cast is to make mypy understand this.
+    #
+    bounced_message = cast(
+        EmailMessage,
+        email.message_from_string(
+            bounce_details.Content,
+            policy=email.policy.default,
+        ),
     )
     dsn = make_delivery_status_notification(  # noqa: F841
         ea,
-        report_text=report_text,
+        report_text=report_msg,
         subject=bounce_details.Subject,
         from_addr=from_addr,
         action="failed",
@@ -252,3 +290,15 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
         diagnostic=f"smtp; {bounce_details.Details}",
         reported_msg=bounced_message,
     )
+
+    # use our huey task for asynchronously sending email to deliver the bounce
+    # message to this email account.
+    #
+    try:
+        deliver_message(ea, dsn)
+    except Exception:
+        logger.exception(
+            "Failed to deliver DSN message %s to '%s'",
+            dsn["Message-ID"],
+            ea.email_address,
+        )

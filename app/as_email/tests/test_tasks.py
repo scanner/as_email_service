@@ -30,7 +30,9 @@ pytestmark = pytest.mark.django_db
 ####################################################################
 #
 def test_dispatch_incoming_email(
-    email_account_factory, email_factory, tmp_path
+    email_account_factory,
+    email_factory,
+    tmp_path,
 ):
     """
     Write a json file that is in the expected format
@@ -196,3 +198,58 @@ def test_too_many_bounces(
     assert (
         ea.deactivated_reason == EmailAccount.DEACTIVATED_DUE_TO_BOUNCES_REASON
     )
+
+
+####################################################################
+#
+def test_bounce_inactive(
+    email_account_factory,
+    email_factory,
+    postmark_request,
+    postmark_request_bounce,
+    faker,
+    django_outbox,
+):
+    """
+    If postmark flags `inactive` on a bounce then it means that it has
+    deactivated that email address, so we will pre-emptively deactivate that
+    EmailAccount. Note that this deactivation, unlike the one that comes from
+    exceeding the allowable number of bounces in a day, will not be reset
+    automatically when the number of bounces decays over time.
+    """
+    ea = email_account_factory()
+    ea.save()
+    assert ea.num_bounces == 0
+    bounced_msg = email_factory(msg_from=ea.email_address)
+    bounce_id = faker.pyint(1_000_000_000, 9_999_999_999)
+    bounce_data = {
+        "ID": bounce_id,
+        "Type": "HardBounce",
+        "TypeCode": 1,
+        "Name": "Hard bounce",
+        "Tag": "Test",
+        "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
+        "ServerID": 23,
+        "Description": "The server was unable to deliver your message",
+        "Details": "Test bounce details",
+        "Email": "john@example.com",
+        "From": ea.email_address,
+        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "DumpAvailable": False,
+        "Inactive": True,
+        "CanActivate": True,
+        "RecordType": "Bounce",
+        "Subject": "Test subject",
+    }
+    postmark_request_bounce(
+        email_account=ea, email_message=bounced_msg, **bounce_data
+    )
+
+    res = process_email_bounce(ea.pk, bounce_data)
+    res()
+    ea.refresh_from_db()
+    assert ea.num_bounces == 1
+    assert ea.deactivated is True
+    assert ea.deactivated_reason == ea.DEACTIVATED_BY_POSTMARK
+    assert len(django_outbox) == 1
+    assert django_outbox[0].to[0] == ea.email_address

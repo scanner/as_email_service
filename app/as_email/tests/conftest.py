@@ -18,6 +18,7 @@ from email.utils import parseaddr
 import pytest
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import Session as SMTPSession
+from django.core import mail
 from pytest_factoryboy import register
 from requests import Response
 from rest_framework.test import APIClient, RequestsClient
@@ -407,3 +408,17 @@ def postmark_request_bounce(
         postmark_request.side_effect = postmarker_requests
 
     return setup_responses
+
+
+####################################################################
+#
+@pytest.fixture
+def django_outbox():
+    """
+    Makes sure that the django outbox is preserved, emptied, and restored
+    where it is used.
+    """
+    old_outbox = mail.outbox
+    mail.outbox = []
+    yield mail.outbox
+    mail.outbox = old_outbox

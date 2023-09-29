@@ -421,7 +421,7 @@ class EmailAccount(models.Model):
     #
     NUM_EMAIL_BOUNCE_LIMIT = 10
     DEACTIVATED_DUE_TO_BOUNCES_REASON = "Deactivated due to excessive bounces"
-
+    DEACTIVATED_BY_POSTMARK = "Postmark deactivated due to bounced email"
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
     LOCAL_DELIVERY = "LD"
@@ -1061,7 +1061,7 @@ class MessageFilterRule(OrderedModel):
         if self.header not in email_message:
             return False
 
-        header_contents = email_message.get_all(self.header)
+        header_contents: list = email_message.get_all(self.header, [])
         for hc in header_contents:
             if self.pattern.lower() in hc.lower():
                 return True

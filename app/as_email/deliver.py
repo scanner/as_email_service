@@ -336,6 +336,10 @@ def make_delivery_status_notification(
     dsn["From"] = f"mailer-daemon@{server.domain_name}"
     dsn["Subject"] = subject
     dsn["To"] = to_addr
+    dsn["Message-ID"] = email.utils.make_msgid(
+        idstring="mailer-daemon",
+        domain=server.domain_name,
+    )
     dsn["Date"] = email.utils.localtime()
 
     if "Date" in reported_msg:
