@@ -261,7 +261,7 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     """
     if not email_account.forward_to or email_account.deactivated:
         if not email_account.forward_to:
-            log_msg = "forwarding address it not set"
+            log_msg = "forwarding address is not set"
         else:
             log_msg = "account is deactivated"
         logger.warning(

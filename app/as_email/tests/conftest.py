@@ -348,14 +348,18 @@ def postmark_request_bounce(
             if k
             in (
                 "BouncedAt",
+                "CanActivate",
                 "Description",
                 "Details",
                 "DumpAvailable",
+                "Email",
+                "From",
                 "ID",
                 "Inactive",
                 "MessageID",
                 "Name",
                 "RecordType",
+                "ServerID",
                 "Subject",
                 "Type",
                 "TypeCode",

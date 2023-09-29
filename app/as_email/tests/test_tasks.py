@@ -292,3 +292,63 @@ def test_transient_bounce_notifications(
     ea.refresh_from_db()
     assert ea.num_bounces == 0
     assert ea.deactivated is False
+
+
+####################################################################
+#
+def test_bounce_to_forwarded_to_deactivates_emailaccount(
+    email_account_factory,
+    email_factory,
+    postmark_request,
+    postmark_request_bounce,
+    faker,
+    django_outbox,
+):
+    """
+    If you have set a 'forward_to' to an address that causes a hard bounce
+    when email is sent to it, then your email account is deactivated (otherwise
+    every forwarded message will cause a hard bounce.)
+    """
+    forward_to = faker.email()
+    ea = email_account_factory(
+        delivery_method=EmailAccount.FORWARDING,
+        forward_to=forward_to,
+    )
+    ea.save()
+    assert ea.num_bounces == 0
+    assert ea.deactivated is False
+
+    bounced_msg = email_factory(msg_from=ea.email_address, to=forward_to)
+    bounce_id = faker.pyint(1_000_000_000, 9_999_999_999)
+
+    bounce_data = {
+        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "CanActivate": True,
+        "Description": "Invalid email address — The address is not a valid email address.",
+        "Details": "Invalid email address",
+        "DumpAvailable": False,
+        "Email": forward_to,
+        "From": ea.email_address,
+        "ID": bounce_id,
+        "Inactive": False,
+        "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
+        "Name": "Bad email address",
+        "RecordType": "BadEmailAddress",
+        "ServerID": 23,
+        "Subject": "Bad email address",
+        "Tag": "Test",
+        "Type": "BadEmailAddress",
+        "TypeCode": 100000,
+    }
+    postmark_request_bounce(
+        email_account=ea, email_message=bounced_msg, **bounce_data
+    )
+
+    res = process_email_bounce(ea.pk, bounce_data)
+    res()
+    ea.refresh_from_db()
+    assert ea.num_bounces == 1
+    assert ea.deactivated is True
+    assert ea.deactivated_reason == ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
+    assert len(django_outbox) == 1
+    assert django_outbox[0].to[0] == ea.owner.email

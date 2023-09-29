@@ -422,6 +422,9 @@ class EmailAccount(models.Model):
     NUM_EMAIL_BOUNCE_LIMIT = 10
     DEACTIVATED_DUE_TO_BOUNCES_REASON = "Deactivated due to excessive bounces"
     DEACTIVATED_BY_POSTMARK = "Postmark deactivated due to bounced email"
+    DEACTIVATED_DUE_TO_BAD_FORWARD_TO = (
+        "Deactivated due to bounce when sending email to `forward_to` address"
+    )
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
     LOCAL_DELIVERY = "LD"

@@ -200,10 +200,20 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     # IF this bounce is not a transient bounce, then increment the number of
     # bounces this EmailAccount has generated.
     #
-    if (
-        bounce_details.TypeCode in BOUNCE_TYPES_BY_TYPE_CODE
-        and not BOUNCE_TYPES_BY_TYPE_CODE[bounce_details.TypeCode]["transient"]
-    ):
+    transient = False
+    if bounce_details.TypeCode in BOUNCE_TYPES_BY_TYPE_CODE:
+        transient = BOUNCE_TYPES_BY_TYPE_CODE[bounce_details.TypeCode][
+            "transient"
+        ]
+    else:
+        logger.warning(
+            f"Received bounce type code if {bounce_details.TypeCode}. This is "
+            "not one of the recognized type code's. Assuming this is a "
+            "non-transient bounce.",
+            extra=bounce,
+        )
+
+    if not transient:
         ea.num_bounces += 1
         ea.save()
         report_text.append(f"Number of bounced emails: {ea.num_bounces}")
@@ -229,11 +239,44 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
         )
 
         report_text.append(
-            f"Postmark has marked this account ({from_addr}) as inactive and "
+            "Postmark has marked this account ({from_addr}) as inactive and "
             "it can not send any more emails. Contact the system adminstrator "
             "to see if this can be resolved. The email account can still "
             "receive messages. It just can not send any messages while "
             "deactivated."
+        )
+
+    # If the emailaccount is forwarding and we got a non-transient bounce when
+    # sending email to the forward_to address then the account gets
+    # deactivated. (NOTE: This may override the deactivated_reason if this
+    # email address was all marked 'Inactive' by postmark. This is fine.. it is
+    # deactivated at the end of this anyways.)
+    #
+    if (
+        ea.delivery_method == ea.FORWARDING
+        and not transient
+        and bounce_details.Email == ea.forward_to
+    ):
+        notify_user = True
+        ea.deactivated = True
+        ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
+        # XXX Should we also change the delivery type to local delivery?
+        ea.save()
+        logger.info(
+            "Account %s deactivated due to non-transient bounce to "
+            "forward_to address: %s: %s",
+            ea,
+            ea.forward_to,
+            bounce_details.Subject,
+            extra=bounce,
+        )
+        report_text.append(
+            f"The account ({from_addr}) has been deactivated from sending "
+            f"email due the set `forward_to` ({ea.forward_to}) address "
+            "generating a non-transient bounce: "
+            f"{bounce_details.Description}\nNOTE: This account can "
+            "still receive email. It just can not "
+            "send new emails."
         )
 
     if not ea.deactivated:
