@@ -345,3 +345,10 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             dsn["Message-ID"],
             ea.email_address,
         )
+
+
+####################################################################
+#
+@db_task()
+def process_email_spam(email_account_pk: int, spam: dict):
+    pass

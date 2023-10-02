@@ -48,7 +48,11 @@ from rest_framework.viewsets import ModelViewSet
 #
 from .models import EmailAccount, MessageFilterRule, Server
 from .serializers import EmailAccountSerializer, MessageFilterRuleSerializer
-from .tasks import dispatch_incoming_email, process_email_bounce
+from .tasks import (
+    dispatch_incoming_email,
+    process_email_bounce,
+    process_email_spam,
+)
 from .utils import split_email_mailbox_hash, spooled_email
 
 logger = logging.getLogger("as_email.views")
@@ -187,7 +191,8 @@ def hook_postmark_incoming(request, domain_name):
 @require_POST
 def hook_postmark_bounce(request, domain_name):
     """
-    Bounce notification POST'd to us by the provider.
+    Bounce notification POST'd to us by postmark. After doing some initial
+    validating and formatting the bulk of the work is handled in a huey task.
     """
     server = _validate_server_api_key(request, domain_name)
     try:
@@ -209,7 +214,7 @@ def hook_postmark_bounce(request, domain_name):
         return HttpResponseBadRequest("submitted json missing expected keys")
 
     logger.info(
-        "message from %s to %s: %s",
+        "postmark bounce hook: message from %s to %s: %s",
         bounce["From"],
         bounce["Email"],
         bounce["Description"],
@@ -264,10 +269,93 @@ def hook_postmark_bounce(request, domain_name):
 @require_POST
 def hook_postmark_spam(request, domain_name):
     """
-    Spam notificaiton POST'd to us by the provider.
+    Spam notificaiton POST'd to us by the provider.  NOTE: When postmark
+    invokes this hook they are saying the associated email was marked as spam
+    by a remote user. When this happens the account that the email was sent to
+    is now "inactive" and can not be used to receive more email sent by us.
+
+    This view does some cursory work on the request and then tosses the rest of
+    the work to the huey task for deailing with spam.
     """
     server = _validate_server_api_key(request, domain_name)
-    return HttpResponse(f"received spam notification for {server}")
+    try:
+        spam = json.loads(request.body.decode("utf-8"))
+        print(f"spam is: {spam}")
+    except json.decoder.JSONDecodeError as exc:
+        logger.warning(
+            f"Bad json from caller: {exc}", extra={"body": request.body}
+        )
+        return HttpResponseBadRequest(f"invalid json: {exc}")
+    # Make sure the json message from postmark contains at least the keys
+    # we expect.
+    #
+    if not all(
+        [
+            x in spam
+            for x in (
+                "From",
+                "Type",
+                "TypeCode",
+                "Details",
+                "Subject",
+                "ID",
+                "Email",
+                "Description",
+            )
+        ]
+    ):
+        print("missing keys from request")
+        return HttpResponseBadRequest("submitted json missing expected keys")
+
+    logger.info(
+        "postmark spam hook: message from %s to %s: %s",
+        spam["From"],
+        spam["Email"],
+        spam["Description"],
+        extra=spam,
+    )
+
+    try:
+        ea = EmailAccount.objects.get(email_address=spam["From"])
+    except EmailAccount.DoesNotExist:
+        logger.warning(
+            "%s from email address that does not belong "
+            "to any EmailAccount: %s, server: %s, spam id: %d, to: %s, "
+            "description: %s",
+            spam["Type"],
+            spam["From"],
+            server,
+            spam["ID"],
+            spam["Email"],
+            spam["Description"],
+            extra=spam,
+        )
+        # NOTE: This does not return an error. Not their fault unless they are
+        #       buggesed, but we should log it. Maybe we just deleted that
+        #       EmailAccount. Hmm.. maybe we should send the spam message
+        #       to the django support email address.
+        #
+        return JsonResponse(
+            {
+                "status": "all good",
+                "message": f"`from` address '{spam['From']}' is not an "
+                f"EmailAccount on server {server.domain_name}. "
+                "Spam message ignored.",
+            }
+        )
+
+    # We do the rest of the processing in an async huey task (this will involve
+    # querying postmark's spam API, and sending a notification email to the
+    # email account in question.)
+    #
+    process_email_spam(ea.pk, spam)
+
+    return JsonResponse(
+        {
+            "status": "all good",
+            "message": f"received spam for {server}/{ea.email_address}",
+        }
+    )
 
 
 ####################################################################

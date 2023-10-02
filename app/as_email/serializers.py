@@ -13,7 +13,7 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 # Project imports
 #
-from .models import EmailAccount, MessageFilterRule
+from .models import EmailAccount, InactiveEmail, MessageFilterRule
 
 
 ########################################################################
@@ -37,6 +37,21 @@ class EmailAccountSerializer(HyperlinkedModelSerializer):
             "num_bounces",
             "deactivated_reason",
             "message_filter_rules",
+            "created_at",
+            "modified_at",
+        ]
+
+
+########################################################################
+########################################################################
+#
+class InactiveEmailSerializer(HyperlinkedModelSerializer):
+    class Meta:
+        model = InactiveEmail
+        fields = [
+            "url",
+            "email_address",
+            "can_activate",
             "created_at",
             "modified_at",
         ]

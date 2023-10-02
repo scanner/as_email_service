@@ -18,7 +18,13 @@ from faker import Faker  # XXX should we move to `factory.Faker()`?
 
 # Project imports
 #
-from ..models import EmailAccount, MessageFilterRule, Provider, Server
+from ..models import (
+    EmailAccount,
+    InactiveEmail,
+    MessageFilterRule,
+    Provider,
+    Server,
+)
 
 User = get_user_model()
 fake = Faker()
@@ -88,6 +94,17 @@ class EmailAccountFactory(DjangoModelFactory):
         model = EmailAccount
         skip_postgeneration_save = True  # Saved when `set_password()` is called
         django_get_or_create = ("owner", "email_address", "server")
+
+
+########################################################################
+########################################################################
+#
+class InactiveEmailFactory(DjangoModelFactory):
+    email_address = factory.Faker("email")
+
+    class Meta:
+        model = InactiveEmail
+        django_get_or_create = ("email_address",)
 
 
 ########################################################################

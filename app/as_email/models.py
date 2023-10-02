@@ -433,7 +433,7 @@ class EmailAccount(models.Model):
     FORWARDING = "FW"
     DELIVERY_METHOD_CHOICES = [
         (LOCAL_DELIVERY, "Local Delivery"),
-        # (IMAP_DELIVERY), "IMAP",   # Un````````````
+        # (IMAP_DELIVERY), "IMAP",   # XXX coming soon
         (ALIAS, "Alias"),
         (FORWARDING, "Forwarding"),
     ]
@@ -1049,3 +1049,72 @@ class MessageFilterRule(OrderedModel):
                 return True
 
         return False
+
+
+########################################################################
+########################################################################
+#
+class InactiveEmail(models.Model):
+    """
+    Postmark can mark destination email addresses as "inactive" which means
+    it will not send email to those addresses if one of our server's asks for
+    it. This usually happens due to a spam complaint or some persistent bounce.
+
+    This model represents those email addresses and is primarily used to make
+    sure we do not send to these addresses, and generate our internal bounce
+    messages when someone tries to send to them.
+
+    NOTE: These InactiveEmail's have a `can_activate` boolean attribute that we
+          get from postmark. This means we can re-activate this email address
+          and send to it again.
+    """
+
+    email_address = models.EmailField(
+        unique=True,
+        help_text=_(
+            "The inactive email address. Our mail provider has indicate that "
+            "we are not allowed to send emails to this address anymore."
+        ),
+    )
+    can_activate = models.BooleanField(
+        default=False,
+        help_text=_(
+            "If True this indicates that we are able to manually reactivate "
+            "sending emails to this address. Before doing so we need to make "
+            "sure that any problems sending to this address have been resolved."
+        ),
+    )
+
+    # XXX Potential future attributes:
+    #     boolean to actually not send emails or not (we may want to keep a
+    #     record of InactiveEmails even if they have been reactivated.)
+    #     number of reports
+    #     link to a message that generated the inactive email notification
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["email_address"]),
+            models.Index(fields=["can_activate"]),
+            models.Index(fields=["email_address", "can_activate"]),
+        ]
+
+        ordering = ("email_address",)
+
+    ####################################################################
+    #
+    def __str__(self):
+        return self.email_address
+
+    ####################################################################
+    #
+    @classmethod
+    def inactives(cls, email_addresses: List[str]):
+        """
+        Given a list of email addresses see if any of those email addresses
+        are inactive. Returns the list of email addresses that are inactive.
+        """
+        inacts = cls.objects.filter(email_address__in=email_addresses)
+        return list(inacts)

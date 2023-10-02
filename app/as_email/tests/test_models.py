@@ -13,7 +13,7 @@ from django.db import IntegrityError
 
 # Project imports
 #
-from ..models import EmailAccount, MessageFilterRule
+from ..models import EmailAccount, InactiveEmail, MessageFilterRule
 
 User = get_user_model()
 
@@ -219,3 +219,26 @@ def test_message_filter_rule_match(faker, message_filter_rule_factory):
     #
     msg[rule.header] = faker.sentence()
     assert rule.match(msg) is False
+
+
+####################################################################
+#
+def test_inactive_email_inactives(inactive_email_factory, faker):
+    """
+    Make some inactive emails, make sure they show up when we query to see
+    if any emails are inactive emails.
+    """
+
+    inactives = []
+    for _ in range(5):
+        inact = inactive_email_factory()
+        inact.save()
+        inactives.append(inact)
+
+    inactive_emails = list(InactiveEmail.objects.all())
+    emails = [faker.email() for x in range(5)]
+
+    matches = InactiveEmail.inactives(emails + inactive_emails)
+
+    assert all([x in matches for x in inactive_emails])
+    assert not any([x in matches for x in emails])

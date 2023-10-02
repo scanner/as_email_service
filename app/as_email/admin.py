@@ -5,7 +5,13 @@ from ordered_model.admin import OrderedModelAdmin
 
 # Project imports
 #
-from .models import EmailAccount, MessageFilterRule, Provider, Server
+from .models import (
+    EmailAccount,
+    InactiveEmail,
+    MessageFilterRule,
+    Provider,
+    Server,
+)
 
 
 @admin.register(Provider)
@@ -85,4 +91,18 @@ class MessageFilterRuleAdmin(OrderedModelAdmin):
     )
     list_filter = ("email_account", "created_at", "modified_at")
     search_fields = ("pattern", "destination")
+    date_hierarchy = "created_at"
+
+
+@admin.register(InactiveEmail)
+class InactiveEmailAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "email_address",
+        "can_activate",
+        "created_at",
+        "modified_at",
+    )
+    search_fields = ("email_address",)
+    list_filter = ("created_at", "modified_at", "can_activate")
     date_hierarchy = "created_at"

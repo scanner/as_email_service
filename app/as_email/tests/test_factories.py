@@ -16,7 +16,13 @@ import pytest
 #
 from django.contrib.auth import get_user_model
 
-from ..models import EmailAccount, MessageFilterRule, Provider, Server
+from ..models import (
+    EmailAccount,
+    InactiveEmail,
+    MessageFilterRule,
+    Provider,
+    Server,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -64,3 +70,10 @@ def test_email_account_factory(email_account_factory):
 def test_message_filter_rule_factory(message_filter_rule_factory):
     message_filter_rule = message_filter_rule_factory()
     assert isinstance(message_filter_rule, MessageFilterRule)
+
+
+####################################################################
+#
+def test_inactive_email_factory(inactive_email_factory):
+    inactive_email = inactive_email_factory()
+    assert isinstance(inactive_email, InactiveEmail)

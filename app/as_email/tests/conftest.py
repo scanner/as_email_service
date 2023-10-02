@@ -27,6 +27,7 @@ from rest_framework.test import APIClient, RequestsClient
 #
 from .factories import (
     EmailAccountFactory,
+    InactiveEmailFactory,
     MessageFilterRuleFactory,
     ProviderFactory,
     ServerFactory,
@@ -41,6 +42,7 @@ from .factories import (
 register(UserFactory)
 register(ProviderFactory)
 register(MessageFilterRuleFactory)
+register(InactiveEmailFactory)
 
 
 ####################################################################

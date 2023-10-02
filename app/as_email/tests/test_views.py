@@ -125,3 +125,17 @@ def test_bounce_webhook(
     assert r.status_code == 404
     ea.refresh_from_db()
     assert ea.num_bounces == 1
+
+
+####################################################################
+#
+def test_postmark_spam_webhook(
+    email_account_factory,
+    api_client,
+    faker,
+    postmark_request,
+    postmark_request_bounce,
+):
+    ea = email_account_factory()
+    ea.save()
+    server = ea.server  # noqa: F841
