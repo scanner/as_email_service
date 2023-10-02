@@ -235,10 +235,16 @@ def test_inactive_email_inactives(inactive_email_factory, faker):
         inact.save()
         inactives.append(inact)
 
-    inactive_emails = list(InactiveEmail.objects.all())
+    inactive_emails = [x.email_address for x in InactiveEmail.objects.all()]
     emails = [faker.email() for x in range(5)]
 
-    matches = InactiveEmail.inactives(emails + inactive_emails)
+    test_against = emails + inactive_emails
+    matches = [x.email_address for x in InactiveEmail.inactives(test_against)]
+    assert sorted(matches) == sorted(inactive_emails)
 
-    assert all([x in matches for x in inactive_emails])
-    assert not any([x in matches for x in emails])
+    # and to make sure we are not just getting all email addresses
+    #
+    inactive_emails = inactive_emails[0:2]
+    test_against = emails + inactive_emails
+    matches = [x.email_address for x in InactiveEmail.inactives(test_against)]
+    assert sorted(matches) == sorted(inactive_emails)
