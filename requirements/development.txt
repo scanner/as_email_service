@@ -52,15 +52,16 @@ certifi==2023.7.22
     #   httpx
     #   influxdb-client
     #   requests
-cffi==1.15.1
+cffi==1.16.0
     # via
+    #   -r lint.txt
     #   -r production.txt
     #   cryptography
 cfgv==3.4.0
     # via
     #   -r lint.txt
     #   pre-commit
-charset-normalizer==3.2.0
+charset-normalizer==3.3.0
     # via
     #   -r production.txt
     #   requests
@@ -72,18 +73,21 @@ click==8.1.7
     #   pip-tools
     #   uvicorn
     #   wait-for-it
-coverage==7.3.1
+coverage==7.3.2
     # via
     #   -r development.in
     #   -r lint.txt
     #   pytest-cov
-cryptography==41.0.3
+cryptography==41.0.4
     # via
+    #   -r lint.txt
     #   -r production.txt
     #   django-cryptography
     #   fido2
     #   python-u2flib-server
     #   trustme
+    #   types-pyopenssl
+    #   types-redis
 decorator==5.1.1
     # via ipython
 distlib==0.3.7
@@ -146,7 +150,7 @@ ecdsa==0.18.0
     # via
     #   -r production.txt
     #   python-jose
-executing==1.2.0
+executing==2.0.0
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
@@ -175,9 +179,9 @@ httpcore==0.18.0
     #   httpx
 httpx==0.25.0
     # via -r production.txt
-huey==2.4.5
+huey==2.5.0
     # via -r production.txt
-identify==2.5.29
+identify==2.5.30
     # via
     #   -r lint.txt
     #   pre-commit
@@ -194,15 +198,15 @@ importlib-metadata==6.8.0
     #   yapf
 inflection==0.5.1
     # via pytest-factoryboy
-influxdb-client==1.37.0
+influxdb-client==1.38.0
     # via -r production.txt
 iniconfig==2.0.0
     # via pytest
-ipython==8.15.0
+ipython==8.16.1
     # via -r development.in
 isort==5.12.0
     # via -r lint.txt
-jedi==0.19.0
+jedi==0.19.1
     # via ipython
 jsonfield==3.1.0
     # via
@@ -241,7 +245,7 @@ nodeenv==1.8.0
     # via
     #   -r lint.txt
     #   pre-commit
-packaging==23.1
+packaging==23.2
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -262,7 +266,7 @@ pickleshare==0.7.5
     # via ipython
 pip-tools==7.3.0
     # via -r lint.txt
-platformdirs==3.10.0
+platformdirs==3.11.0
     # via
     #   -r lint.txt
     #   black
@@ -292,11 +296,12 @@ pycodestyle==2.11.0
     #   flake8
 pycparser==2.21
     # via
+    #   -r lint.txt
     #   -r production.txt
     #   cffi
-pydantic==2.3.0
+pydantic==2.4.2
     # via -r production.txt
-pydantic-core==2.6.3
+pydantic-core==2.10.1
     # via
     #   -r production.txt
     #   pydantic
@@ -377,13 +382,13 @@ requests==2.31.0
     #   -r production.txt
     #   django-anymail
     #   postmarker
-rich==13.5.3
+rich==13.6.0
     # via -r production.txt
 rsa==4.9
     # via
     #   -r production.txt
     #   python-jose
-ruff==0.0.290
+ruff==0.0.292
     # via -r lint.txt
 simplejson==3.19.1
     # via
@@ -408,7 +413,7 @@ sqlparse==0.4.4
     #   -r lint.txt
     #   -r production.txt
     #   django
-stack-data==0.6.2
+stack-data==0.6.3
     # via ipython
 termcolor==2.3.0
     # via pytest-sugar
@@ -422,24 +427,28 @@ traitlets==5.10.1
     #   matplotlib-inline
 trustme==1.1.0
     # via -r development.in
+types-aiofiles==23.2.0.0
+    # via -r lint.txt
 types-cachetools==5.3.0.6
     # via -r lint.txt
-types-pytz==2023.3.1.0
+types-pyopenssl==23.2.0.2
+    # via
+    #   -r lint.txt
+    #   types-redis
+types-pytz==2023.3.1.1
     # via
     #   -r lint.txt
     #   django-stubs
-types-pyyaml==6.0.12.11
+types-pyyaml==6.0.12.12
     # via
     #   -r lint.txt
     #   django-stubs
-types-requests==2.31.0.2
+types-redis==4.6.0.7
+    # via -r lint.txt
+types-requests==2.31.0.7
     # via -r lint.txt
 types-setuptools==68.2.0.0
     # via -r lint.txt
-types-urllib3==1.26.25.14
-    # via
-    #   -r lint.txt
-    #   types-requests
 typing-extensions==4.8.0
     # via
     #   -r lint.txt
@@ -456,12 +465,14 @@ ua-parser==0.18.0
     #   -r production.txt
     #   django-mfa2
     #   user-agents
-urllib3==2.0.4
+urllib3==2.0.6
     # via
+    #   -r lint.txt
     #   -r production.txt
     #   django-anymail
     #   influxdb-client
     #   requests
+    #   types-requests
 user-agents==2.2.0
     # via
     #   -r production.txt
@@ -474,9 +485,9 @@ virtualenv==20.24.5
     #   pre-commit
 wait-for-it==2.2.2
     # via -r production.txt
-wcwidth==0.2.6
+wcwidth==0.2.8
     # via prompt-toolkit
-werkzeug==2.3.7
+werkzeug==3.0.0
     # via -r development.in
 wheel==0.41.2
     # via

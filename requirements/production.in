@@ -1,7 +1,7 @@
 aiofiles
 aiologger
 aiosmtpd
-cryptography>=41.0.2
+cryptography>=41.0.4
 django
 django-anymail
 django-cryptography

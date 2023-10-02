@@ -12,14 +12,20 @@ black==23.9.1
     # via -r lint.in
 build==1.0.3
     # via pip-tools
+cffi==1.16.0
+    # via cryptography
 cfgv==3.4.0
     # via pre-commit
 click==8.1.7
     # via
     #   black
     #   pip-tools
-coverage==7.3.1
+coverage==7.3.2
     # via -r lint.in
+cryptography==41.0.4
+    # via
+    #   types-pyopenssl
+    #   types-redis
 distlib==0.3.7
     # via virtualenv
 django==4.2.5
@@ -34,7 +40,7 @@ filelock==3.12.4
     # via virtualenv
 flake8==6.1.0
     # via -r lint.in
-identify==2.5.29
+identify==2.5.30
     # via pre-commit
 importlib-metadata==6.8.0
     # via yapf
@@ -52,7 +58,7 @@ mypy-extensions==1.0.0
     #   mypy
 nodeenv==1.8.0
     # via pre-commit
-packaging==23.1
+packaging==23.2
     # via
     #   black
     #   build
@@ -60,7 +66,7 @@ pathspec==0.11.2
     # via black
 pip-tools==7.3.0
     # via -r lint.in
-platformdirs==3.10.0
+platformdirs==3.11.0
     # via
     #   black
     #   virtualenv
@@ -71,37 +77,45 @@ pycodestyle==2.11.0
     # via
     #   autopep8
     #   flake8
+pycparser==2.21
+    # via cffi
 pyflakes==3.1.0
     # via flake8
 pyproject-hooks==1.0.0
     # via build
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.0.290
+ruff==0.0.292
     # via -r lint.in
 sqlparse==0.4.4
     # via django
 tomli==2.0.1
     # via yapf
+types-aiofiles==23.2.0.0
+    # via -r lint.in
 types-cachetools==5.3.0.6
     # via -r lint.in
-types-pytz==2023.3.1.0
+types-pyopenssl==23.2.0.2
+    # via types-redis
+types-pytz==2023.3.1.1
     # via
     #   -r lint.in
     #   django-stubs
-types-pyyaml==6.0.12.11
+types-pyyaml==6.0.12.12
     # via django-stubs
-types-requests==2.31.0.2
+types-redis==4.6.0.7
+    # via -r lint.in
+types-requests==2.31.0.7
     # via -r lint.in
 types-setuptools==68.2.0.0
     # via -r lint.in
-types-urllib3==1.26.25.14
-    # via types-requests
 typing-extensions==4.8.0
     # via
     #   django-stubs
     #   django-stubs-ext
     #   mypy
+urllib3==2.0.6
+    # via types-requests
 virtualenv==20.24.5
     # via pre-commit
 wheel==0.41.2

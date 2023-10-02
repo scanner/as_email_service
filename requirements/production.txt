@@ -26,15 +26,15 @@ certifi==2023.7.22
     #   httpx
     #   influxdb-client
     #   requests
-cffi==1.15.1
+cffi==1.16.0
     # via cryptography
-charset-normalizer==3.2.0
+charset-normalizer==3.3.0
     # via requests
 click==8.1.7
     # via
     #   uvicorn
     #   wait-for-it
-cryptography==41.0.3
+cryptography==41.0.4
     # via
     #   -r production.in
     #   django-cryptography
@@ -95,14 +95,14 @@ httpcore==0.18.0
     # via httpx
 httpx==0.25.0
     # via -r production.in
-huey==2.4.5
+huey==2.5.0
     # via -r production.in
 idna==3.4
     # via
     #   anyio
     #   httpx
     #   requests
-influxdb-client==1.37.0
+influxdb-client==1.38.0
     # via -r production.in
 jsonfield==3.1.0
     # via django-mfa2
@@ -112,7 +112,7 @@ markdown-it-py==3.0.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-packaging==23.1
+packaging==23.2
     # via gunicorn
 postmarker==1.0
     # via -r production.in
@@ -122,9 +122,9 @@ pyasn1==0.5.0
     #   rsa
 pycparser==2.21
     # via cffi
-pydantic==2.3.0
+pydantic==2.4.2
     # via -r production.in
-pydantic-core==2.6.3
+pydantic-core==2.10.1
     # via pydantic
 pygments==2.16.1
     # via rich
@@ -152,7 +152,7 @@ requests==2.31.0
     # via
     #   django-anymail
     #   postmarker
-rich==13.5.3
+rich==13.6.0
     # via -r production.in
 rsa==4.9
     # via python-jose
@@ -180,7 +180,7 @@ ua-parser==0.18.0
     # via
     #   django-mfa2
     #   user-agents
-urllib3==2.0.4
+urllib3==2.0.6
     # via
     #   django-anymail
     #   influxdb-client

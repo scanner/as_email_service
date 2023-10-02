@@ -12,4 +12,6 @@ types-cachetools
 types-pytz
 types-requests
 types-setuptools
+types-aiofiles
+types-redis
 yapf
