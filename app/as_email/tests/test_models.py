@@ -47,6 +47,7 @@ def test_server(server_factory):
 #
 def test_email_account_set_check_password(faker, email_account_factory):
     ea = email_account_factory()
+    ea.save()
     password = faker.pystr(min_chars=8, max_chars=32)
     assert ea.check_password(password) is False
     ea.set_password(password)
@@ -267,7 +268,7 @@ async def test_async_inactive_email_inactives(inactive_email_factory, faker):
 
     inactive_emails = []
     async for inactive in InactiveEmail.objects.all():
-        inactive_emails.append(inactive)
+        inactive_emails.append(inactive.email_address)
 
     emails = [faker.email() for x in range(5)]
 

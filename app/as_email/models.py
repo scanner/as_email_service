@@ -8,6 +8,7 @@ mostly custom for the service I use: postmark.
 # system imports
 #
 import asyncio
+import email
 import email.message
 import logging
 import mailbox
@@ -783,7 +784,19 @@ class EmailAccount(models.Model):
         dir. Attempts to create it if it does not already exist.
         Also make sure that the inbox also exists.
         """
-        mh = mailbox.MH(self.mail_dir, create=create)
+        # NOTE: Various bits of code treats the object we get from MH as an
+        #       EmailMessage. Thus we need to make sure when we read the
+        #       message from a binary file we get back an EmailMessage. That is
+        #       what the email.policy.default is for (otherwise it uses
+        #       compat32 which would give us an email.Message object.)
+        #
+        mh = mailbox.MH(
+            self.mail_dir,
+            factory=lambda x: email.message_from_binary_file(
+                x, policy=email.policy.default
+            ),
+            create=create,
+        )
         try:
             _ = mh.get_folder("inbox")
         except mailbox.NoSuchMailboxError:

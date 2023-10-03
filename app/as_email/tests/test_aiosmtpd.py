@@ -19,7 +19,12 @@ from asgiref.sync import sync_to_async
 
 # Project imports
 #
-from ..management.commands.aiosmtpd import Authenticator, RelayHandler
+from ..management.commands.aiosmtpd import (
+    Authenticator,
+    RelayHandler,
+    relay_email_to_provider,
+)
+from ..models import InactiveEmail
 from .conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -326,3 +331,68 @@ async def test_relayhandler_handle_DATA(
     # not have increased from the previous time in this test.
     #
     assert send_message.call_count == 1
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_relay_email_to_provider(
+    email_account_factory, email_factory, inactive_email_factory, faker, smtp
+):
+    """
+    Make sure that the function used to relay email to the provider filters
+    out inactive emails from recipients, and send a DSN to the email account
+    that tried to send email to inactive emails.
+    """
+    ea = await sync_to_async(email_account_factory)()
+    await ea.asave()
+
+    inactives = []
+    for _ in range(5):
+        inact = inactive_email_factory()
+        await inact.asave()
+        inactives.append(inact)
+
+    inactive_emails = []
+    async for inactive in InactiveEmail.objects.all():
+        inactive_emails.append(inactive)
+
+    # If we sending email to just one inactive address it is not delivered to
+    # anyone, but a DSN is delivered to the email account that tried to send
+    # the message.
+    #
+    inactive = inactive_emails[0].email_address
+    msg = email_factory(msg_from=ea.email_address, to=inactive)
+    await relay_email_to_provider(ea, [inactive], msg)
+
+    # First, no email should have been sent to the provider.
+    #
+    send_message = smtp.return_value.send_message
+    assert send_message.call_count == 0
+
+    # Second, the email account will have a single message delivered to its
+    # inbox (via local delivery) that is our DSN
+    #
+    # The message should have been delivered to the inbox since there are no
+    # mail filter rules. And it should be the only message in the mailbox.
+    #
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+
+    from_addr = f"mailer-daemon@{ea.server.domain_name}"
+    assert stored_msg["From"] == from_addr
+    assert stored_msg["To"] == ea.email_address
+    assert (
+        stored_msg["Subject"]
+        == "NOTICE: Email not sent due to destination address marked as inactive"
+    )
+    assert stored_msg.is_multipart()
+
+    # There should only be one rfc822 part on the message. This should be the
+    # message that was being sent.
+    #
+    for part in stored_msg.walk():
+        if part.get_content_type == "message/rfc822":
+            assert part.get_content().as_bytes() == msg.as_bytes()
+            break

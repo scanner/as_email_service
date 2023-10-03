@@ -499,7 +499,7 @@ async def relay_email_to_provider(
     if not inactives:
         return
 
-    logger.info(
+    logger.warning(
         "EmailAccount %s attempted to send email to inactive addresses: %s",
         account.email_address,
         ",".join(inactives),
@@ -514,11 +514,12 @@ async def relay_email_to_provider(
         f"provider: {', '.join(inactives)}.\nContact the service admin "
         "for more information."
     )
+    from_addr = f"mailer-daemon@{account.server.domain_name}"
     dsn = make_delivery_status_notification(
         account,
         report_text=report_text,
         subject="NOTICE: Email not sent due to destination address marked as inactive",
-        from_addr=inactives[0],
+        from_addr=from_addr,
         action="failed",
         status="5.1.1",
         diagnostic="smtp; Destination is an inactive email address",
@@ -532,5 +533,7 @@ async def relay_email_to_provider(
     )
 
     # Fire off async huey task to dispatch the delivery status notification.
+    # (we need to sync_to_async this in case it is being called when Huey is in
+    # immediate mode.)
     #
-    dispatch_incoming_email(account.pk, str(fname))
+    await sync_to_async(dispatch_incoming_email)(account.pk, str(fname))
