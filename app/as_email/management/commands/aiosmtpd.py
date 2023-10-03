@@ -430,9 +430,7 @@ class RelayHandler:
                     )
                     return f"551 FROM must be '{valid_from}', not '{frm}'"
         try:
-            await sync_to_async(send_email_via_smtp)(
-                account, envelope.rcpt_tos, msg
-            )
+            await relay_email_to_provider(account, envelope.rcpt_tos, msg)
         except Exception as exc:
             logger.exception(f"Failed: {exc}")
             return f"500 {exc}"
@@ -493,6 +491,19 @@ async def relay_email_to_provider(
     #
     if rcpt_tos:
         await sync_to_async(send_email_via_smtp)(account, rcpt_tos, msg)
+
+    # If there were no inactive emails then we are done. If there were inactive
+    # emails we need to generate a DSN and send it to the account saying that
+    # the message was not deliverable to these addresses.
+    #
+    if not inactives:
+        return
+
+    logger.info(
+        "EmailAccount %s attempted to send email to inactive addresses: %s",
+        account.email_address,
+        ",".join(inactives),
+    )
 
     # If there were any inactives send a DSN to the email account that their
     # email was not sent to some recipients.
