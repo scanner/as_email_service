@@ -14,11 +14,13 @@ exclude = '''
 
 [tool.isort]
 atomic = true
+combine_as_imports = true
 profile = "black"
 line_length = 80
 skip_gitignore = true
 filter_files = true
 skip_glob = ["*venv*","*/migrations/*",".*cache"]
+known_first_party = ["as_email"]
 
 [tool.ruff]
 line-length = 80
