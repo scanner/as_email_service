@@ -16,8 +16,7 @@ from email.utils import parseaddr
 # 3rd party imports
 #
 import pytest
-from aiosmtpd.smtp import Envelope as SMTPEnvelope
-from aiosmtpd.smtp import Session as SMTPSession
+from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
 from django.core import mail
 from pytest_factoryboy import register
 from requests import Response
@@ -42,7 +41,6 @@ from .factories import (
 register(UserFactory)
 register(ProviderFactory)
 register(MessageFilterRuleFactory)
-register(InactiveEmailFactory)
 
 
 ####################################################################
@@ -173,6 +171,23 @@ def email_account_factory(server_factory):
         return email_account
 
     yield make_email_account
+
+
+####################################################################
+#
+@pytest.fixture
+def inactive_email_factory():
+    """
+    in order to _not_ create and save the object to the db so we can call
+    this from async as well as sync tests use the `.build()` method to create
+    thte object but not save it.
+    """
+
+    def make_inactive_email(*args, **kwargs):
+        inactive_email = InactiveEmailFactory.build(*args, **kwargs)
+        return inactive_email
+
+    yield make_inactive_email
 
 
 ####################################################################

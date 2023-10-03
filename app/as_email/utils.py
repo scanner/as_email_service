@@ -5,13 +5,21 @@ Utilitities used by our app. We want to separate them from views, models,
 and tasks so we can import them in all of those other modules without loops and
 weirdness.
 """
+import email.policy
+
 # system imports
 #
+import json
 import logging
+from datetime import datetime
+from email.message import EmailMessage
+from email.utils import make_msgid
+from pathlib import Path
 from typing import Dict, Tuple
 
 # Project imports
 #
+
 
 logger = logging.getLogger("as_email.utils")
 
@@ -158,19 +166,51 @@ def split_email_mailbox_hash(email_address: str) -> Tuple[str, str | None]:
 
 ####################################################################
 #
-def spooled_email(
-    recipient: str, msg_id: str, date: str, raw_email: str
-) -> Dict[str, str]:
+def write_spooled_email(
+    recipient: str,
+    spool_dir: [str | Path],
+    msg: [str | EmailMessage],
+    msg_date=None,
+    msg_id=None,
+) -> Path:
     """
-    Incoming email is written to a spool directory as json files. It has a
-    specific format and this function returns a dict in that format.
+    Write the given message for the given recipient email address to the
+    given spool spool directory. Writes a Path object that is the file the
+    spool message and meta information was written to (as json).
+    """
+    spool_dir = spool_dir if isinstance(spool_dir, Path) else Path(spool_dir)
+    msg = (
+        msg
+        if isinstance(msg, str)
+        else msg.as_string(policy=email.policy.default)
+    )
+    msg_id = msg_id if msg_id is not None else make_msgid(recipient)
+    msg_date = (
+        msg_date
+        if msg_date is not None
+        else datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    now = datetime.now().isoformat()
+    email_file_name = f"{now}-{msg_id}.json"
+    fname = Path(spool_dir) / email_file_name
 
-    This is encapsulated in this function so that our tests and our incoming
-    email hook use the same method for generating this dict.
-    """
-    return {
-        "recipient": recipient,
-        "message-id": msg_id,
-        "date": date,
-        "raw_email": raw_email,
-    }
+    # To account for other mail providers in the future and to reduce the json
+    # dict we write to just what we need to deliver the email we create a new
+    # dict that will hold what we write in the incoming spool directory.
+    #
+    email_json = json.dumps(
+        {
+            "recipient": recipient,
+            "message-id": msg_id,
+            "date": msg_date,
+            "raw_email": msg,
+        }
+    )
+
+    # We need to make sure that the file is written before we send our
+    # response back to Postmark.. but we should not block other async
+    # processing while waiting for the file to be written.
+    #
+    msg_path = Path(fname)
+    msg_path.write_text(email_json)
+    return msg_path

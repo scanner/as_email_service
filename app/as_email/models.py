@@ -1118,3 +1118,18 @@ class InactiveEmail(models.Model):
         """
         inacts = cls.objects.filter(email_address__in=email_addresses)
         return list(inacts)
+
+    ####################################################################
+    #
+    @classmethod
+    async def a_inactives(cls, email_addresses: List[str]):
+        """
+        Given a list of email addresses see if any of those email addresses
+        are inactive. Returns the list of email addresses that are inactive.
+        """
+        inacts = []
+        async for inact in cls.objects.filter(
+            email_address__in=email_addresses
+        ):
+            inacts.append(inact)
+        return inacts

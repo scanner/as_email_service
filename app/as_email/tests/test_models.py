@@ -248,3 +248,40 @@ def test_inactive_email_inactives(inactive_email_factory, faker):
     test_against = emails + inactive_emails
     matches = [x.email_address for x in InactiveEmail.inactives(test_against)]
     assert sorted(matches) == sorted(inactive_emails)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_async_inactive_email_inactives(inactive_email_factory, faker):
+    """
+    Make some inactive emails, make sure they show up when we query to see
+    if any emails are inactive emails.
+    """
+
+    inactives = []
+    for _ in range(5):
+        inact = inactive_email_factory()
+        inact.asave()
+        inactives.append(inact)
+
+    inactive_emails = []
+    async for inactive in InactiveEmail.objects.all():
+        inactive_emails.append(inactive)
+
+    emails = [faker.email() for x in range(5)]
+
+    test_against = emails + inactive_emails
+    matches = [
+        x.email_address for x in await InactiveEmail.a_inactives(test_against)
+    ]
+    assert sorted(matches) == sorted(inactive_emails)
+
+    # and to make sure we are not just getting all email addresses
+    #
+    inactive_emails = inactive_emails[0:2]
+    test_against = emails + inactive_emails
+    matches = [
+        x.email_address for x in await InactiveEmail.a_inactives(test_against)
+    ]
+    assert sorted(matches) == sorted(inactive_emails)

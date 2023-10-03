@@ -24,18 +24,25 @@ from typing import List, Optional
 # 3rd party imports
 #
 from aiosmtpd.controller import Controller
-from aiosmtpd.smtp import SMTP, AuthResult
-from aiosmtpd.smtp import Envelope as SMTPEnvelope
-from aiosmtpd.smtp import LoginPassword
-from aiosmtpd.smtp import Session as SMTPSession
-
-# Project imports
-#
-from as_email.models import EmailAccount
+from aiosmtpd.smtp import (
+    SMTP,
+    AuthResult,
+    Envelope as SMTPEnvelope,
+    LoginPassword,
+    Session as SMTPSession,
+)
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from pydantic import BaseModel
+
+from as_email.deliver import make_delivery_status_notification
+
+# Project imports
+#
+from as_email.models import EmailAccount, InactiveEmail
+from as_email.tasks import dispatch_incoming_email
+from as_email.utils import write_spooled_email
 
 DEST_PORT = 587
 LISTEN_PORT = 19246
@@ -365,6 +372,9 @@ class RelayHandler:
         envelope.mail_from = address
         envelope.mail_options.extend(mail_options)
 
+        # The email address part of `from` MUST be the same as the email
+        # address on this EmailAccount.
+        #
         account = session.auth_data
         valid_from = account.email_address.lower()
         logger.debug("handle_MAIL: account: %s, address: %s", account, address)
@@ -451,3 +461,65 @@ def send_email_via_smtp(
         rcpt_tos,
     )
     account.send_email_via_smtp(rcpt_tos, msg)
+
+
+####################################################################
+#
+async def relay_email_to_provider(
+    account: EmailAccount, rcpt_tos: List[str], msg: EmailMessage
+):
+    """
+    Relay the email we have gotten from the user to our mail provider to
+    send out.
+
+    But first we will go through the list of recipients and filter out any that
+    are InactiveEmail's.
+
+    If there are any InactiveEmail's we will also send a bounce report to the
+    email account sending this email indicating that some of the recipients
+    were inactive and the email was not sent to them.
+    """
+    rcpt_tos = [x.lower() for x in rcpt_tos]
+    inactives = [
+        x.email_address.lower()
+        for x in await InactiveEmail.a_inactives(rcpt_tos)
+    ]
+
+    # Filter out any inactive emails from our list of recipients
+    #
+    rcpt_tos = [x for x in rcpt_tos if x not in inactives]
+
+    # If there any recipients left, send the email to them.
+    #
+    if rcpt_tos:
+        await sync_to_async(send_email_via_smtp)(account, rcpt_tos, msg)
+
+    # If there were any inactives send a DSN to the email account that their
+    # email was not sent to some recipients.
+    #
+    report_text = (
+        "Email not sent to the following addresses because they were marked "
+        "as 'inactive' due to being blocked by the mail "
+        f"provider: {', '.join(inactives)}.\nContact the service admin "
+        "for more information."
+    )
+    dsn = make_delivery_status_notification(
+        account,
+        report_text=report_text,
+        subject="NOTICE: Email not sent due to destination address marked as inactive",
+        from_addr=inactives[0],
+        action="failed",
+        status="5.1.1",
+        diagnostic="smtp; Destination is an inactive email address",
+        reported_msg=msg,
+    )
+    fname = write_spooled_email(
+        account.email_address,
+        account.server.incoming_spool_dir,
+        dsn,
+        msg_id=dsn["Message-ID"],
+    )
+
+    # Fire off async huey task to dispatch the delivery status notification.
+    #
+    dispatch_incoming_email(account.pk, str(fname))

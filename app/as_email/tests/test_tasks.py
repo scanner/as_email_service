@@ -5,9 +5,7 @@ Test the huey tasks
 """
 # system imports
 #
-import json
 from datetime import datetime
-from pathlib import Path
 
 # 3rd party imports
 #
@@ -21,7 +19,7 @@ from ..tasks import (
     dispatch_incoming_email,
     process_email_bounce,
 )
-from ..utils import spooled_email
+from ..utils import write_spooled_email
 from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -42,11 +40,7 @@ def test_dispatch_incoming_email(
     msg = email_factory(to=ea.email_address)
     now = datetime.now()
     message_id = msg["Message-ID"]
-    email_file_name = f"{now.isoformat()}-{message_id}.json"
-    fname = Path(tmp_path) / email_file_name
-    email_msg = spooled_email(msg["To"], message_id, str(now), msg.as_string())
-    fname.write_text(json.dumps(email_msg))
-
+    fname = write_spooled_email(msg["To"], tmp_path, msg, str(now), message_id)
     res = dispatch_incoming_email(ea.pk, str(fname))
     res()
 

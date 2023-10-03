@@ -22,8 +22,6 @@ These views are for users. It needs to provide functions to:
 #
 import json
 import logging
-from datetime import datetime
-from pathlib import Path
 
 # 3rd party imports
 #
@@ -53,7 +51,7 @@ from .tasks import (
     process_email_bounce,
     process_email_spam,
 )
-from .utils import split_email_mailbox_hash, spooled_email
+from .utils import split_email_mailbox_hash, write_spooled_email
 
 logger = logging.getLogger("as_email.views")
 
@@ -155,34 +153,21 @@ def hook_postmark_incoming(request, domain_name):
         #
         return JsonResponse({"status": "all good"})
 
-    now = datetime.now().isoformat()
-    email_file_name = f"{now}-{message_id}.json"
-    fname = Path(server.incoming_spool_dir) / email_file_name
-
-    # To account for other mail providers in the future and to reduce the json
-    # dict we write to just what we need to deliver the email we create a new
-    # dict that will hold what we write in the incoming spool directory.
-    #
-    email_json = json.dumps(
-        spooled_email(
-            email["OriginalRecipient"],
-            message_id,
-            email["Date"],
-            email["RawEmail"],
-        )
+    spooled_msg_path = write_spooled_email(
+        email["OriginalRecipient"],
+        server.incoming_spool_dir,
+        email["RawEmail"],
+        msg_id=message_id,
+        msg_date=email["Date"],
     )
-
-    # We need to make sure that the file is written before we send our
-    # response back to Postmark.. but we should not block other async
-    # processing while waiting for the file to be written.
-    #
-    Path(fname).write(email_json)
 
     # Fire off async huey task to dispatch the email we just wrote to the spool
     # directory.
     #
-    dispatch_incoming_email(email_account.pk, fname)
-    return JsonResponse({"status": "all good", "message": fname})
+    dispatch_incoming_email(email_account.pk, str(spooled_msg_path))
+    return JsonResponse(
+        {"status": "all good", "message": str(spooled_msg_path)}
+    )
 
 
 ####################################################################
