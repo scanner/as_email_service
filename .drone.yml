@@ -1,0 +1,10 @@
+---
+kind: pipeline
+name: test
+
+steps:
+  - name: test
+    image: "python:3.11"
+    commands:
+      - pip install -r ./requirements/develop.txt
+      - pytest
