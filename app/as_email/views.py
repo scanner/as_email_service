@@ -292,10 +292,13 @@ def hook_postmark_spam(request, domain_name):
         print("missing keys from request")
         return HttpResponseBadRequest("submitted json missing expected keys")
 
-    logger.info(
-        "postmark spam hook: message from %s to %s: %s",
+    logger.warning(
+        "%s: message from %s to %s. Message ID: %s, Postmark ID: %s: %s",
+        spam["RecordType"],
         spam["From"],
         spam["Email"],
+        spam["MessageID"],
+        spam["ID"],
         spam["Description"],
         extra=spam,
     )
@@ -305,7 +308,7 @@ def hook_postmark_spam(request, domain_name):
     except EmailAccount.DoesNotExist:
         logger.warning(
             "%s from email address that does not belong "
-            "to any EmailAccount: %s, server: %s, spam id: %d, to: %s, "
+            "to any EmailAccount: %s, server: %s, Postmark id: %d, to: %s, "
             "description: %s",
             spam["Type"],
             spam["From"],
@@ -338,7 +341,7 @@ def hook_postmark_spam(request, domain_name):
     return JsonResponse(
         {
             "status": "all good",
-            "message": f"received spam for {server}/{ea.email_address}",
+            "message": f"received spam for {server.domain_name}/{ea.email_address}",
         }
     )
 

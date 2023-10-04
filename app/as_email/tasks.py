@@ -207,7 +207,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
         ]
     else:
         logger.warning(
-            f"Received bounce type code if {bounce_details.TypeCode}. This is "
+            f"Received bounce type code of {bounce_details.TypeCode}. This is "
             "not one of the recognized type code's. Assuming this is a "
             "non-transient bounce.",
             extra=bounce,
@@ -235,7 +235,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             inactive.save()
         notify_user = True
         logger.info(
-            "Email %s is marked inactive by postmark. Can activte: %s, "
+            "Email %s is marked inactive by postmark. Can activate: %s, "
             "sending account: %s: %s",
             bounce_details.Inactive,
             bounce_details.CanActivate,
@@ -357,4 +357,77 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
 #
 @db_task()
 def process_email_spam(email_account_pk: int, spam: dict):
-    pass
+    """
+    Our incoming spam complaint webhook was triggered. The view only does
+    some curosry work on the data we got. The meat of the work happens in this
+    task.
+
+    Spam complaints count as bounces.
+    We notify the user that sent the email.
+    If `Inactive` is true get/create an InactiveEmail.
+    """
+    ea = EmailAccount.objects.get(pk=email_account_pk)
+
+    # Get the bounce details if they are available.
+    #
+    to_addr = spam["Email"]
+    from_addr = spam["From"]
+
+    # We generate the human readable 'report_text' by constructing a list of
+    # messages that will concatenated into a single string and passed as the
+    # 'report_text' when making the DSN. This lets us stack up several parts of
+    # the message and make it all at once instead of having to make several
+    # different DSN's depending on the circumstances.
+    #
+    report_text = [f"Email from {from_addr} to {to_addr} was marked as spam."]
+
+    # IF this bounce is not a transient bounce, then increment the number of
+    # bounces this EmailAccount has generated.
+    #
+    transient = False
+    if spam["TypeCode"] in BOUNCE_TYPES_BY_TYPE_CODE:
+        transient = BOUNCE_TYPES_BY_TYPE_CODE[spam["TypeCode"]]["transient"]
+    else:
+        logger.warning(
+            f"Received spam complaint of {spam['TypeCode']}. This is "
+            "not one of the recognized type code's.",
+            extra=spam,
+        )
+
+    if not transient:
+        ea.num_bounces += 1
+        ea.save()
+        report_text.append(f"Number of bounced emails: {ea.num_bounces}")
+        report_text.append(
+            f"Email account will be deactivated from sending emails if this "
+            f"number exceeds {ea.NUM_EMAIL_BOUNCE_LIMIT} in a day "
+            "(the number of bounces will automatically decrease by 1 each day.)"
+        )
+
+    # If `Inactive` is true then this bounce has caused postmark to disable
+    # sending to this email address.
+    #
+    if spam["Inactive"]:
+        inactive, _ = InactiveEmail.objects.get_or_create(
+            email_address=spam["Email"]
+        )
+        if inactive.can_activate != spam["CanActivate"]:
+            inactive.can_activate = spam["CanActivate"]
+            inactive.save()
+        logger.info(
+            "Email %s is marked inactive by postmark. Can activate: %s, "
+            "sending account: %s: %s",
+            spam["Inactive"],
+            spam["CanActivate"],
+            ea.email_address,
+            spam["Description"],
+            extra=spam,
+        )
+
+        report_text.append(
+            f"Postmark has marked this email address ({spam['Email']}) "
+            "as inactive and will not send email to this address. Postmark "
+            "has marked this address as reactivatable as: "
+            "{bounce_details.CanActivate}. Contact the system adminstrator "
+            "to see if this can be resolved."
+        )

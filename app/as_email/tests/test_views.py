@@ -139,3 +139,47 @@ def test_postmark_spam_webhook(
     ea = email_account_factory()
     ea.save()
     server = ea.server  # noqa: F841
+    to_addr = faker.email()
+
+    spam_data = {
+        "RecordType": "SpamComplaint",
+        "MessageStream": "outbound",
+        "ID": 42,
+        "Type": "SpamComplaint",
+        "TypeCode": 512,
+        "Name": "Spam complaint",
+        "Tag": "Test",
+        "MessageID": "00000000-0000-0000-0000-000000000000",
+        "Metadata": {"a_key": "a_value", "b_key": "b_value"},
+        "ServerID": 1234,
+        "Description": "Test spam complaint details",
+        "Details": "Test spam complaint details",
+        "Email": to_addr,
+        "From": ea.email_address,
+        "BouncedAt": "2019-11-05T16:33:54.9070259Z",
+        "DumpAvailable": True,
+        "Inactive": True,
+        "CanActivate": False,
+        "Subject": "Test subject",
+        "Content": "<Abuse report dump>",
+    }
+
+    url = (
+        reverse(
+            "as_email:hook_postmark_spam",
+            kwargs={"domain_name": server.domain_name},
+        )
+        + "?"
+        + urlencode({"api_key": server.api_key})
+    )
+
+    client = api_client()
+    r = client.post(url, json.dumps(spam_data), content_type="application/json")
+    assert r.status_code == 200
+    resp_data = r.json()
+    assert "status" in resp_data
+    assert resp_data["status"] == "all good"
+    assert (
+        resp_data["message"]
+        == f"received spam for {server.domain_name}/{ea.email_address}"
+    )
