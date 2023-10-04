@@ -396,3 +396,37 @@ async def test_relay_email_to_provider(
         if part.get_content_type == "message/rfc822":
             assert part.get_content().as_bytes() == msg.as_bytes()
             break
+
+    # Do a similar test, but send to one valid email and one inactive email.
+    # We will still get a bounce, but the non-inactve email will be sent the
+    # message.
+    #
+    inactive = inactive_emails[0].email_address
+    to = faker.email()
+    msg = email_factory(msg_from=ea.email_address, to=to, cc=inactive)
+    await relay_email_to_provider(ea, [to, inactive], msg)
+
+    stored_msg = folder.get(2)
+
+    from_addr = f"mailer-daemon@{ea.server.domain_name}"
+    assert stored_msg["From"] == from_addr
+    assert stored_msg["To"] == ea.email_address
+    assert (
+        stored_msg["Subject"]
+        == "NOTICE: Email not sent due to destination address marked as inactive"
+    )
+
+    # And a message was sent..
+    #
+    assert send_message.call_count == 1
+    assert send_message.call_args.kwargs == {
+        "from_addr": ea.email_address,
+        "to_addrs": [to],
+    }
+
+    sent_message = send_message.call_args.args[0]
+    assert sent_message["From"] == ea.email_address
+    assert sent_message["To"] == to
+    assert sent_message["Subject"] == msg["Subject"]
+
+    assert_email_equal(msg, sent_message, ignore_headers=True)
