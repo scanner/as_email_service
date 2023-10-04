@@ -263,7 +263,7 @@ async def test_async_inactive_email_inactives(inactive_email_factory, faker):
     inactives = []
     for _ in range(5):
         inact = inactive_email_factory()
-        inact.asave()
+        await inact.asave()
         inactives.append(inact)
 
     inactive_emails = []
