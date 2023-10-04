@@ -7,4 +7,5 @@ steps:
     image: "python:3.11"
     commands:
       - pip install -r ./requirements/development.txt
+      - cd ./app/
       - pytest
