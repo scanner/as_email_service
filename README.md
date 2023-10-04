@@ -1,4 +1,6 @@
-[![Build Status](https://drone.apricot.com/api/badges/scanner/as_email_service/status.svg?ref=refs/heads/main)](https://drone.apricot.com/scanner/as_email_service)[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Build
+Status](https://drone.apricot.com/api/badges/scanner/as_email_service/status.svg?ref=refs/heads/main)](https://drone.apricot.com/scanner/as_email_service)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 # Apricot Systematic Email Service (as_email_service)
 A Django app and smtp relay service for working with 3rd party email services (well, just [Postmark](https://postmarkapp.com/) initially. Also supports delivery to an MH email box on the same machine (for use with [asimap](https://github.com/scanner/asimap/) hosted on the same machine).
 
