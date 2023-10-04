@@ -6,6 +6,5 @@ steps:
   - name: test
     image: "python:3.11"
     commands:
-      - /bin/ls
-      - pip install -r ./requirements/develop.txt
+      - pip install -r ./requirements/development.txt
       - pytest
