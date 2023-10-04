@@ -5,7 +5,11 @@ name: test
 steps:
   - name: test
     image: "python:3.11"
+    environment:
+      PYTHONUNBUFFERED: 1
     commands:
       - pip install -r ./requirements/development.txt
       - cd ./app/
+      - mkdir ./staticfiles
+      - python ./manage.py collectstatic --clear --no-input --verbosity 0
       - pytest
