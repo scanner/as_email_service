@@ -38,6 +38,7 @@ $(ROOT_DIR)/venv: requirements/development.txt
         else \
 	  $(PYTHON) -m venv $@ ; \
 	  $(ACTIVATE) pip install -U pip ; \
+	  $(ACTIVATE) pip install -U setuptools ; \
 	  $(ACTIVATE) pip install -r $(ROOT_DIR)/requirements/development.txt ; \
         fi
 	@touch $@
