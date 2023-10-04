@@ -588,8 +588,8 @@ class EmailAccount(models.Model):
         null=True,
         blank=True,
         help_text=_(
-            "When the email account delivery method is set to `Forwarding` this "
-            "is the email address that this email is forwarded to. NOTE: "
+            "When the email account delivery method is set to `Forwarding` "
+            "this is the email address that this email is forwarded to. NOTE: "
             "`forward_to` is only relevant when the delivery method is "
             "`Forwarding`. The field is otherwise ignored."
         ),

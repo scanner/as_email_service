@@ -13,7 +13,7 @@ import pytest
 
 # Project imports
 #
-from ..models import EmailAccount
+from ..models import EmailAccount, InactiveEmail
 from ..tasks import (
     decrement_num_bounces_counter,
     dispatch_incoming_email,
@@ -196,16 +196,16 @@ def test_bounce_inactive(
 ):
     """
     If postmark flags `inactive` on a bounce then it means that it has
-    deactivated that email address, so we will pre-emptively deactivate that
-    EmailAccount. Note that this deactivation, unlike the one that comes from
-    exceeding the allowable number of bounces in a day, will not be reset
-    automatically when the number of bounces decays over time.
+    deactivated that destination email address. This should create an
+    InactiveEmail object with the address of the destination email account.
     """
     ea = email_account_factory()
     ea.save()
     assert ea.num_bounces == 0
-    bounced_msg = email_factory(msg_from=ea.email_address)
+    bounce_address = faker.email()
+    bounced_msg = email_factory(msg_from=ea.email_address, to=bounce_address)
     bounce_id = faker.pyint(1_000_000_000, 9_999_999_999)
+    can_activate = True
     bounce_data = {
         "ID": bounce_id,
         "Type": "HardBounce",
@@ -216,12 +216,12 @@ def test_bounce_inactive(
         "ServerID": 23,
         "Description": "The server was unable to deliver your message",
         "Details": "Test bounce details",
-        "Email": "john@example.com",
+        "Email": bounce_address,
         "From": ea.email_address,
         "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "DumpAvailable": False,
         "Inactive": True,
-        "CanActivate": True,
+        "CanActivate": can_activate,
         "RecordType": "Bounce",
         "Subject": "Test subject",
     }
@@ -233,10 +233,12 @@ def test_bounce_inactive(
     res()
     ea.refresh_from_db()
     assert ea.num_bounces == 1
-    assert ea.deactivated is True
-    assert ea.deactivated_reason == ea.DEACTIVATED_BY_POSTMARK
+    assert ea.deactivated is False
     assert len(django_outbox) == 1
     assert django_outbox[0].to[0] == ea.owner.email
+
+    inactive = InactiveEmail.objects.get(email_address=bounce_address)
+    assert inactive.can_activate == can_activate
 
 
 ####################################################################

@@ -24,7 +24,7 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 # Project imports
 #
 from .deliver import deliver_message, make_delivery_status_notification
-from .models import EmailAccount, Server
+from .models import EmailAccount, InactiveEmail, Server
 from .utils import BOUNCE_TYPES_BY_TYPE_CODE
 
 TZ = pytz.timezone(settings.TIME_ZONE)
@@ -224,26 +224,32 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
         )
 
     # If `Inactive` is true then this bounce has caused postmark to disable
-    # this email address.
+    # sending to this email address.
     #
     if bounce_details.Inactive:
+        inactive, _ = InactiveEmail.objects.get_or_create(
+            email_address=bounce_details.Email
+        )
+        if inactive.can_activate != bounce_details.CanActivate:
+            inactive.can_activate = bounce_details.CanActivate
+            inactive.save()
         notify_user = True
-        ea.deactivated = True
-        ea.deactivated_reason = ea.DEACTIVATED_BY_POSTMARK
-        ea.save()
         logger.info(
-            "Account %s deactivated by postmark due to bounce to %s: %s",
-            ea,
-            to_addr,
+            "Email %s is marked inactive by postmark. Can activte: %s, "
+            "sending account: %s: %s",
+            bounce_details.Inactive,
+            bounce_details.CanActivate,
+            ea.email_address,
             bounce_details.Description,
+            extra=bounce,
         )
 
         report_text.append(
-            "Postmark has marked this account ({from_addr}) as inactive and "
-            "it can not send any more emails. Contact the system adminstrator "
-            "to see if this can be resolved. The email account can still "
-            "receive messages. It just can not send any messages while "
-            "deactivated."
+            f"Postmark has marked this email address ({bounce_details.Email}) "
+            "as inactive and will not send email to this address. Postmark "
+            "has marked this address as reactivatable as: "
+            "{bounce_details.CanActivate}. Contact the system adminstrator "
+            "to see if this can be resolved."
         )
 
     # If the emailaccount is forwarding and we got a non-transient bounce when
