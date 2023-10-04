@@ -28,7 +28,7 @@ cryptography==41.0.4
     #   types-redis
 distlib==0.3.7
     # via virtualenv
-django==4.2.5
+django==4.2.6
     # via
     #   django-stubs
     #   django-stubs-ext

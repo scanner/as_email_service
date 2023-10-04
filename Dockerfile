@@ -11,6 +11,7 @@ COPY pyproject.toml /app/
 RUN python -m venv --copies /venv
 RUN . /venv/bin/activate && \
     pip install --upgrade pip && \
+    pip install --upgrade setuptools && \
     pip install -r /app/requirements/production.txt
 
 #########################

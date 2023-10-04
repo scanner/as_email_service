@@ -10,8 +10,8 @@ django-environ
 django-extensions
 django-filter
 django-guardian
-django-mfa2
 django-ordered-model
+django-passkeys
 djangorestframework
 dnspython
 drf-nested-routers
