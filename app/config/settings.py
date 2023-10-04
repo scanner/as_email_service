@@ -34,7 +34,7 @@ env = environ.Env(
     SITE_NAME=(str, "example.com"),
     DATABASE_URL=(str, "sqlite:///:memory:"),
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
-    EMAIL_SERVER_TOKENS=(str, "example.com=foo"),
+    EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
     MAIL_DIRS=(str, "/mnt/mail_dir"),
     DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
 )
