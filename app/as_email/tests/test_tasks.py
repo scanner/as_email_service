@@ -408,7 +408,7 @@ def test_process_email_spam(
 
     ea.refresh_from_db()
     assert ea.num_bounces == 1
-    assert not ea.Deactivated
+    assert not ea.deactivated
 
 
 ####################################################################
