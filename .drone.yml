@@ -26,14 +26,14 @@ steps:
       from_secret: slack_notify_webhook
       channel: builds
       template: >
-    {{ #if build.pull }}
+      {{ #if build.pull }}
         *{{ #success build.status }}✔{{ else }}✘{{ /success }} {{ uppercasefirst build.status }}*: <https://github.com/{{ repo.owner }}/{{ repo.name }}/pull/{{ build.pull }}|Pull Request #{{ build.pull }}>
       {{ else }}
         *{{ #success build.status }}✔{{ else }}✘{{ /success }} {{ uppercasefirst build.status }}: Build #{{ build.number }}* (type: `{{ build.event }}`)
-    {{ /if }}
-    Repository: <https://github.com/{{ repo.owner }}/{{ repo.name }}|{{ repo.name }}>
-    Duration: {{ since build.started }}
-    Commit: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commit/{{ build.commit }}|{{ truncate build.commit 8 }}>
-    Branch: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commits/{{ build.branch }}|{{ build.branch }}>
-    Author: {{ build.author }}
-    Commit message: {{ build.message }} <{{ build.link }}|Visit build page ↗>
+      {{ /if }}
+      Repository: <https://github.com/{{ repo.owner }}/{{ repo.name }}|{{ repo.name }}>
+      Duration: {{ since build.started }}
+      Commit: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commit/{{ build.commit }}|{{ truncate build.commit 8 }}>
+      Branch: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commits/{{ build.branch }}|{{ build.branch }}>
+      Author: {{ build.author }}
+      Commit message: {{ build.message }} <{{ build.link }}|Visit build page ↗>
