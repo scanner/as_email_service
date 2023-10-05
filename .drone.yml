@@ -1,6 +1,6 @@
 ---
 kind: pipeline
-name: test
+name: AS Email Django App Tests
 
 steps:
   - name: test
@@ -14,3 +14,20 @@ steps:
       - mkdir ./staticfiles
       - python ./manage.py collectstatic --clear --no-input --verbosity 0
       - pytest
+
+---
+kind: pipeline
+name: Build Notify
+
+slack:
+  image: plugins/slack
+  webhook:
+    from_secret: slack_notify_webhook
+  channel: builds
+  username: drone
+  template: >
+    {{#success build.status }}
+     build {{build.number}} succeeded.
+    {{else}}
+      build {{build.number}} failed.
+    {{/success}}

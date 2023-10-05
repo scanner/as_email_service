@@ -18,6 +18,7 @@ from ..tasks import (
     decrement_num_bounces_counter,
     dispatch_incoming_email,
     process_email_bounce,
+    process_email_spam,
 )
 from ..utils import write_spooled_email
 from .test_deliver import assert_email_equal
@@ -365,12 +366,49 @@ def test_bounce_to_forwarded_to_deactivates_emailaccount(
 
 ####################################################################
 #
-def test_process_email_spam():
+def test_process_email_spam(
+    email_account_factory,
+    email_factory,
+    faker,
+):
     """
     Test a simple spam complaint. They should all be `inactive` according
     to the postmark documentation, but test both inactive and not inactive.
     """
-    pass
+    ea = email_account_factory()
+    ea.save()
+    assert ea.num_bounces == 0
+    to_addr = faker.email()
+    spam_id = faker.pyint(1_000_000_000, 9_999_999_999)
+    spam_data = {
+        "RecordType": "SpamComplaint",
+        "MessageStream": "outbound",
+        "ID": spam_id,
+        "Type": "SpamComplaint",
+        "TypeCode": 512,
+        "Name": "Spam complaint",
+        "Tag": "Test",
+        "MessageID": faker.uuid4(),
+        "Metadata": {"a_key": "a_value", "b_key": "b_value"},
+        "ServerID": 1234,
+        "Description": "This is a description",
+        "Details": "Test spam complaint details",
+        "Email": ea.email_address,
+        "From": to_addr,
+        "BouncedAt": "2019-11-05T16:33:54.9070259Z",
+        "DumpAvailable": True,
+        "Inactive": True,
+        "CanActivate": False,
+        "Subject": "Test subject",
+        "Content": "<Abuse report dump>",
+    }
+
+    res = process_email_spam(ea.pk, spam_data)
+    res()
+
+    ea.refresh_from_db()
+    assert ea.num_bounces == 1
+    assert not ea.Deactivated
 
 
 ####################################################################
