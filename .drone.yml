@@ -21,7 +21,7 @@ name: Build Notify
 depends_on:
   - AS Email Django App Tests
 
-when:
+trigger:
   status:
   - success
   - failure
