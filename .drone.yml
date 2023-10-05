@@ -8,7 +8,6 @@ steps:
     environment:
       PYTHONUNBUFFERED: 1
     commands:
-      - env | sort
       - pip install -r ./requirements/development.txt
       - cd ./app/
       - mkdir ./staticfiles
