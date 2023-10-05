@@ -131,6 +131,7 @@ def test_too_many_bounces(
     postmark_request,
     postmark_request_bounce,
     faker,
+    django_outbox,
 ):
     """
     We set up an account that has had 2 less than the bounce limit, and
@@ -183,6 +184,12 @@ def test_too_many_bounces(
         ea.deactivated_reason == EmailAccount.DEACTIVATED_DUE_TO_BOUNCES_REASON
     )
 
+    # and since this email account was deactivated we also send an email notice
+    # to the email account's owner.
+    #
+    assert len(django_outbox) == 1
+    assert django_outbox[0].to[0] == ea.owner.email
+
 
 ####################################################################
 #
@@ -234,8 +241,10 @@ def test_bounce_inactive(
     ea.refresh_from_db()
     assert ea.num_bounces == 1
     assert ea.deactivated is False
-    assert len(django_outbox) == 1
-    assert django_outbox[0].to[0] == ea.owner.email
+    # Since the EmailAccount was NOT deactivated, no email was sent to the
+    # EmailAccount's owner.
+    #
+    assert len(django_outbox) == 0
 
     inactive = InactiveEmail.objects.get(email_address=bounce_address)
     assert inactive.can_activate == can_activate
@@ -346,5 +355,9 @@ def test_bounce_to_forwarded_to_deactivates_emailaccount(
     assert ea.num_bounces == 1
     assert ea.deactivated is True
     assert ea.deactivated_reason == ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
+
+    # and since this email account was deactivated we also send an email notice
+    # to the email account's owner.
+    #
     assert len(django_outbox) == 1
     assert django_outbox[0].to[0] == ea.owner.email

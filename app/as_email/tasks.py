@@ -233,7 +233,6 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
         if inactive.can_activate != bounce_details.CanActivate:
             inactive.can_activate = bounce_details.CanActivate
             inactive.save()
-        notify_user = True
         logger.info(
             "Email %s is marked inactive by postmark. Can activate: %s, "
             "sending account: %s: %s",
@@ -248,15 +247,13 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             f"Postmark has marked this email address ({bounce_details.Email}) "
             "as inactive and will not send email to this address. Postmark "
             "has marked this address as reactivatable as: "
-            "{bounce_details.CanActivate}. Contact the system adminstrator "
+            f"{bounce_details.CanActivate}. Contact the system adminstrator "
             "to see if this can be resolved."
         )
 
     # If the emailaccount is forwarding and we got a non-transient bounce when
     # sending email to the forward_to address then the account gets
-    # deactivated. (NOTE: This may override the deactivated_reason if this
-    # email address was all marked 'Inactive' by postmark. This is fine.. it is
-    # deactivated at the end of this anyways.)
+    # deactivated.
     #
     if (
         ea.delivery_method == ea.FORWARDING
@@ -309,6 +306,9 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     report_text.append(f"Bounce details: {bounce_details.Details}")
     report_msg = "\n".join(report_text)
 
+    # `notify_user` means we send the report complaint to the user's email
+    # address as well (not just the EmailAccount.)
+    #
     if notify_user:
         send_mail(
             f"NOTICE: The email account {ea.email_address} has been "
@@ -332,7 +332,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     dsn = make_delivery_status_notification(
         ea,
         report_text=report_msg,
-        subject=bounce_details.Subject,
+        subject="Bounced email: " + bounce_details.Subject,
         from_addr=from_addr,
         action="failed",
         status="5.1.1",
@@ -379,11 +379,15 @@ def process_email_spam(email_account_pk: int, spam: dict):
     # the message and make it all at once instead of having to make several
     # different DSN's depending on the circumstances.
     #
-    report_text = [f"Email from {from_addr} to {to_addr} was marked as spam."]
+    report_text = [
+        f"Email marked as spam from {from_addr} to {to_addr}, "
+        f"subject: '{spam['Subject']}'"
+    ]
 
     # IF this bounce is not a transient bounce, then increment the number of
     # bounces this EmailAccount has generated.
     #
+    notify_user = False
     transient = False
     if spam["TypeCode"] in BOUNCE_TYPES_BY_TYPE_CODE:
         transient = BOUNCE_TYPES_BY_TYPE_CODE[spam["TypeCode"]]["transient"]
@@ -428,6 +432,113 @@ def process_email_spam(email_account_pk: int, spam: dict):
             f"Postmark has marked this email address ({spam['Email']}) "
             "as inactive and will not send email to this address. Postmark "
             "has marked this address as reactivatable as: "
-            "{bounce_details.CanActivate}. Contact the system adminstrator "
+            f"{spam['CanActivate']}. Contact the system adminstrator "
             "to see if this can be resolved."
+        )
+
+    # If the emailaccount is forwarding and we got a non-transient spam when
+    # sending email to the forward_to address then the account gets
+    # deactivated.
+    #
+    if (
+        ea.delivery_method == ea.FORWARDING
+        and not transient
+        and spam["Email"] == ea.forward_to
+    ):
+        notify_user = True
+        ea.deactivated = True
+        ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
+        # XXX Should we also change the delivery type to local delivery?
+        ea.save()
+        logger.info(
+            "Account %s deactivated due to non-transient spam to "
+            "forward_to address: %s: %s",
+            ea,
+            ea.forward_to,
+            spam["Description"],
+            extra=spam,
+        )
+        report_text.append(
+            f"The account ({from_addr}) has been deactivated from sending "
+            f"email due the set `forward_to` ({ea.forward_to}) address "
+            "generating a non-transient spam. NOTE: This account can "
+            "still receive email. It just can not send new emails."
+        )
+
+    if not ea.deactivated:
+        if ea.num_bounces >= ea.NUM_EMAIL_BOUNCE_LIMIT:
+            notify_user = True
+            ea.deactivated = True
+            ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BOUNCES_REASON
+            ea.save()
+            logger.info(
+                "Account %s deactivated due to excessive spam/bounces",
+                ea,
+                extra=spam,
+            )
+            report_text.append(
+                f"The account ({from_addr}) has been deactivated from sending "
+                "email due to excessive spam email messages. the email account "
+                "Will automatically be reactivated after in at most a day. "
+                "\nNOTE: This account can still receive email. It just can not "
+                "send new emails."
+            )
+
+    report_text.append(f"Spam type: {spam['Type']}")
+    report_text.append(f"Spam description: {spam['Description']}")
+    report_text.append(f"Spam details: {spam['Details']}")
+    report_msg = "\n".join(report_text)
+
+    # `notify_user` means we send the report complaint to the user's email
+    # address as well (not just the EmailAccount.)
+    #
+    if notify_user:
+        send_mail(
+            f"NOTICE: The email account {ea.email_address} has been "
+            "deactivated and can not send email",
+            report_msg,
+            None,
+            [ea.owner.email],
+            fail_silently=True,
+        )
+
+    # B-/ email.policy.default really makes this return an EmailMessage, not a
+    # Message. This cast is to make mypy understand this.
+    #
+    if "Content" in spam:
+        bounced_message = cast(
+            EmailMessage,
+            email.message_from_string(
+                spam["Content"],
+                policy=email.policy.default,
+            ),
+        )
+    else:
+        bounced_message = cast(
+            EmailMessage,
+            email.message_from_string(
+                spam["Description"], policy=email.policy.default
+            ),
+        )
+    dsn = make_delivery_status_notification(
+        ea,
+        report_text=report_msg,
+        subject="Message marked as spam: " + spam["Subject"],
+        from_addr=from_addr,
+        action="failed",
+        status="5.1.1",
+        diagnostic=f"smtp; {spam['Details']}",
+        reported_msg=bounced_message,
+    )
+
+    # use our huey task for asynchronously sending email to deliver the bounce
+    # message to this email account.
+    #
+    try:
+        deliver_message(ea, dsn)
+    except Exception:
+        logger.exception(
+            "Failed to deliver DSN message %s to '%s'",
+            dsn["Message-ID"],
+            ea.email_address,
         )

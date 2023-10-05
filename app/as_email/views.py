@@ -292,9 +292,23 @@ def hook_postmark_spam(request, domain_name):
         print("missing keys from request")
         return HttpResponseBadRequest("submitted json missing expected keys")
 
+    # Just to be safe, try to make sure that the TypeCode is an integer.
+    #
+    try:
+        spam["TypeCode"] = int(spam["TypeCode"])
+    except ValueError:
+        logger.error(
+            "From: %s, to %s, ID: %s - TypeCode is not an integer: '%s'",
+            spam["From"],
+            spam["Email"],
+            spam["ID"],
+            spam["TypeCode"],
+            extra=spam,
+        )
+        spam["TypeCode"] = 2048  #  Mark it as 'unknown'
+
     logger.warning(
-        "%s: message from %s to %s. Message ID: %s, Postmark ID: %s: %s",
-        spam["RecordType"],
+        "message from %s to %s. Message ID: %s, Postmark ID: %s: %s",
         spam["From"],
         spam["Email"],
         spam["MessageID"],
