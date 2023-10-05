@@ -361,3 +361,34 @@ def test_bounce_to_forwarded_to_deactivates_emailaccount(
     #
     assert len(django_outbox) == 1
     assert django_outbox[0].to[0] == ea.owner.email
+
+
+####################################################################
+#
+def test_process_email_spam():
+    """
+    Test a simple spam complaint. They should all be `inactive` according
+    to the postmark documentation, but test both inactive and not inactive.
+    """
+    pass
+
+
+####################################################################
+#
+def test_process_email_spam_too_many_bounces():
+    """ """
+    pass
+
+
+####################################################################
+#
+def test_process_email_spam_forward_to():
+    """ """
+    pass
+
+
+####################################################################
+#
+def test_process_spam_invalid_typecode():
+    """ """
+    pass
