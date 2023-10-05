@@ -415,7 +415,7 @@ def test_process_email_spam(
 #
 def test_process_email_spam_too_many_bounces():
     """ """
-    pass
+    assert False
 
 
 ####################################################################

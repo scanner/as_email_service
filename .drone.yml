@@ -21,6 +21,11 @@ name: Build Notify
 depends_on:
   - AS Email Django App Tests
 
+when:
+  status:
+  - success
+  - failure
+
 steps:
   - name: slack notification
     image: plugins/slack
