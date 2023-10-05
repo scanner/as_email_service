@@ -421,7 +421,7 @@ def process_email_spam(email_account_pk: int, spam: dict):
         logger.info(
             "Email %s is marked inactive by postmark. Can activate: %s, "
             "sending account: %s: %s",
-            spam["Inactive"],
+            spam["Email"],
             spam["CanActivate"],
             ea.email_address,
             spam["Description"],
