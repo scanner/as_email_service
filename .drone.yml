@@ -43,7 +43,7 @@ steps:
 
         Repository: <https://github.com/{{ repo.owner }}/{{ repo.name }}|{{ repo.name }}>
 
-        Duration: {{ since build.started }}
+        Commit message: {{ build.message }}
 
         Commit: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commit/{{ build.commit }}|{{ truncate build.commit 8 }}>
 
@@ -51,6 +51,6 @@ steps:
 
         Author: {{ build.author }}
 
-        Commit message: {{ build.message }}
+        Duration: {{ since build.started }}
 
         <{{ build.link }}|Visit build page ↗>
