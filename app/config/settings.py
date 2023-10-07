@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 # System imports
 #
 from pathlib import Path
-from typing import List
 
 # 3rd party imports
 #
@@ -37,6 +36,7 @@ env = environ.Env(
     EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
     MAIL_DIRS=(str, "/mnt/mail_dir"),
     DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
+    ALLOWED_HOSTS=(list, list()),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -44,8 +44,7 @@ env = environ.Env(
 SECRET_KEY = env("DJANGO_SECRET_KEY", default=get_random_secret_key())
 DEBUG = env("DEBUG")
 SITE_NAME = env("SITE_NAME")
-
-ALLOWED_HOSTS: List[str] = []
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 
 
 # Application definition

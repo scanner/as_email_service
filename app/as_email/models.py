@@ -925,13 +925,21 @@ class MessageFilterRule(OrderedModel):
         (TO, TO),
     ]
 
-    email_account = models.ForeignKey(EmailAccount, on_delete=models.CASCADE)
+    email_account = models.ForeignKey(
+        EmailAccount,
+        on_delete=models.CASCADE,
+        related_name="message_filter_rules",
+    )
     header = models.CharField(
-        max_length=32, choices=HEADER_CHOICES, default=DEFAULT
+        max_length=32,
+        choices=HEADER_CHOICES,
+        default=DEFAULT,
     )
     pattern = models.CharField(blank=True, max_length=256)
     action = models.CharField(
-        max_length=10, choices=ACTION_CHOICES, default=FOLDER
+        max_length=10,
+        choices=ACTION_CHOICES,
+        default=FOLDER,
     )
     destination = models.CharField(blank=True, max_length=1024)
     order_with_respect_to = "email_account"
@@ -982,6 +990,24 @@ class MessageFilterRule(OrderedModel):
     def has_object_read_permission(self, request):
         """
         Using DRY Rest Permissions, allow the user to retrieve/list the
+        object if they are the owner of the associated email account
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    def has_object_write_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to write the
+        object if they are the owner of the associated email account
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    def has_object_update_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to update the
         object if they are the owner of the associated email account
         """
         return request.user == self.email_account.owner

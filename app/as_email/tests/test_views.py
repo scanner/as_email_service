@@ -183,3 +183,10 @@ def test_postmark_spam_webhook(
         resp_data["message"]
         == f"received spam for {server.domain_name}/{ea.email_address}"
     )
+
+
+########################################################################
+########################################################################
+#
+class TestEmailAccountEndpoints:
+    pass

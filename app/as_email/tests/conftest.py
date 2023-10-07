@@ -323,6 +323,9 @@ def aiosmtp_envelope(email_factory):
 
 ####################################################################
 #
+# XXX We should consider using requests-mock as a slighty cleaner way of
+#     implementing this.
+#
 @pytest.fixture
 def postmark_request_bounce(
     postmark_request, email_account_factory, email_factory, faker

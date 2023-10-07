@@ -38,7 +38,7 @@ router.register(
 #  /email_accounts/{pk}/message_filter_rules/{pk}/
 #
 email_account_router = routers.NestedSimpleRouter(
-    router, r"email_accounts", lookup="email_account"
+    router, r"email_accounts", lookup="email_accounts"
 )
 
 email_account_router.register(
@@ -50,8 +50,8 @@ email_account_router.register(
 app_name = "as_email"
 urlpatterns = [
     path("", index, name="index"),
-    path("api/v1", include(router.urls)),
-    path("api/v1", include(email_account_router.urls)),
+    path("api/v1/", include(router.urls)),
+    path("api/v1/", include(email_account_router.urls)),
     path(
         "hook/postmark/incoming/<str:domain_name>/",
         hook_postmark_incoming,

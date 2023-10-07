@@ -260,7 +260,7 @@ def hook_postmark_spam(request, domain_name):
     is now "inactive" and can not be used to receive more email sent by us.
 
     This view does some cursory work on the request and then tosses the rest of
-    the work to the huey task for deailing with spam.
+    the work to the huey task for dealing with spam.
     """
     server = _validate_server_api_key(request, domain_name)
     try:
@@ -419,5 +419,8 @@ class EmailAccountOwnerFilterBackend(DRYPermissionFiltersBase):
 class MessageFilterRuleViewSet(ModelViewSet):
     permission_classes = (DRYPermissions,)
     serializer_class = MessageFilterRuleSerializer
-    queryset = MessageFilterRule.objects.all()
     filter_backends = (EmailAccountOwnerFilterBackend,)
+    queryset = MessageFilterRule.objects.all()
+
+    # def get_queryset(self):
+    #     return MessageFilterRule.objects.filter(email_account=self.kwargs["email_account_pk"])
