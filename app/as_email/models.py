@@ -29,6 +29,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from dry_rest_permissions.generics import authenticated_users
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
 from postmarker.exceptions import ClientError
@@ -678,11 +679,13 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
+    @authenticated_users
     def has_object_write_permission(self, request):
         return False
 
     ####################################################################
     #
+    @authenticated_users
     def has_object_update_permission(self, request):
         return request.user == self.owner
 
@@ -694,10 +697,27 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
+    @authenticated_users
     def has_object_read_permission(self, request):
         """
         Using DRY Rest Permissions, allow the user to retrieve/list the
         object if they are the owner.
+        """
+        return request.user == self.owner
+
+    ####################################################################
+    #
+    @staticmethod
+    def has_set_password_permission(self):
+        return True
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_set_password_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to set the email account
+        password if they are the owner.
         """
         return request.user == self.owner
 
@@ -988,6 +1008,7 @@ class MessageFilterRule(OrderedModel):
 
     ####################################################################
     #
+    @authenticated_users
     def has_object_read_permission(self, request):
         """
         Using DRY Rest Permissions, allow the user to retrieve/list the
@@ -997,6 +1018,7 @@ class MessageFilterRule(OrderedModel):
 
     ####################################################################
     #
+    @authenticated_users
     def has_object_write_permission(self, request):
         """
         Using DRY Rest Permissions, allow the user to write the
@@ -1006,6 +1028,7 @@ class MessageFilterRule(OrderedModel):
 
     ####################################################################
     #
+    @authenticated_users
     def has_object_update_permission(self, request):
         """
         Using DRY Rest Permissions, allow the user to update the

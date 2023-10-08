@@ -23,6 +23,17 @@ from .models import EmailAccount, InactiveEmail, MessageFilterRule
 ########################################################################
 ########################################################################
 #
+class PasswordSerializer(serializers.Serializer):
+    """
+    Serializer for password change endpoint on the EmailAccount.
+    """
+
+    password = serializers.CharField(required=True)
+
+
+########################################################################
+########################################################################
+#
 class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     url = serializers.HyperlinkedIdentityField(
         view_name="as_email:email-account-detail", read_only=True

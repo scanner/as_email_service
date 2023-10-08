@@ -40,13 +40,19 @@ from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
 )
-from rest_framework import mixins
+from rest_framework import mixins, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 # Project imports
 #
 from .models import EmailAccount, MessageFilterRule, Server
-from .serializers import EmailAccountSerializer, MessageFilterRuleSerializer
+from .serializers import (
+    EmailAccountSerializer,
+    MessageFilterRuleSerializer,
+    PasswordSerializer,
+)
 from .tasks import (
     dispatch_incoming_email,
     process_email_bounce,
@@ -412,6 +418,18 @@ class EmailAccountViewSet(
     serializer_class = EmailAccountSerializer
     queryset = EmailAccount.objects.all()
     filter_backends = (OwnerFilterBackend,)
+
+    @action(detail=True, methods=["post"])
+    def set_password(self, request, pk=None):
+        ea = self.get_object()
+        serializer = PasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            ea.set_password(serializer.validated_data["password"])
+            return Response({"status": "password set"})
+        else:
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 ########################################################################
