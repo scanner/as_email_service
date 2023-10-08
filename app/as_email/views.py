@@ -40,7 +40,8 @@ from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
 )
-from rest_framework.viewsets import ModelViewSet
+from rest_framework import mixins
+from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 # Project imports
 #
@@ -394,7 +395,19 @@ class OwnerFilterBackend(DRYPermissionFiltersBase):
 ########################################################################
 ########################################################################
 #
-class EmailAccountViewSet(ModelViewSet):
+class EmailAccountViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.ListModelMixin,
+    GenericViewSet,
+):
+    """
+    The EmailAccount. This represents an email address active on a server.
+    A user may have multiple EmailAccounts.
+
+    NOTE: The EmailAccount can not be created or deleted via the REST API.
+    """
+
     permission_classes = (DRYPermissions,)
     serializer_class = EmailAccountSerializer
     queryset = EmailAccount.objects.all()
