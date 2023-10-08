@@ -635,7 +635,8 @@ class EmailAccount(models.Model):
         ),
     )
 
-    # NOTE: disabled in user forms
+    # NOTE: disabled in user forms. A user can not change their deactivated
+    #       reason.
     #
     deactivated_reason = models.TextField(
         help_text=_("Reason for the account being deactivated"),

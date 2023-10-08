@@ -421,6 +421,3 @@ class MessageFilterRuleViewSet(ModelViewSet):
     serializer_class = MessageFilterRuleSerializer
     filter_backends = (EmailAccountOwnerFilterBackend,)
     queryset = MessageFilterRule.objects.all()
-
-    # def get_queryset(self):
-    #     return MessageFilterRule.objects.filter(email_account=self.kwargs["email_account_pk"])

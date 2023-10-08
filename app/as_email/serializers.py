@@ -9,7 +9,8 @@ Serializers for the rest framework of our models
 # 3rd party imports
 #
 from rest_framework import serializers
-from rest_framework_nested.relations import (  # NestedHyperlinkedIdentityField,
+from rest_framework_nested.relations import (
+    NestedHyperlinkedIdentityField,
     NestedHyperlinkedRelatedField,
 )
 from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
@@ -24,33 +25,35 @@ from .models import EmailAccount, InactiveEmail, MessageFilterRule
 #
 class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     url = serializers.HyperlinkedIdentityField(
-        view_name="as_email:email_accounts-detail", read_only=True
+        view_name="as_email:email-account-detail", read_only=True
     )
     server = serializers.StringRelatedField(read_only=True)
 
-    # message_filter_rules = serializers.RelatedField(
-    #     view_name="as_email:message_filter_rules-list",
-    #     read_only=True,
-    #     many=True,
-    # )
+    message_filter_rules = NestedHyperlinkedRelatedField(
+        view_name="as_email:message-filter-rule-detail",
+        parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
+        many=True,
+        read_only=True,
+    )
+
     class Meta:
         model = EmailAccount
         fields = [
-            "url",
-            "server",
-            "email_address",
-            "delivery_method",
+            "alias_for",
             "autofile_spam",
+            "created_at",
+            "deactivated",
+            "deactivated_reason",
+            "delivery_method",
+            "email_address",
+            "forward_to",
+            "message_filter_rules",
+            "modified_at",
+            "num_bounces",
+            "server",
             "spam_delivery_folder",
             "spam_score_threshold",
-            "alias_for",
-            "forward_to",
-            "deactivated",
-            "num_bounces",
-            "deactivated_reason",
-            # "message_filter_rules",
-            "created_at",
-            "modified_at",
+            "url",
         ]
         read_only_fields = [
             "owner",
@@ -59,7 +62,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "deactivated",
             "num_bounces",
             "deactivated_reason",
-            # "message_filter_rules",
+            "message_filter_rules",
             "created_at",
             "modified_at",
             "server",
@@ -72,12 +75,13 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
 class MessageFilterRuleSerializer(NestedHyperlinkedModelSerializer):
     parent_lookup_kwargs = {"email_account_pk": "email_account__pk"}
 
-    # url = NestedHyperlinkedIdentityField(
-    #     view_name="as_email:message_filter_rules-detail", read_only=True,
-    #     parent_lookup_kwargs={'email_account_pk': 'email_account__pk'},
-    # )
+    url = NestedHyperlinkedIdentityField(
+        view_name="as_email:message-filter-rule-detail",
+        lookup_field="pk",
+        parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
+    )
     email_account = NestedHyperlinkedRelatedField(
-        view_name="as_email:email_accounts-detail",
+        view_name="as_email:email-account-detail",
         parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
         read_only=True,
     )
@@ -85,7 +89,7 @@ class MessageFilterRuleSerializer(NestedHyperlinkedModelSerializer):
     class Meta:
         model = MessageFilterRule
         fields = [
-            # "url",
+            "url",
             "email_account",
             "header",
             "pattern",
@@ -103,6 +107,10 @@ class MessageFilterRuleSerializer(NestedHyperlinkedModelSerializer):
 ########################################################################
 #
 class InactiveEmailSerializer(serializers.HyperlinkedModelSerializer):
+    url = serializers.HyperlinkedIdentityField(
+        view_name="as_email:inactive_email-detail", read_only=True
+    )
+
     class Meta:
         model = InactiveEmail
         fields = [

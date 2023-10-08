@@ -29,7 +29,7 @@ router = routers.DefaultRouter()
 router.register(
     r"email_accounts",
     EmailAccountViewSet,
-    basename="email_accounts",
+    basename="email-account",
 )
 
 ###########
@@ -38,13 +38,13 @@ router.register(
 #  /email_accounts/{pk}/message_filter_rules/{pk}/
 #
 email_account_router = routers.NestedSimpleRouter(
-    router, r"email_accounts", lookup="email_accounts"
+    router, r"email_accounts", lookup="email_account"
 )
 
 email_account_router.register(
     r"message_filter_rules",
     MessageFilterRuleViewSet,
-    basename="message_filter_rules",
+    basename="message-filter-rule",
 )
 
 app_name = "as_email"
