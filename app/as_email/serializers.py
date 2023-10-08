@@ -39,12 +39,9 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         view_name="as_email:email-account-detail", read_only=True
     )
     server = serializers.StringRelatedField(read_only=True)
-
-    message_filter_rules = NestedHyperlinkedRelatedField(
-        view_name="as_email:message-filter-rule-detail",
-        parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
-        many=True,
-        read_only=True,
+    message_filter_rules = NestedHyperlinkedIdentityField(
+        view_name="as_email:message-filter-rule-list",
+        lookup_url_kwarg="email_account_pk",
     )
 
     class Meta:
