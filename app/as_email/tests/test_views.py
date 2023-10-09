@@ -189,4 +189,43 @@ def test_postmark_spam_webhook(
 ########################################################################
 #
 class TestEmailAccountEndpoints:
-    endpoint = ""
+    ####################################################################
+    #
+    @pytest.fixture(autouse=True, scope="function")
+    def setup(self, user_factory, email_account_factory, faker):
+        """
+        Every test around the EmailAccount REST API needs a user we are
+        testing against, several email accounts that belong to that user, and a
+        bunch of other email accounts belonging to other users.
+        """
+        # The user and email account we are testing with..
+        #
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        user.save()
+        ea = email_account_factory(owner=user)
+        ea.save()
+
+        # Other email accounts because we need to make sure the tests only see
+        # `user's` email accounts.
+        #
+        for _ in range(5):
+            email_account_factory()
+
+        return {"password": password, "user": user, "email_account": ea}
+
+    ####################################################################
+    #
+    def test_list(self, api_client, setup):
+        url = reverse("as_email:email-account-list")
+        client = api_client()
+        resp = client.get(url)
+        assert resp.status_code == 403
+
+        user = setup["user"]
+        password = setup["password"]
+        ea = setup["email_account"]  # noqa:F841
+
+        client.login(user=user.username, password=password)
+        resp = client.get(url)
+        assert resp.status_code == 200

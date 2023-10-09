@@ -42,6 +42,7 @@ from dry_rest_permissions.generics import (
 )
 from rest_framework import mixins, status
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
@@ -414,7 +415,7 @@ class EmailAccountViewSet(
     NOTE: The EmailAccount can not be created or deleted via the REST API.
     """
 
-    permission_classes = (DRYPermissions,)
+    permission_classes = (IsAuthenticated, DRYPermissions)
     serializer_class = EmailAccountSerializer
     queryset = EmailAccount.objects.all()
     filter_backends = (OwnerFilterBackend,)
@@ -457,7 +458,7 @@ class EmailAccountOwnerFilterBackend(DRYPermissionFiltersBase):
 ########################################################################
 #
 class MessageFilterRuleViewSet(ModelViewSet):
-    permission_classes = (DRYPermissions,)
+    permission_classes = (IsAuthenticated, DRYPermissions)
     serializer_class = MessageFilterRuleSerializer
     filter_backends = (EmailAccountOwnerFilterBackend,)
     queryset = MessageFilterRule.objects.all()
