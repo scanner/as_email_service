@@ -2,6 +2,7 @@
 -r lint.txt
 
 coverage
+dirty-equals
 ipython
 pytest
 pytest-asyncio

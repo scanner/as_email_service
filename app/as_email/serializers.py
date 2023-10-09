@@ -43,6 +43,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         view_name="as_email:email-account-detail", read_only=True
     )
     server = serializers.StringRelatedField(read_only=True)
+    owner = serializers.StringRelatedField(read_only=True)
     message_filter_rules = NestedHyperlinkedIdentityField(
         view_name="as_email:message-filter-rule-list",
         lookup_url_kwarg="email_account_pk",
@@ -62,22 +63,23 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "message_filter_rules",
             "modified_at",
             "num_bounces",
+            "owner",
             "server",
             "spam_delivery_folder",
             "spam_score_threshold",
             "url",
         ]
         read_only_fields = [
-            "owner",
-            "url",
-            "email_address",
-            "deactivated",
-            "num_bounces",
-            "deactivated_reason",
-            "message_filter_rules",
             "created_at",
+            "deactivated",
+            "deactivated_reason",
+            "email_address",
+            "message_filter_rules",
             "modified_at",
+            "num_bounces",
+            "owner",
             "server",
+            "url",
         ]
 
 

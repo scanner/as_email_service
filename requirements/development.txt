@@ -89,6 +89,8 @@ cryptography==41.0.4
     #   types-redis
 decorator==5.1.1
     # via ipython
+dirty-equals==0.6.0
+    # via -r development.in
 distlib==0.3.7
     # via
     #   -r lint.txt
@@ -334,6 +336,7 @@ python-dotenv==1.0.0
 pytz==2023.3.post1
     # via
     #   -r production.txt
+    #   dirty-equals
     #   djangorestframework
 pyyaml==6.0.1
     # via

@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 # 3rd party imports
 #
 import pytest
+from dirty_equals import IsPartialDict
 from django.urls import reverse
 
 # Project imports
@@ -225,7 +226,24 @@ class TestEmailAccountEndpoints:
         user = setup["user"]
         password = setup["password"]
         ea = setup["email_account"]  # noqa:F841
-
-        client.login(user=user.username, password=password)
+        resp = client.login(username=user.username, password=password)
+        assert resp
         resp = client.get(url)
         assert resp.status_code == 200
+        # There should be only one EmailAccount.
+        #
+        assert len(resp.data) == 1
+        expected = {
+            "alias_for": [],
+            "autofile_spam": ea.autofile_spam,
+            "deactivated": ea.deactivated,
+            "delivery_method": ea.delivery_method,
+            "email_address": ea.email_address,
+            "forward_to": None,
+            "num_bounces": ea.num_bounces,
+            "owner": ea.owner.username,
+            "server": ea.server.domain_name,
+            "spam_delivery_folder": ea.spam_delivery_folder,
+            "spam_score_threshold": ea.spam_score_threshold,
+        }
+        assert resp.data[0] == IsPartialDict(expected)
