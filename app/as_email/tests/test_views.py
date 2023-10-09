@@ -189,4 +189,4 @@ def test_postmark_spam_webhook(
 ########################################################################
 #
 class TestEmailAccountEndpoints:
-    pass
+    endpoint = ""

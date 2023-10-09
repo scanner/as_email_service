@@ -15,7 +15,7 @@ from datetime import datetime
 from email.message import EmailMessage
 from email.utils import make_msgid
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
 # Project imports
 #
@@ -168,8 +168,8 @@ def split_email_mailbox_hash(email_address: str) -> Tuple[str, str | None]:
 #
 def write_spooled_email(
     recipient: str,
-    spool_dir: [str | Path],
-    msg: [str | EmailMessage],
+    spool_dir: Union[str | Path],
+    msg: Union[str | EmailMessage],
     msg_date=None,
     msg_id=None,
 ) -> Path:

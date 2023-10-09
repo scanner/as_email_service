@@ -419,6 +419,15 @@ class EmailAccountViewSet(
     queryset = EmailAccount.objects.all()
     filter_backends = (OwnerFilterBackend,)
 
+    ####################################################################
+    #
+    def get_serializer_class(self):
+        if self.action == "set_password":
+            return PasswordSerializer
+        return EmailAccountSerializer
+
+    ####################################################################
+    #
     @action(detail=True, methods=["post"])
     def set_password(self, request, pk=None):
         ea = self.get_object()

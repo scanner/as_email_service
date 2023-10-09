@@ -28,6 +28,10 @@ class PasswordSerializer(serializers.Serializer):
     Serializer for password change endpoint on the EmailAccount.
     """
 
+    class Meta:
+        model = EmailAccount
+        fields = ["password"]
+
     password = serializers.CharField(required=True)
 
 

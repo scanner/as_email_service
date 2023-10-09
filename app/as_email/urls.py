@@ -25,8 +25,8 @@ from .views import (
 #  /email_accounts/
 #  /email_accounts/{pk}/
 #
-router = routers.DefaultRouter()
-router.register(
+api_router = routers.DefaultRouter()
+api_router.register(
     r"email_accounts",
     EmailAccountViewSet,
     basename="email-account",
@@ -37,21 +37,22 @@ router.register(
 #  /email_accounts/{pk}/message_filter_rules/
 #  /email_accounts/{pk}/message_filter_rules/{pk}/
 #
-email_account_router = routers.NestedSimpleRouter(
-    router, r"email_accounts", lookup="email_account"
+api_email_account_router = routers.NestedSimpleRouter(
+    api_router, r"email_accounts", lookup="email_account"
 )
 
-email_account_router.register(
+api_email_account_router.register(
     r"message_filter_rules",
     MessageFilterRuleViewSet,
     basename="message-filter-rule",
 )
 
+api_urls = api_router.urls + api_email_account_router.urls
+
 app_name = "as_email"
 urlpatterns = [
     path("", index, name="index"),
-    path("api/v1/", include(router.urls)),
-    path("api/v1/", include(email_account_router.urls)),
+    path("api/v1/", include(api_urls)),
     path(
         "hook/postmark/incoming/<str:domain_name>/",
         hook_postmark_incoming,
