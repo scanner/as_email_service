@@ -48,6 +48,11 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         view_name="as_email:message-filter-rule-list",
         lookup_url_kwarg="email_account_pk",
     )
+    alias_for = serializers.HyperlinkedIdentityField(
+        view_name="as_email:email-account-detail",
+        read_only=True,
+        many=True,
+    )
 
     class Meta:
         model = EmailAccount

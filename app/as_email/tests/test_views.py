@@ -30,13 +30,20 @@ def _expected_for_email_account(ea: EmailAccount) -> dict:
     EmailAccount such that it should match what we get back via the REST API
     when using IsPartialDict.
     """
+    alias_for = [
+        "http://testserver"
+        + reverse("as_email:email-account-detail", kwargs={"pk": x.pk})
+        for x in ea.alias_for.all()
+    ]
+
     expected = {
-        "alias_for": list(ea.alias_for.all()),
+        "alias_for": alias_for,
         "autofile_spam": ea.autofile_spam,
         "deactivated": ea.deactivated,
+        "deactivated_reason": ea.deactivated_reason,
         "delivery_method": ea.delivery_method,
         "email_address": ea.email_address,
-        "forward_to": None,
+        "forward_to": ea.forward_to,
         "num_bounces": ea.num_bounces,
         "owner": ea.owner.username,
         "server": ea.server.domain_name,
@@ -296,7 +303,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_retrieve(self, api_client, setup):
+    def test_retrieve(self, api_client, email_account_factory, setup):
         client = api_client()
         user = setup["user"]
         password = setup["password"]
@@ -309,6 +316,19 @@ class TestEmailAccountEndpoints:
 
         resp = client.login(username=user.username, password=password)
         assert resp
+        resp = client.get(url)
+        assert resp.status_code == 200
+        expected = _expected_for_email_account(ea)
+        assert resp.data == IsPartialDict(expected)
+
+        # What if `ea` is an alias for a different email account?
+        #
+        ea_dest = email_account_factory(owner=user)
+        ea_dest.save()
+        ea.delivery_method = EmailAccount.ALIAS
+        ea.alias_for.add(ea_dest)
+        ea.save()
+
         resp = client.get(url)
         assert resp.status_code == 200
         expected = _expected_for_email_account(ea)
