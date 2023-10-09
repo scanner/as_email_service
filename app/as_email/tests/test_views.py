@@ -16,8 +16,34 @@ from django.urls import reverse
 
 # Project imports
 #
+from ..models import EmailAccount
 
 pytestmark = pytest.mark.django_db
+
+
+####################################################################
+#
+def _expected_for_email_account(ea: EmailAccount) -> dict:
+    """
+    Our tests need to compare a dict retrieved from the REST API with an
+    EmailAccount object. This returns a partial dict of the provided
+    EmailAccount such that it should match what we get back via the REST API
+    when using IsPartialDict.
+    """
+    expected = {
+        "alias_for": list(ea.alias_for.all()),
+        "autofile_spam": ea.autofile_spam,
+        "deactivated": ea.deactivated,
+        "delivery_method": ea.delivery_method,
+        "email_address": ea.email_address,
+        "forward_to": None,
+        "num_bounces": ea.num_bounces,
+        "owner": ea.owner.username,
+        "server": ea.server.domain_name,
+        "spam_delivery_folder": ea.spam_delivery_folder,
+        "spam_score_threshold": ea.spam_score_threshold,
+    }
+    return expected
 
 
 ####################################################################
@@ -225,7 +251,7 @@ class TestEmailAccountEndpoints:
 
         user = setup["user"]
         password = setup["password"]
-        ea = setup["email_account"]  # noqa:F841
+        ea = setup["email_account"]
         resp = client.login(username=user.username, password=password)
         assert resp
         resp = client.get(url)
@@ -233,17 +259,57 @@ class TestEmailAccountEndpoints:
         # There should be only one EmailAccount.
         #
         assert len(resp.data) == 1
-        expected = {
-            "alias_for": [],
-            "autofile_spam": ea.autofile_spam,
-            "deactivated": ea.deactivated,
-            "delivery_method": ea.delivery_method,
-            "email_address": ea.email_address,
-            "forward_to": None,
-            "num_bounces": ea.num_bounces,
-            "owner": ea.owner.username,
-            "server": ea.server.domain_name,
-            "spam_delivery_folder": ea.spam_delivery_folder,
-            "spam_score_threshold": ea.spam_score_threshold,
-        }
+        expected = _expected_for_email_account(ea)
         assert resp.data[0] == IsPartialDict(expected)
+
+    ####################################################################
+    #
+    def test_create(self, api_client, faker, setup):
+        """
+        The REST API does not support creating users.
+        """
+        client = api_client()
+        # There is no '-create' view. But to create a user one would normally
+        # POST to the same url as `list`.
+        #
+        url = reverse("as_email:email-account-list")
+
+        user = setup["user"]
+        password = setup["password"]
+        server = setup["email_account"].server
+
+        data = {
+            "owner": user.username,
+            "server": server.domain_name,
+            "email_address": faker.email(),
+        }
+
+        resp = client.post(url, data=data)
+        assert resp.status_code == 403
+
+        # Even if you authenticate you can not create an EmailAccount.
+        #
+        resp = client.login(username=user.username, password=password)
+        assert resp
+        resp = client.post(url, data=data)
+        assert resp.status_code == 405
+
+    ####################################################################
+    #
+    def test_retrieve(self, api_client, setup):
+        client = api_client()
+        user = setup["user"]
+        password = setup["password"]
+        ea = setup["email_account"]
+
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+
+        resp = client.get(url)
+        assert resp.status_code == 403
+
+        resp = client.login(username=user.username, password=password)
+        assert resp
+        resp = client.get(url)
+        assert resp.status_code == 200
+        expected = _expected_for_email_account(ea)
+        assert resp.data == IsPartialDict(expected)
