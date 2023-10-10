@@ -359,7 +359,8 @@ class TestEmailAccountEndpoints:
             "alias_for": [
                 "http://testserver"
                 + reverse(
-                    "as_email:email-account-detail", kwargs={"pk": ea_dest.pk}
+                    "as_email:email-account-detail",
+                    kwargs={"pk": ea_dest.pk},
                 ),
             ],
             "autofile_spam": False,
@@ -369,8 +370,133 @@ class TestEmailAccountEndpoints:
             "spam_score_threshold": 10,
         }
         resp = client.put(url, data=ea_new)
-        print(resp.data)
         assert resp.status_code == 200
-        print(resp.data)
         ea.refresh_from_db()
         assert resp.data == IsPartialDict(ea_new)
+
+    ####################################################################
+    #
+    def test_update_bad_aliases(
+        self,
+        api_client,
+        faker,
+        email_account_factory,
+        setup,
+        message_filter_rule_factory,
+    ):
+        """
+        The `alias_for` attribute is custom `update()` code for the
+        EmailAccountViewSet so make sure to test its various failure modes.
+        """
+        client = api_client()
+        user = setup["user"]
+        password = setup["password"]
+        resp = client.login(username=user.username, password=password)
+        assert resp
+
+        ea = setup["email_account"]
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+        orig_ea_data = _expected_for_email_account(ea)
+
+        # Make an EmailAccount that is NOT owned by this user.  (by not
+        # specifying `owner` in the creation)
+        #
+        ea_dest = email_account_factory()
+        ea_dest.save()
+
+        # Try setting the account to be an alias for `ea_dest`
+        #
+        ea_new = {
+            "alias_for": [
+                "http://testserver"
+                + reverse(
+                    "as_email:email-account-detail",
+                    kwargs={"pk": ea_dest.pk},
+                ),
+            ],
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 400
+        assert (
+            resp.data["detail"]
+            == "can only alias_for email accounts owned by the same user."
+        )
+
+        # And make sure that the EmailAccount was not changed.
+        #
+        ea.refresh_from_db()
+        assert resp.data != IsPartialDict(ea_new)
+        assert _expected_for_email_account(ea) == orig_ea_data
+
+        # Let us point at something else entirely.
+        #
+        mfr = message_filter_rule_factory(email_account=ea)
+        ea_new["alias_for"] = [
+            "http://testserver"
+            + reverse(
+                "as_email:message-filter-rule-detail",
+                kwargs={"email_account_pk": mfr.email_account.pk, "pk": mfr.pk},
+            ),
+        ]
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 400
+        assert (
+            resp.data["detail"] == "All referenced items must be EmailAccounts"
+        )
+
+        # And make sure that the EmailAccount was not changed.
+        #
+        ea.refresh_from_db()
+        assert resp.data != IsPartialDict(ea_new)
+        assert _expected_for_email_account(ea) == orig_ea_data
+
+        # Also make sure that if we send garbage it also fails as a bad request.
+        #
+        ea_new["alias_for"] = [
+            "http://testserver/foo/bar/bblah/1/",
+        ]
+        resp = client.put(url, data=ea_new)
+        print(resp.status_code, resp.data)
+        assert resp.status_code == 404
+
+        # And make sure that the EmailAccount was not changed.
+        #
+        ea.refresh_from_db()
+        assert resp.data != IsPartialDict(ea_new)
+        assert _expected_for_email_account(ea) == orig_ea_data
+
+        # Also make sure if we point a url somewhere else it also does not work.
+        #
+        # XXX We should have a better failure for this but this is good enough
+        #     for now.
+        #
+        ea_new["alias_for"] = [
+            "https://example.com/foo/bar/bblah/1/",
+        ]
+        resp = client.put(url, data=ea_new)
+        print(resp.status_code, resp.data)
+        assert resp.status_code == 404
+
+        # And make sure that the EmailAccount was not changed.
+        #
+        ea.refresh_from_db()
+        assert resp.data != IsPartialDict(ea_new)
+        assert _expected_for_email_account(ea) == orig_ea_data
+
+    ####################################################################
+    #
+    def test_update_readonly_fields(self):
+        """
+        make sure trying to set the read only fields does not update them.
+        """
+        assert False
+
+    ####################################################################
+    #
+    def test_set_password(self):
+        assert False

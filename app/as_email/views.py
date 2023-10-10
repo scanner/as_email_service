@@ -25,6 +25,8 @@ import logging
 from typing import List
 from urllib.parse import urlparse
 
+# 3rd party imports
+#
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models.query import prefetch_related_objects
@@ -35,9 +37,6 @@ from django.http import (
     JsonResponse,
 )
 from django.shortcuts import render
-
-# 3rd party imports
-#
 from django.urls import resolve
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -195,7 +194,6 @@ def hook_postmark_bounce(request, domain_name):
     server = _validate_server_api_key(request, domain_name)
     try:
         bounce = json.loads(request.body.decode("utf-8"))
-        print(f"bounce is: {bounce}")
     except json.decoder.JSONDecodeError as exc:
         logger.warning(
             f"Bad json from caller: {exc}", extra={"body": request.body}
@@ -208,7 +206,6 @@ def hook_postmark_bounce(request, domain_name):
     if not all(
         [x in bounce for x in ("From", "Type", "ID", "Email", "Description")]
     ):
-        print("missing keys from request")
         return HttpResponseBadRequest("submitted json missing expected keys")
 
     logger.info(
@@ -278,7 +275,6 @@ def hook_postmark_spam(request, domain_name):
     server = _validate_server_api_key(request, domain_name)
     try:
         spam = json.loads(request.body.decode("utf-8"))
-        print(f"spam is: {spam}")
     except json.decoder.JSONDecodeError as exc:
         logger.warning(
             f"Bad json from caller: {exc}", extra={"body": request.body}
@@ -302,7 +298,6 @@ def hook_postmark_spam(request, domain_name):
             )
         ]
     ):
-        print("missing keys from request")
         return HttpResponseBadRequest("submitted json missing expected keys")
 
     # Just to be safe, try to make sure that the TypeCode is an integer.
@@ -456,18 +451,29 @@ class EmailAccountViewSet(
         all of the EmailAccount objects referenced by URL in the `alias_for`
         list.
 
-        We make sure that the URL's are resolvable.
+        We resolve the path of each URL to the view it reprsents.
         We make sure that the classes for all the resolutions are EmailAccounts.
         We make sure that the EmailAccount's are all owned by the same user.
         """
+        # XXX Should make sure that the `netloc` is valid for this server.
+        #     be strange us to ignroe a netlock of,say, 'http://google.com'
+        #
         eas = [urlparse(x).path for x in alias_for]
-        print(f"email account paths: {eas}")
+
+        # NOTE: Raises a 404 if `x` can not be resolved.
+        #
         resolved = [resolve(x) for x in eas]
-        print(f"resolved urls: {resolved}")
-        assert all(x[0].cls is EmailAccountViewSet for x in resolved)
+        if not all(x[0].cls is EmailAccountViewSet for x in resolved):
+            raise ValueError("All referenced items must be EmailAccounts")
+
+        # The `in` relationship works even if these are strings. This is mainly
+        # doing an extra check. Questionable to leave it in here.
+        #
         pks = [int(x[2]["pk"]) for x in resolved]
         eas = list(EmailAccount.objects.filter(pk__in=pks))
         if len(eas) != len(alias_for):
+            # XXX we should determine which reference did not exist and report
+            #     that.
             raise ValueError("all specified EmailAccounts must actually exist")
         for ea in eas:
             if ea.owner != instance.owner:
@@ -489,12 +495,13 @@ class EmailAccountViewSet(
         qd = request.data.copy()
         alias_for = qd.getlist("alias_for", None)
         if alias_for is not None:
-            print(f"alias for: {alias_for}")
             qd.pop("alias_for")
-            alias_for_eas = self._lookup_alias_fors(instance, alias_for)
-            print(
-                f"alias_for: {','.join(x.email_address for x in alias_for_eas)}"
-            )
+            try:
+                alias_for_eas = self._lookup_alias_fors(instance, alias_for)
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)}, status.HTTP_400_BAD_REQUEST
+                )
         serializer = self.get_serializer(instance, data=qd, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
