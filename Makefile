@@ -22,6 +22,10 @@ ssl:
 spool:
 	@mkdir $(ROOT_DIR)/spool
 
+# XXX Should we have an option to NOT use certs/mkcert (either just make
+#     self-signed ourself) in case a developer does not want to go through the
+#     potential risks associated with mkcert?
+#
 ssl/ssl_key.pem ssl/ssl_crt.pem:
 	@mkcert -key-file $(ROOT_DIR)/ssl/ssl_key.pem \
                 -cert-file $(ROOT_DIR)/ssl/ssl_crt.pem \

@@ -69,10 +69,8 @@ RELEASE_VERSION=latest
 
 ## Local Development
 
-This project uses `mkcert` to generate and use SSL certificates for
-development. See [https://github.com/FiloSottile/mkcert](https://github.com/FiloSottile/mkcert) for details.
-
-The `Makefile` and supporting scripts assume that you have already run `mkcert -install` to setup the local trusted CA for development.
+**NOTE**: This project uses `mkcert` to generate and use SSL certificates for
+development. See [https://github.com/FiloSottile/mkcert](https://github.com/FiloSottile/mkcert) for details. The `Makefile` and supporting scripts assume that you have already run `mkcert -install` to setup the local trusted CA for development.
 
 ## Contributing
 
