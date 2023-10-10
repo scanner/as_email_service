@@ -506,13 +506,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_update_readonly_fields(
-        self,
-        api_client,
-        faker,
-        email_account_factory,
-        setup,
-    ):
+    def test_update_readonly_fields(self, api_client, faker, setup):
         """
         make sure trying to set the read only fields does not update them.
         """
@@ -559,7 +553,23 @@ class TestEmailAccountEndpoints:
         }
         assert orig_ea_data == IsPartialDict(expected_unchanged)
 
-    # ####################################################################
-    # #
-    # def test_set_password(self):
-    #     assert False
+    ####################################################################
+    #
+    def test_set_password(self, api_client, faker, setup):
+        client = api_client()
+        user = setup["user"]
+        password = setup["password"]
+        resp = client.login(username=user.username, password=password)
+        assert resp
+
+        ea = setup["email_account"]
+        new_password = faker.pystr(min_chars=8, max_chars=32)
+        url = reverse(
+            "as_email:email-account-set-password",
+            kwargs={"pk": ea.pk},
+        )
+        post_data = {"password": new_password}
+        resp = client.post(url, data=post_data)
+        assert resp.status_code == 200
+        ea.refresh_from_db()
+        assert ea.check_password(new_password)
