@@ -372,7 +372,25 @@ class TestEmailAccountEndpoints:
         resp = client.put(url, data=ea_new)
         assert resp.status_code == 200
         ea.refresh_from_db()
+        expected = _expected_for_email_account(ea)
+        assert resp.data == IsPartialDict(expected)
+
+        # Also make sure we can remove alias_for's.
+        #
+        ea_new = {
+            "alias_for": [],
+            "autofile_spam": True,
+            "delivery_method": EmailAccount.LOCAL_DELIVERY,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 200
         assert resp.data == IsPartialDict(ea_new)
+        ea.refresh_from_db()
+        expected = _expected_for_email_account(ea)
+        assert resp.data == IsPartialDict(expected)
 
     ####################################################################
     #
@@ -461,7 +479,6 @@ class TestEmailAccountEndpoints:
             "http://testserver/foo/bar/bblah/1/",
         ]
         resp = client.put(url, data=ea_new)
-        print(resp.status_code, resp.data)
         assert resp.status_code == 404
 
         # And make sure that the EmailAccount was not changed.
@@ -479,7 +496,6 @@ class TestEmailAccountEndpoints:
             "https://example.com/foo/bar/bblah/1/",
         ]
         resp = client.put(url, data=ea_new)
-        print(resp.status_code, resp.data)
         assert resp.status_code == 404
 
         # And make sure that the EmailAccount was not changed.
@@ -490,13 +506,60 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_update_readonly_fields(self):
+    def test_update_readonly_fields(
+        self,
+        api_client,
+        faker,
+        email_account_factory,
+        setup,
+    ):
         """
         make sure trying to set the read only fields does not update them.
         """
-        assert False
+        client = api_client()
+        user = setup["user"]
+        password = setup["password"]
+        resp = client.login(username=user.username, password=password)
+        assert resp
 
-    ####################################################################
-    #
-    def test_set_password(self):
-        assert False
+        ea = setup["email_account"]
+        orig_ea_data = _expected_for_email_account(ea)
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+        ea_new = {
+            "alias_for": [],
+            "deactivated": True,  # This attribute is read-only.
+            "deactivated_reason": "no reason. haha.",
+            "email_address": "boogie@example.com",
+            "num_bounces": 2000,
+            "owner": "john@example.com",
+            "server": "blackhole.example.com",
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 200
+        ea.refresh_from_db()
+        expected = _expected_for_email_account(ea)
+        assert resp.data == IsPartialDict(expected)
+        # All the read only fields that we tried to change should not be changed
+        #
+        ro_fields = [
+            "deactivated",
+            "deactivated_reason",
+            "email_address",
+            "num_bounces",
+            "owner",
+            "server",
+        ]
+        expected_unchanged = {
+            k: v for k, v in resp.data.items() if k in ro_fields
+        }
+        assert orig_ea_data == IsPartialDict(expected_unchanged)
+
+    # ####################################################################
+    # #
+    # def test_set_password(self):
+    #     assert False

@@ -490,18 +490,35 @@ class EmailAccountViewSet(
         to handle this ourselves.
         """
         instance = self.get_object()
-
         partial = kwargs.pop("partial", False)
+
+        # We have to copy the QueryDict because the one we got is immutable and
+        # we need to mutate it to remove `alias_for` so that the serializer
+        # does not crap out on our many-to-many-via-through relationship.
+        #
         qd = request.data.copy()
-        alias_for = qd.getlist("alias_for", None)
-        if alias_for is not None:
+
+        # Now we have our logic for if the `alias_for` was included in the
+        # QueryDict. If it is not, then there is no change to the set of
+        # aliases.
+        #
+        alias_for = None
+        if "alias_for" in qd:
+            # If `alias_for` retrieved as a list is a list with a single
+            # element and that element is an empty string, then the user wants
+            # to clear `alias_for`
+            #
+            alias_for = qd.getlist("alias_for")
             qd.pop("alias_for")
-            try:
-                alias_for_eas = self._lookup_alias_fors(instance, alias_for)
-            except ValueError as exc:
-                return Response(
-                    {"detail": str(exc)}, status.HTTP_400_BAD_REQUEST
-                )
+            if alias_for == [""]:
+                alias_for_eas = []
+            else:
+                try:
+                    alias_for_eas = self._lookup_alias_fors(instance, alias_for)
+                except ValueError as exc:
+                    return Response(
+                        {"detail": str(exc)}, status.HTTP_400_BAD_REQUEST
+                    )
         serializer = self.get_serializer(instance, data=qd, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
