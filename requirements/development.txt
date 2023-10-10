@@ -84,6 +84,7 @@ cryptography==41.0.4
     #   -r production.txt
     #   django-cryptography
     #   fido2
+    #   pyopenssl
     #   trustme
     #   types-pyopenssl
     #   types-redis
@@ -150,7 +151,7 @@ executing==2.0.0
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==19.6.2
+faker==19.8.0
     # via factory-boy
 fido2==1.1.1
     # via
@@ -297,6 +298,8 @@ pygments==2.16.1
     #   -r production.txt
     #   ipython
     #   rich
+pyopenssl==23.2.0
+    # via -r production.txt
 pyproject-hooks==1.0.0
     # via
     #   -r lint.txt

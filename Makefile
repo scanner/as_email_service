@@ -14,15 +14,22 @@ build: requirements/production.txt requirements/development.txt	## `docker compo
 dirs: dbs ssl spool	## Make the local directories for dbs, ssl, and spool.
 
 dbs:
-	@mkdir ./dbs
+	@mkdir $(ROOT_DIR)/dbs
 
 ssl:
-	@mkdir ./ssl
+	@mkdir $(ROOT_DIR)/ssl
 
 spool:
-	@mkdir ./spool
+	@mkdir $(ROOT_DIR)/spool
 
-up: build dirs	## build and then `docker compose up` for the `dev` profile. Use this to rebuild restart services that have changed.
+ssl/ssl_key.pem ssl/ssl_crt.pem:
+	@mkcert -key-file $(ROOT_DIR)/ssl/ssl_key.pem \
+                -cert-file $(ROOT_DIR)/ssl/ssl_crt.pem \
+                `hostname` localhost 127.0.0.1 ::1
+
+certs: ssl ssl/ssl_key.pem ssl/ssl_crt.pem	## uses `mkcert` to create certificates for local development.
+
+up: build dirs certs	## build and then `docker compose up` for the `dev` profile. Use this to rebuild restart services that have changed.
 	@docker compose --profile dev up --remove-orphans --detach
 
 down:	## `docker compose down` for the `dev` profile

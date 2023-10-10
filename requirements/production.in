@@ -20,6 +20,7 @@ httpx
 huey
 influxdb-client
 postmarker
+pyOpenSSL
 pydantic
 python-dotenv
 pytz
