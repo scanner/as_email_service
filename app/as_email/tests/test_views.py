@@ -647,3 +647,43 @@ class TestEmailAccountEndpoints:
         ea.refresh_from_db()
         assert ea.alias_for.count() == 0
         assert len(resp.data["alias_for"]) == 0
+
+    ####################################################################
+    #
+    def test_partial_update_ro(
+        self, api_client, faker, email_account_factory, setup
+    ):
+        """
+        Make sure read-only fields are read-only.
+        """
+        client = setup["client"]
+        ea = setup["email_account"]
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+
+        ro_fields = {
+            "deactivated": not ea.deactivated,
+            "deactivated_reason": "foo",
+            "email_address": faker.email(),
+            "num_bounces": 20,
+        }
+
+        for k, v in ro_fields.items():
+            patch_data = {k: v}
+            resp = client.patch(url, data=patch_data)
+            assert resp.status_code == 200
+            ea.refresh_from_db()
+            assert getattr(ea, k) != v
+            assert getattr(ea, k) == resp.data[k]
+
+    ####################################################################
+    #
+    def test_delete(self, setup):
+        """
+        Can not delete EmailAccount's
+        """
+        client = setup["client"]
+        ea = setup["email_account"]
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+
+        resp = client.delete(url)
+        assert resp.status_code == 405
