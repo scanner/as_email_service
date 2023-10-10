@@ -60,7 +60,7 @@ services:
   devweb:
     <<: *web
     image: as_email_service_app_dev:latest
-    container_name: app_dev
+    container_name: dev_app
     build:
       context: .
       dockerfile: ./Dockerfile
