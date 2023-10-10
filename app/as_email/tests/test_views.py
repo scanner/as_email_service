@@ -333,3 +333,44 @@ class TestEmailAccountEndpoints:
         assert resp.status_code == 200
         expected = _expected_for_email_account(ea)
         assert resp.data == IsPartialDict(expected)
+
+    ####################################################################
+    #
+    def test_update(self, api_client, faker, email_account_factory, setup):
+        """
+        Testing PUT of all writeable fields (and also testing that readonly
+        fields are not writeable.)
+        """
+        client = api_client()
+        user = setup["user"]
+        password = setup["password"]
+        resp = client.login(username=user.username, password=password)
+        assert resp
+
+        ea = setup["email_account"]
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+
+        ea_dest = email_account_factory(owner=user)
+        ea_dest.save()
+
+        # Try setting the account to be an alias for `ea_dest`
+        #
+        ea_new = {
+            "alias_for": [
+                "http://testserver"
+                + reverse(
+                    "as_email:email-account-detail", kwargs={"pk": ea_dest.pk}
+                ),
+            ],
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        print(resp.data)
+        assert resp.status_code == 200
+        print(resp.data)
+        ea.refresh_from_db()
+        assert resp.data == IsPartialDict(ea_new)

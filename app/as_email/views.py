@@ -22,11 +22,12 @@ These views are for users. It needs to provide functions to:
 #
 import json
 import logging
+from typing import List
+from urllib.parse import urlparse
 
-# 3rd party imports
-#
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models.query import prefetch_related_objects
 from django.http import (
     Http404,
     HttpResponse,
@@ -34,6 +35,10 @@ from django.http import (
     JsonResponse,
 )
 from django.shortcuts import render
+
+# 3rd party imports
+#
+from django.urls import resolve
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from dry_rest_permissions.generics import (
@@ -440,6 +445,80 @@ class EmailAccountViewSet(
             return Response(
                 serializer.errors, status=status.HTTP_400_BAD_REQUEST
             )
+
+    ####################################################################
+    #
+    def _lookup_alias_fors(
+        self, instance, alias_for: List[str]
+    ) -> List[EmailAccount]:
+        """
+        A helper function for `self.update()` that looks up and validates
+        all of the EmailAccount objects referenced by URL in the `alias_for`
+        list.
+
+        We make sure that the URL's are resolvable.
+        We make sure that the classes for all the resolutions are EmailAccounts.
+        We make sure that the EmailAccount's are all owned by the same user.
+        """
+        eas = [urlparse(x).path for x in alias_for]
+        print(f"email account paths: {eas}")
+        resolved = [resolve(x) for x in eas]
+        print(f"resolved urls: {resolved}")
+        assert all(x[0].cls is EmailAccountViewSet for x in resolved)
+        pks = [int(x[2]["pk"]) for x in resolved]
+        eas = list(EmailAccount.objects.filter(pk__in=pks))
+        if len(eas) != len(alias_for):
+            raise ValueError("all specified EmailAccounts must actually exist")
+        for ea in eas:
+            if ea.owner != instance.owner:
+                raise ValueError(
+                    "can only alias_for email accounts owned by the same user."
+                )
+        return eas
+
+    ####################################################################
+    #
+    def update(self, request, *args, **kwargs):
+        """
+        Since we have a ManyToManyField with a Through relationship we need
+        to handle this ourselves.
+        """
+        instance = self.get_object()
+
+        partial = kwargs.pop("partial", False)
+        qd = request.data.copy()
+        alias_for = qd.getlist("alias_for", None)
+        if alias_for is not None:
+            print(f"alias for: {alias_for}")
+            qd.pop("alias_for")
+            alias_for_eas = self._lookup_alias_fors(instance, alias_for)
+            print(
+                f"alias_for: {','.join(x.email_address for x in alias_for_eas)}"
+            )
+        serializer = self.get_serializer(instance, data=qd, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Set the alias_for's if alias_for is NOT None
+        #
+        if alias_for is not None:
+            instance.alias_for.set(alias_for_eas)
+            # We have to build a new serializer to make sure we have the
+            # alias_for field filled in properly.
+            #
+            serializer = self.get_serializer(instance)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        if queryset._prefetch_related_lookups:
+            # If 'prefetch_related' has been applied to a queryset, we need to
+            # forcibly invalidate the prefetch cache on the instance,
+            # and then re-prefetch related objects
+            instance._prefetched_objects_cache = {}
+            prefetch_related_objects(
+                [instance], *queryset._prefetch_related_lookups
+            )
+
+        return Response(serializer.data)
 
 
 ########################################################################

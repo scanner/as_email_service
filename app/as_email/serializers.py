@@ -50,7 +50,6 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     )
     alias_for = serializers.HyperlinkedIdentityField(
         view_name="as_email:email-account-detail",
-        read_only=True,
         many=True,
     )
 
