@@ -28,6 +28,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
 from ordered_model.models import OrderedModel
@@ -663,6 +664,11 @@ class EmailAccount(models.Model):
     def __str__(self):
         return self.email_address
 
+    ####################################################################
+    #
+    def get_absolute_url(self):
+        return reverse("as_email:email-account-detail", kwargs={"pk": self.pk})
+
     #######################
     #######################
     #
@@ -985,6 +991,14 @@ class MessageFilterRule(OrderedModel):
             )
         else:
             return f"Match: '{self.header}', '{self.pattern}' destroy"
+
+    ####################################################################
+    #
+    def get_absolute_url(self):
+        return reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": self.email_account.pk, "pk": self.pk},
+        )
 
     #######################
     #######################

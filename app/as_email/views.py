@@ -35,6 +35,7 @@ from django.http import (
     HttpResponse,
     HttpResponseBadRequest,
     JsonResponse,
+    QueryDict,
 )
 from django.shortcuts import render
 from django.urls import resolve
@@ -506,11 +507,18 @@ class EmailAccountViewSet(
         if "alias_for" in qd:
             # If `alias_for` retrieved as a list is a list with a single
             # element and that element is an empty string, then the user wants
-            # to clear `alias_for`
+            # to clear `alias_for`. We have to watch for where the querydict is
+            # actually a dict. (this happens when calling `PUT` in the drf
+            # view)
             #
-            alias_for = qd.getlist("alias_for")
-            qd.pop("alias_for")
-            if alias_for == [""]:
+            if isinstance(qd, QueryDict):
+                alias_for = qd.getlist("alias_for")
+                qd.pop("alias_for")
+            else:
+                alias_for = qd["alias_for"]
+                del qd["alias_for"]
+            print(f"**** alias_for: {alias_for}")
+            if alias_for == [""] or alias_for == []:
                 alias_for_eas = []
             else:
                 try:
@@ -519,6 +527,7 @@ class EmailAccountViewSet(
                     return Response(
                         {"detail": str(exc)}, status.HTTP_400_BAD_REQUEST
                     )
+
         serializer = self.get_serializer(instance, data=qd, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)

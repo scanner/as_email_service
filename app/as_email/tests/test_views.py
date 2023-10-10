@@ -6,7 +6,7 @@ Testing our views. Plain views, webhooks, and the REST interface.
 # system imports
 #
 import json
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 # 3rd party imports
 #
@@ -226,7 +226,7 @@ class TestEmailAccountEndpoints:
     ####################################################################
     #
     @pytest.fixture(autouse=True, scope="function")
-    def setup(self, user_factory, email_account_factory, faker):
+    def setup(self, api_client, user_factory, email_account_factory, faker):
         """
         Every test around the EmailAccount REST API needs a user we are
         testing against, several email accounts that belong to that user, and a
@@ -240,13 +240,22 @@ class TestEmailAccountEndpoints:
         ea = email_account_factory(owner=user)
         ea.save()
 
+        client = api_client()
+        resp = client.login(username=user.username, password=password)
+        assert resp
+
         # Other email accounts because we need to make sure the tests only see
         # `user's` email accounts.
         #
         for _ in range(5):
             email_account_factory()
 
-        return {"password": password, "user": user, "email_account": ea}
+        return {
+            "password": password,
+            "user": user,
+            "email_account": ea,
+            "client": client,
+        }
 
     ####################################################################
     #
@@ -256,11 +265,8 @@ class TestEmailAccountEndpoints:
         resp = client.get(url)
         assert resp.status_code == 403
 
-        user = setup["user"]
-        password = setup["password"]
         ea = setup["email_account"]
-        resp = client.login(username=user.username, password=password)
-        assert resp
+        client = setup["client"]
         resp = client.get(url)
         assert resp.status_code == 200
         # There should be only one EmailAccount.
@@ -305,17 +311,18 @@ class TestEmailAccountEndpoints:
     #
     def test_retrieve(self, api_client, email_account_factory, setup):
         client = api_client()
-        user = setup["user"]
-        password = setup["password"]
         ea = setup["email_account"]
-
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
 
+        # Not logged in, no access.
+        #
         resp = client.get(url)
         assert resp.status_code == 403
 
-        resp = client.login(username=user.username, password=password)
-        assert resp
+        # Change to logged in client
+        #
+        user = setup["user"]
+        client = setup["client"]
         resp = client.get(url)
         assert resp.status_code == 200
         expected = _expected_for_email_account(ea)
@@ -336,17 +343,13 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_update(self, api_client, faker, email_account_factory, setup):
+    def test_update(self, faker, email_account_factory, setup):
         """
         Testing PUT of all writeable fields (and also testing that readonly
         fields are not writeable.)
         """
-        client = api_client()
+        client = setup["client"]
         user = setup["user"]
-        password = setup["password"]
-        resp = client.login(username=user.username, password=password)
-        assert resp
-
         ea = setup["email_account"]
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
 
@@ -396,7 +399,6 @@ class TestEmailAccountEndpoints:
     #
     def test_update_bad_aliases(
         self,
-        api_client,
         faker,
         email_account_factory,
         setup,
@@ -406,12 +408,7 @@ class TestEmailAccountEndpoints:
         The `alias_for` attribute is custom `update()` code for the
         EmailAccountViewSet so make sure to test its various failure modes.
         """
-        client = api_client()
-        user = setup["user"]
-        password = setup["password"]
-        resp = client.login(username=user.username, password=password)
-        assert resp
-
+        client = setup["client"]
         ea = setup["email_account"]
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
         orig_ea_data = _expected_for_email_account(ea)
@@ -506,16 +503,11 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_update_readonly_fields(self, api_client, faker, setup):
+    def test_update_readonly_fields(self, faker, setup):
         """
         make sure trying to set the read only fields does not update them.
         """
-        client = api_client()
-        user = setup["user"]
-        password = setup["password"]
-        resp = client.login(username=user.username, password=password)
-        assert resp
-
+        client = setup["client"]
         ea = setup["email_account"]
         orig_ea_data = _expected_for_email_account(ea)
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
@@ -555,13 +547,8 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_set_password(self, api_client, faker, setup):
-        client = api_client()
-        user = setup["user"]
-        password = setup["password"]
-        resp = client.login(username=user.username, password=password)
-        assert resp
-
+    def test_set_password(self, faker, setup):
+        client = setup["client"]
         ea = setup["email_account"]
         new_password = faker.pystr(min_chars=8, max_chars=32)
         url = reverse(
@@ -573,3 +560,90 @@ class TestEmailAccountEndpoints:
         assert resp.status_code == 200
         ea.refresh_from_db()
         assert ea.check_password(new_password)
+
+    ####################################################################
+    #
+    def test_partial_update(
+        self, api_client, faker, email_account_factory, setup
+    ):
+        """
+        Test patching a bunch of writeable fields one by one.
+        """
+        client = setup["client"]
+        user = setup["user"]
+        ea = setup["email_account"]
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+
+        patch_data = {"autofile_spam": not ea.autofile_spam}
+        resp = client.patch(url, data=patch_data)
+        assert resp.status_code == 200
+        ea.refresh_from_db()
+        assert ea.autofile_spam == resp.data["autofile_spam"]
+
+        # set the alias_for to this new account.
+        #
+        ea_dest = email_account_factory(owner=user)
+        ea_dest.save()
+
+        # Try setting the account to be an alias for `ea_dest`
+        #
+        patch_data = {
+            "alias_for": [
+                "http://testserver"
+                + reverse(
+                    "as_email:email-account-detail",
+                    kwargs={"pk": ea_dest.pk},
+                ),
+            ],
+        }
+
+        resp = client.patch(url, data=patch_data)
+        assert resp.status_code == 200
+        ea.refresh_from_db()
+
+        # The URL's for the objects do not have the netloc, strip that off.
+        #
+        alias_for = [
+            urlparse(x.get_absolute_url()).path for x in ea.alias_for.all()
+        ]
+        assert alias_for == [urlparse(x).path for x in patch_data["alias_for"]]
+        assert alias_for == [urlparse(x).path for x in resp.data["alias_for"]]
+
+        # And if we submit an different alias is replaces what we already have
+        #
+        ea_dest = email_account_factory(owner=user)
+        ea_dest.save()
+
+        # Try setting the account to be an alias for `ea_dest`
+        #
+        patch_data = {
+            "alias_for": [
+                "http://testserver"
+                + reverse(
+                    "as_email:email-account-detail",
+                    kwargs={"pk": ea_dest.pk},
+                ),
+            ],
+        }
+
+        resp = client.patch(url, data=patch_data)
+        assert resp.status_code == 200
+        ea.refresh_from_db()
+
+        # The URL's for the objects do not have the netloc, strip that off.
+        #
+        alias_for = [
+            urlparse(x.get_absolute_url()).path for x in ea.alias_for.all()
+        ]
+        assert alias_for == [urlparse(x).path for x in patch_data["alias_for"]]
+        assert alias_for == [urlparse(x).path for x in resp.data["alias_for"]]
+
+        # and submitting an empty string clears the alias_for
+        #
+        patch_data = {"alias_for": ""}
+
+        resp = client.patch(url, data=patch_data)
+        assert resp.status_code == 200
+        ea.refresh_from_db()
+        assert ea.alias_for.count() == 0
+        assert len(resp.data["alias_for"]) == 0
