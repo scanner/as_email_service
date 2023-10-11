@@ -743,8 +743,6 @@ class TestMessageFilterRuleEndpoints:
     ####################################################################
     #
     def test_list(self, api_client, setup):
-        from pprint import pp
-
         ea = setup["email_account"]
         url = reverse(
             "as_email:message-filter-rule-list",
@@ -790,6 +788,4 @@ class TestMessageFilterRuleEndpoints:
 
         for e, r in zip(expected, resp.data):
             r = dict(r)
-            pp(r)
-            pp(e)
             assert r == IsPartialDict(e)
