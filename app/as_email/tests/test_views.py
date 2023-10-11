@@ -687,3 +687,109 @@ class TestEmailAccountEndpoints:
 
         resp = client.delete(url)
         assert resp.status_code == 405
+
+
+########################################################################
+########################################################################
+#
+class TestMessageFilterRuleEndpoints:
+    ####################################################################
+    #
+    @pytest.fixture(autouse=True, scope="function")
+    def setup(
+        self,
+        api_client,
+        user_factory,
+        email_account_factory,
+        message_filter_rule_factory,
+        faker,
+    ):
+        """
+        Every test around the EmailAccount REST API needs a user we are
+        testing against, several email accounts that belong to that user, and a
+        bunch of other email accounts belonging to other users.
+        """
+        # The user and email account we are testing with..
+        #
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        user.save()
+        ea = email_account_factory(owner=user)
+        ea.save()
+        for _ in range(5):
+            mfr = message_filter_rule_factory(email_account=ea)
+            mfr.save()
+
+        client = api_client()
+        resp = client.login(username=user.username, password=password)
+        assert resp
+
+        # Other email accounts because we need to make sure the tests only see
+        # `user's` email accounts.
+        #
+        for _ in range(2):
+            other_ea = email_account_factory()
+            for _ in range(3):
+                mfr = message_filter_rule_factory(email_account=other_ea)
+                mfr.save()
+
+        return {
+            "password": password,
+            "user": user,
+            "email_account": ea,
+            "client": client,
+        }
+
+    ####################################################################
+    #
+    def test_list(self, api_client, setup):
+        from pprint import pp
+
+        ea = setup["email_account"]
+        url = reverse(
+            "as_email:message-filter-rule-list",
+            kwargs={"email_account_pk": ea.pk},
+        )
+        client = api_client()
+        resp = client.get(url)
+        assert resp.status_code == 403
+
+        client = setup["client"]
+        resp = client.get(url)
+        assert resp.status_code == 200
+
+        # There should be 5 message filter rules
+        mfrs = list(ea.message_filter_rules.all())
+        assert len(resp.data) == len(mfrs)
+
+        # Since message filter rules are supposed to be ordered by the 'order'
+        # field if no other sorting is applied these two lists should be in the
+        # same order.
+        #
+        expected = []
+        for mfr in mfrs:
+            expected.append(
+                {
+                    "url": "http://testserver"
+                    + reverse(
+                        "as_email:message-filter-rule-detail",
+                        kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
+                    ),
+                    "email_account": "http://testserver"
+                    + reverse(
+                        "as_email:email-account-detail",
+                        kwargs={"pk": mfr.email_account.pk},
+                    ),
+                    "header": mfr.header,
+                    "pattern": mfr.pattern,
+                    "action": mfr.action,
+                    "destination": mfr.destination,
+                    "order": mfr.order,
+                }
+            )
+
+        for e, r in zip(expected, resp.data):
+            r = dict(r)
+            pp(r)
+            pp(e)
+            assert r == IsPartialDict(e)

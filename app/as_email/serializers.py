@@ -137,6 +137,7 @@ class InactiveEmailSerializer(serializers.HyperlinkedModelSerializer):
             "can_activate",
             "created_at",
             "modified_at",
+            "order",
         ]
 
         read_only_fields = [
@@ -145,4 +146,5 @@ class InactiveEmailSerializer(serializers.HyperlinkedModelSerializer):
             "can_activate",
             "created_at",
             "modified_at",
+            "order",
         ]
