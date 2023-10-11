@@ -897,3 +897,24 @@ class TestMessageFilterRuleEndpoints:
         assert resp.data == IsPartialDict(
             _expected_for_message_filter_rule(mfr)
         )
+
+        # Just to make sure.. you can not update anyone else's
+        # MessageFilterRule's.
+        #
+        other_ea = setup["other_eas"][0]
+        mfr = other_ea.message_filter_rules.all().first()
+        client = setup["client"]
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": other_ea.pk, "pk": mfr.pk},
+        )
+
+        mfr_new = {
+            "header": "subject",
+            "pattern": "foo",
+            "action": "folder",
+            "destination": "FooStuff",
+            "order": mfr.order + 1,
+        }
+        resp = client.put(url, data=mfr_new)
+        assert resp.status_code == 403
