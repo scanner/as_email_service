@@ -88,6 +88,8 @@ cryptography==41.0.4
     #   trustme
     #   types-pyopenssl
     #   types-redis
+csscompressor==0.9.5
+    # via -r production.txt
 decorator==5.1.1
     # via ipython
 dirty-equals==0.6.0
@@ -116,7 +118,10 @@ django-anymail==10.1
 django-appconf==1.0.5
     # via
     #   -r production.txt
+    #   django-compressor
     #   django-cryptography
+django-compressor==4.4
+    # via -r production.txt
 django-cryptography==1.1
     # via -r production.txt
 django-dry-rest-permissions==1.2.0
@@ -346,6 +351,10 @@ pyyaml==6.0.1
     #   -r lint.txt
     #   -r production.txt
     #   pre-commit
+rcssmin==1.1.1
+    # via
+    #   -r production.txt
+    #   django-compressor
 reactivex==4.0.4
     # via
     #   -r production.txt
@@ -362,6 +371,10 @@ requests-mock==1.11.0
     # via -r development.in
 rich==13.6.0
     # via -r production.txt
+rjsmin==1.2.1
+    # via
+    #   -r production.txt
+    #   django-compressor
 ruff==0.0.292
     # via -r lint.txt
 six==1.16.0

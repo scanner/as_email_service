@@ -2,6 +2,7 @@ aiofiles
 aiologger
 aiosmtpd
 cryptography>=41.0.4
+csscompressor
 django
 django-anymail
 django-cryptography
@@ -12,6 +13,7 @@ django-filter
 django-guardian
 django-ordered-model
 django-passkeys
+django_compressor
 djangorestframework
 dnspython
 drf-nested-routers

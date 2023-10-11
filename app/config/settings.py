@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "compressor",
     "anymail",
     "django_extensions",
     "huey.contrib.djhuey",
@@ -158,6 +159,7 @@ STATICFILES_DIRS = [str(BASE_DIR / "as_email/static")]
 STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.FileSystemFinder",
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+    "compressor.finders.CompressorFinder",
 ]
 
 # Default primary key field type
