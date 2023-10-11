@@ -517,7 +517,6 @@ class EmailAccountViewSet(
             else:
                 alias_for = qd["alias_for"]
                 del qd["alias_for"]
-            print(f"**** alias_for: {alias_for}")
             if alias_for == [""] or alias_for == []:
                 alias_for_eas = []
             else:
@@ -574,3 +573,23 @@ class MessageFilterRuleViewSet(ModelViewSet):
     serializer_class = MessageFilterRuleSerializer
     filter_backends = (EmailAccountOwnerFilterBackend,)
     queryset = MessageFilterRule.objects.all()
+
+    ####################################################################
+    #
+    def create(self, request, *args, **kwargs):
+        """
+        MessageFilterRule's are nested objects. The view passes in the
+        required information about the EmailAccount that this MessageFilterRule
+        belongs to. So we need to make sure that this value is set when
+        creating.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.validated_data["email_account_id"] = kwargs[
+            "email_account_pk"
+        ]
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )

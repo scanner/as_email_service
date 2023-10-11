@@ -118,7 +118,7 @@ class MessageFilterRuleSerializer(NestedHyperlinkedModelSerializer):
             "modified_at",
         ]
 
-        read_only_fields = ["url", "email_account", "created_at", "modified_at"]
+        read_only_fields = ["url", "created_at", "modified_at"]
 
 
 ########################################################################

@@ -12,11 +12,11 @@ from urllib.parse import urlencode, urlparse
 #
 import pytest
 from dirty_equals import IsPartialDict
-from django.urls import reverse
+from django.urls import resolve, reverse
 
 # Project imports
 #
-from ..models import EmailAccount
+from ..models import EmailAccount, MessageFilterRule
 
 pytestmark = pytest.mark.django_db
 
@@ -49,6 +49,36 @@ def _expected_for_email_account(ea: EmailAccount) -> dict:
         "server": ea.server.domain_name,
         "spam_delivery_folder": ea.spam_delivery_folder,
         "spam_score_threshold": ea.spam_score_threshold,
+    }
+    return expected
+
+
+####################################################################
+#
+def _expected_for_message_filter_rule(mfr: MessageFilterRule) -> dict:
+    """
+    Lots of tests see if the results we get back from the endpoint match
+    what we expect in the actual mfr object.
+    """
+    expected = {
+        "url": "http://testserver"
+        + reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={
+                "email_account_pk": mfr.email_account.pk,
+                "pk": mfr.pk,
+            },
+        ),
+        "email_account": "http://testserver"
+        + reverse(
+            "as_email:email-account-detail",
+            kwargs={"pk": mfr.email_account.pk},
+        ),
+        "header": mfr.header,
+        "pattern": mfr.pattern,
+        "action": mfr.action,
+        "destination": mfr.destination,
+        "order": mfr.order,
     }
     return expected
 
@@ -727,8 +757,10 @@ class TestMessageFilterRuleEndpoints:
         # Other email accounts because we need to make sure the tests only see
         # `user's` email accounts.
         #
+        other_eas = []
         for _ in range(2):
             other_ea = email_account_factory()
+            other_eas.append(other_ea)
             for _ in range(3):
                 mfr = message_filter_rule_factory(email_account=other_ea)
                 mfr.save()
@@ -738,6 +770,7 @@ class TestMessageFilterRuleEndpoints:
             "user": user,
             "email_account": ea,
             "client": client,
+            "other_eas": other_eas,
         }
 
     ####################################################################
@@ -766,26 +799,77 @@ class TestMessageFilterRuleEndpoints:
         #
         expected = []
         for mfr in mfrs:
-            expected.append(
-                {
-                    "url": "http://testserver"
-                    + reverse(
-                        "as_email:message-filter-rule-detail",
-                        kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
-                    ),
-                    "email_account": "http://testserver"
-                    + reverse(
-                        "as_email:email-account-detail",
-                        kwargs={"pk": mfr.email_account.pk},
-                    ),
-                    "header": mfr.header,
-                    "pattern": mfr.pattern,
-                    "action": mfr.action,
-                    "destination": mfr.destination,
-                    "order": mfr.order,
-                }
-            )
+            expected.append(_expected_for_message_filter_rule(mfr))
 
         for e, r in zip(expected, resp.data):
             r = dict(r)
             assert r == IsPartialDict(e)
+
+    ####################################################################
+    #
+    def test_retrieve(self, api_client, setup):
+        # Test unauthenticated access
+        #
+        client = api_client()
+        ea = setup["email_account"]
+        mfr = ea.message_filter_rules.all().first()
+        assert mfr.email_account == ea
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
+        )
+        resp = client.get(url)
+        assert resp.status_code == 403
+
+        # Now work with the authenticated client
+        #
+        client = setup["client"]
+        resp = client.get(url)
+        assert resp.status_code == 200
+        expected = _expected_for_message_filter_rule(mfr)
+        assert resp.data == IsPartialDict(expected)
+
+    ####################################################################
+    #
+    def test_create(self, setup, faker):
+        ea = setup["email_account"]
+        url = reverse(
+            "as_email:message-filter-rule-list",
+            kwargs={"email_account_pk": ea.pk},
+        )
+        client = setup["client"]
+        mfr_data = {
+            "header": "from",
+            "pattern": "pizzaco@example.com",
+            "action": "folder",
+            "destination": "orders/pizza",
+        }
+        resp = client.post(url, data=mfr_data)
+        print(f"Create response data: {resp.data}")
+        assert resp.status_code == 201
+
+        # We get back a URL that refers to this object. We use `resolve` to
+        # determine what the pk of this object is so we can look it up directly
+        # via the ORM.Look at
+        #     https://docs.djangoproject.com/en/4.2/ref/urlresolvers/#resolve
+        # to see how this is used. Basically the 3rd element returned is the
+        # kwargs used and in this dict the key "pk" should be the primary key
+        # of this object.
+        #
+        func, args, kwargs = resolve(urlparse(resp.data["url"]).path)
+        mfr = MessageFilterRule.objects.get(pk=int(kwargs["pk"]))
+        assert mfr.email_account == ea
+        assert resp.data == IsPartialDict(
+            _expected_for_message_filter_rule(mfr)
+        )
+        # Also make sure that this logged in user can not create mfr's for
+        # email accounts belonging to other users.
+        #
+        other_ea = setup["other_eas"][0]
+        url = reverse(
+            "as_email:message-filter-rule-list",
+            kwargs={"email_account_pk": other_ea.pk},
+        )
+        resp = client.post(url, data=mfr_data)
+        print(f"Create response data: {resp.data}")
+        assert resp.status_code == 403

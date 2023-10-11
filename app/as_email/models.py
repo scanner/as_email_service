@@ -28,7 +28,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
 from ordered_model.models import OrderedModel
@@ -680,7 +680,7 @@ class EmailAccount(models.Model):
     ####################################################################
     #
     @staticmethod
-    def has_write_permission(self):
+    def has_write_permission(request):
         return True
 
     ####################################################################
@@ -698,7 +698,7 @@ class EmailAccount(models.Model):
     ####################################################################
     #
     @staticmethod
-    def has_read_permission(self):
+    def has_read_permission(request):
         return True
 
     ####################################################################
@@ -714,7 +714,7 @@ class EmailAccount(models.Model):
     ####################################################################
     #
     @staticmethod
-    def has_set_password_permission(self):
+    def has_set_password_permission(request):
         return True
 
     ####################################################################
@@ -1011,13 +1011,23 @@ class MessageFilterRule(OrderedModel):
     ####################################################################
     #
     @staticmethod
-    def has_write_permission(self):
-        return True
+    def has_write_permission(request):
+        """
+        A user can only create message filter rules belonging to email
+        account's for which they are the owner.
+        """
+        # Pull out which email account this is for from the PATH of the
+        # request. See if the owner of that email request is the same as the
+        # logged in user.
+        #
+        func, args, kwargs = resolve(request.get_full_path())
+        ea = EmailAccount.objects.get(pk=int(kwargs["email_account_pk"]))
+        return request.user == ea.owner
 
     ####################################################################
     #
     @staticmethod
-    def has_read_permission(self):
+    def has_read_permission(request):
         return True
 
     ####################################################################
