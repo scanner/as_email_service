@@ -831,7 +831,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_create(self, setup, faker):
+    def test_create(self, setup):
         ea = setup["email_account"]
         url = reverse(
             "as_email:message-filter-rule-list",
@@ -845,7 +845,6 @@ class TestMessageFilterRuleEndpoints:
             "destination": "orders/pizza",
         }
         resp = client.post(url, data=mfr_data)
-        print(f"Create response data: {resp.data}")
         assert resp.status_code == 201
 
         # We get back a URL that refers to this object. We use `resolve` to
@@ -871,5 +870,30 @@ class TestMessageFilterRuleEndpoints:
             kwargs={"email_account_pk": other_ea.pk},
         )
         resp = client.post(url, data=mfr_data)
-        print(f"Create response data: {resp.data}")
         assert resp.status_code == 403
+
+    ####################################################################
+    #
+    def test_update(self, setup):
+        ea = setup["email_account"]
+        mfr = ea.message_filter_rules.all().first()
+        assert mfr.email_account == ea
+        client = setup["client"]
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
+        )
+
+        mfr_new = {
+            "header": "subject",
+            "pattern": "foo",
+            "action": "folder",
+            "destination": "FooStuff",
+            "order": mfr.order + 1,
+        }
+        resp = client.put(url, data=mfr_new)
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert resp.data == IsPartialDict(
+            _expected_for_message_filter_rule(mfr)
+        )
