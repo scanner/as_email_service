@@ -970,3 +970,59 @@ class TestMessageFilterRuleEndpoints:
             assert resp.status_code == 200
             mfr.refresh_from_db()
             assert getattr(mfr, k) == v
+
+    ####################################################################
+    #
+    def test_delete(self, setup):
+        ea = setup["email_account"]
+        url = reverse(
+            "as_email:message-filter-rule-list",
+            kwargs={"email_account_pk": ea.pk},
+        )
+        client = setup["client"]
+        resp = client.get(url)
+        assert resp.status_code == 200
+        mfrs = list(ea.message_filter_rules.all())
+        assert len(resp.data) == len(mfrs)
+
+        # Delete the first MFR.
+        #
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": mfrs[0].pk},
+        )
+        resp = client.delete(url)
+        assert resp.status_code == 204
+        remaining_mfrs = list(ea.message_filter_rules.all())
+        assert len(remaining_mfrs) == len(mfrs) - 1
+        mfr_pks = [x.pk for x in remaining_mfrs]
+        assert mfrs[0].pk not in mfr_pks
+
+        # Make sure you can not delete someone else's mfr.
+        #
+        other_ea = setup["other_eas"][0]
+        other_persons_mfr = other_ea.message_filter_rules.first()
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={
+                "email_account_pk": other_ea.pk,
+                "pk": other_persons_mfr.pk,
+            },
+        )
+        resp = client.delete(url)
+        assert MessageFilterRule.objects.filter(
+            pk=other_persons_mfr.pk
+        ).exists()
+        assert resp.status_code == 403
+
+        # What if you try to delete with bad key data?
+        #
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": other_persons_mfr.pk},
+        )
+        resp = client.delete(url)
+        assert MessageFilterRule.objects.filter(
+            pk=other_persons_mfr.pk
+        ).exists()
+        assert resp.status_code == 403

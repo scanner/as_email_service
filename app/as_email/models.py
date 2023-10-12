@@ -697,6 +697,15 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
+    @authenticated_users
+    def has_object_destroy_permission(self, request):
+        """
+        user's can not delete email accounts.
+        """
+        return False
+
+    ####################################################################
+    #
     @staticmethod
     def has_read_permission(request):
         return True
@@ -1056,6 +1065,16 @@ class MessageFilterRule(OrderedModel):
     def has_object_update_permission(self, request):
         """
         Using DRY Rest Permissions, allow the user to update the
+        object if they are the owner of the associated email account
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_destroy_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to delete the
         object if they are the owner of the associated email account
         """
         return request.user == self.email_account.owner
