@@ -889,14 +889,14 @@ class TestMessageFilterRuleEndpoints:
             "pattern": "foo",
             "action": "folder",
             "destination": "FooStuff",
-            "order": mfr.order + 1,
         }
         resp = client.put(url, data=mfr_new)
         assert resp.status_code == 200
         mfr.refresh_from_db()
-        assert resp.data == IsPartialDict(
-            _expected_for_message_filter_rule(mfr)
-        )
+        mfr_from_db = _expected_for_message_filter_rule(mfr)
+
+        assert resp.data == IsPartialDict(mfr_from_db)
+        assert mfr_from_db == IsPartialDict(mfr_new)
 
         # Just to make sure.. you can not update anyone else's
         # MessageFilterRule's.
@@ -914,7 +914,59 @@ class TestMessageFilterRuleEndpoints:
             "pattern": "foo",
             "action": "folder",
             "destination": "FooStuff",
-            "order": mfr.order + 1,
         }
         resp = client.put(url, data=mfr_new)
         assert resp.status_code == 403
+
+    ####################################################################
+    #
+    def test_update_ro_fields(self, setup):
+        ea = setup["email_account"]
+        mfr = ea.message_filter_rules.all().first()
+        original_mfr = _expected_for_message_filter_rule(mfr)
+        assert mfr.email_account == ea
+        client = setup["client"]
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
+        )
+
+        mfr_new = {
+            "url": "/here/there",
+            "email_address": "/there/here",
+            "created_at": "yesterday",
+            "modified_at": "today",
+            "header": mfr.header,
+            "pattern": mfr.pattern,
+            "action": mfr.action,
+            "destination": mfr.destination,
+        }
+        resp = client.put(url, data=mfr_new)
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        mfr_from_db = _expected_for_message_filter_rule(mfr)
+        assert resp.data == IsPartialDict(original_mfr)
+        assert resp.data == IsPartialDict(mfr_from_db)
+
+    ####################################################################
+    #
+    def test_partial_update(self, setup):
+        client = setup["client"]
+        ea = setup["email_account"]
+        mfr = ea.message_filter_rules.all().first()
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
+        )
+
+        patch_data = {
+            "header": "subject",
+            "pattern": "foo",
+            "action": "folder",
+            "destination": "FooStuff",
+        }
+        for k, v in patch_data.items():
+            resp = client.patch(url, data={k: v})
+            assert resp.status_code == 200
+            mfr.refresh_from_db()
+            assert getattr(mfr, k) == v
