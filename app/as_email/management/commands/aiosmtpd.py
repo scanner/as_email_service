@@ -16,6 +16,7 @@ import email.policy
 import logging
 import ssl
 import time
+from base64 import b64decode
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -25,11 +26,13 @@ from typing import List, Optional
 #
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import (
+    MISSING,
     SMTP,
     AuthResult,
     Envelope as SMTPEnvelope,
     LoginPassword,
     Session as SMTPSession,
+    _TriStateType,
 )
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -70,6 +73,94 @@ class DenyInfo(BaseModel):
 ########################################################################
 ########################################################################
 #
+class AsyncioAuthSMTP(SMTP):
+    """
+    Our Authenticator needs to communicate with the django ORM. The default
+    version is a non-asynico `__call__`. However this is called from inside
+    async functions. However, since the default authenticator `__call__` method
+    is NOT async, but IS called from an async context we can not do an `await`
+    internally but the ORM requires that it be async. So we have our own SMTP
+    server that calls the authenticator via await.
+    """
+
+    ####################################################################
+    #
+    async def auth_PLAIN(self, _, args: List[str]) -> AuthResult:
+        login_and_password: _TriStateType
+        if len(args) == 1:
+            login_and_password = await self.challenge_auth("")
+            if login_and_password is MISSING:
+                return AuthResult(success=False)
+        else:
+            try:
+                login_and_password = b64decode(args[1].encode(), validate=True)
+            except Exception:
+                await self.push("501 5.5.2 Can't decode base64")
+                return AuthResult(success=False, handled=True)
+        try:
+            # login data is "{authz_id}\x00{login_id}\x00{password}"
+            # authz_id can be null, and currently ignored
+            # See https://tools.ietf.org/html/rfc4616#page-3
+            _, login, password = login_and_password.split(
+                b"\x00"
+            )  # pytype: disable=attribute-error  # noqa: E501
+        except ValueError:  # not enough args
+            await self.push("501 5.5.2 Can't split auth value")
+            return AuthResult(success=False, handled=True)
+        # Verify login data
+        assert login is not None
+        assert password is not None
+        # NOTE: The following `await` is the only difference from the original
+        #       source.
+        #
+        return await self._authenticate("PLAIN", LoginPassword(login, password))
+
+    ####################################################################
+    #
+    async def auth_LOGIN(self, _, args: List[str]) -> AuthResult:
+        login: _TriStateType
+        if len(args) == 1:
+            # Client sent only "AUTH LOGIN"
+            login = await self.challenge_auth(self.AuthLoginUsernameChallenge)
+            if login is MISSING:
+                return AuthResult(success=False)
+        else:
+            # Client sent "AUTH LOGIN <b64-encoded-username>"
+            try:
+                login = b64decode(args[1].encode(), validate=True)
+            except Exception:
+                await self.push("501 5.5.2 Can't decode base64")
+                return AuthResult(success=False, handled=True)
+        assert login is not None
+
+        password: _TriStateType
+        password = await self.challenge_auth(self.AuthLoginPasswordChallenge)
+        if password is MISSING:
+            return AuthResult(success=False)
+        assert password is not None
+        # NOTE: The following `await` is the only difference from the original
+        #       source.
+        #
+        return await self._authenticate("LOGIN", LoginPassword(login, password))
+
+
+########################################################################
+########################################################################
+#
+class AsyncioAuthController(Controller):
+    """
+    Override the `factory()` method so that it uses our AsyncioAuthSMTP
+    """
+
+    ####################################################################
+    #
+    def factory(self):
+        return AsyncioAuthSMTP(self.handler, **self.SMTP_kwargs)
+
+
+########################################################################
+########################################################################
+#
 class Command(BaseCommand):
     help = (
         "Runs a SMTP relay for accounts to use to send email. "
@@ -102,20 +193,20 @@ class Command(BaseCommand):
             f"key: '{ssl_key_file}'"
         )
 
-        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        context.load_cert_chain(ssl_cert_file, ssl_key_file)
+        tls_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        tls_context.check_hostname = False
+        tls_context.load_cert_chain(ssl_cert_file, ssl_key_file)
         authenticator = Authenticator()
         handler = RelayHandler(spool_dir=spool_dir, authenticator=authenticator)
-        print("Handler created.. creating controller")
-        controller = Controller(
+        controller = AsyncioAuthController(
             handler,
             hostname="0.0.0.0",  # This means listens on all interfaces.
             server_hostname=settings.SITE_NAME,
             port=listen_port,
-            # authenticator=authenticator,
-            # ssl_context=context,
-            # require_starttls=True,
-            # auth_required=True,
+            authenticator=authenticator,
+            tls_context=tls_context,
+            require_starttls=True,
+            auth_required=True,
         )
         logger.info("Starting controller")
         controller.start()
@@ -205,7 +296,7 @@ class Authenticator:
     # XXX We should track metrics of number of emails sent, but which
     #     account, how many failures, of which kind.
     #
-    def __call__(self, server, session, envelope, mechanism, auth_data):
+    async def __call__(self, server, session, envelope, mechanism, auth_data):
         """
         NOTE: If the datbase is inaccessible or slow this method will be
         slow. Since our initial implementation uses a local sqlite db and there
@@ -253,7 +344,7 @@ class Authenticator:
         username = str(auth_data.login, "utf-8")
         password = str(auth_data.password, "utf-8")
         try:
-            account = EmailAccount.objects.get(email_address=username)
+            account = await EmailAccount.objects.aget(email_address=username)
         except EmailAccount.DoesNotExist:
             # XXX We need to keep a count of failures for accounts
             #     that do not exist and if we get above a ceratin amount

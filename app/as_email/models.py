@@ -116,10 +116,15 @@ class Server(models.Model):
     api_key = models.CharField(
         help_text=_(
             "In order for the mail provider to be able to post data to the "
-            "web hooks provided by this service, they need an API key that "
-            "is unique to this server."
+            "web hooks on this service, they need an API key that "
+            "is unique to this server. NOTE: This is for incoming posts FROM "
+            "the mail server to this service. NOT for authenticating this "
+            "service to the provider. If this is left blank it will have a "
+            "sufficiently random string generated."
         ),
         max_length=40,
+        null=True,
+        blank=True,
     )
     incoming_spool_dir = models.CharField(
         help_text=_(
