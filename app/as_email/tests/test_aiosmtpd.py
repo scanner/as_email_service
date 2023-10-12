@@ -32,7 +32,8 @@ pytestmark = pytest.mark.django_db
 
 ####################################################################
 #
-def test_authenticator_authenticate(
+@pytest.mark.asyncio
+async def test_authenticator_authenticate(
     email_account_factory, faker, aiosmtp_session
 ):
     """
@@ -41,8 +42,8 @@ def test_authenticator_authenticate(
     """
     sess = aiosmtp_session
     password = faker.pystr(min_chars=8, max_chars=32)
-    ea = email_account_factory(password=password)
-    ea.save()
+    ea = await sync_to_async(email_account_factory)(password=password)
+    await ea.asave()
     auth = Authenticator()
 
     # Our authenticator only uses the `session`, `mechanism`, and `auth_data`
@@ -53,7 +54,7 @@ def test_authenticator_authenticate(
             login=bytes(ea.email_address, "utf-8"),
             password=bytes(password, "utf-8"),
         )
-        res = auth(None, sess, None, mechanism, auth_data)
+        res = await auth(None, sess, None, mechanism, auth_data)
         assert res.success
         assert res.auth_data == ea
     mechanism = "LOGIN"
@@ -64,7 +65,7 @@ def test_authenticator_authenticate(
         login=bytes(ea.email_address, "utf-8"),
         password=bytes(faker.pystr(), "utf-8"),
     )
-    res = auth(None, sess, None, mechanism, auth_data)
+    res = await auth(None, sess, None, mechanism, auth_data)
     assert res.success is False
 
     # Test invalid account.
@@ -73,18 +74,18 @@ def test_authenticator_authenticate(
         login=bytes(faker.email(), "utf-8"),
         password=bytes(password, "utf-8"),
     )
-    res = auth(None, sess, None, mechanism, auth_data)
+    res = await auth(None, sess, None, mechanism, auth_data)
     assert res.success is False
 
     # Test deactivated account.
     #
     ea.deactivated = True
-    ea.save()
+    await ea.asave()
     auth_data = LoginPassword(
         login=bytes(ea.email_address, "utf-8"),
         password=bytes(password, "utf-8"),
     )
-    res = auth(None, sess, None, mechanism, auth_data)
+    res = await auth(None, sess, None, mechanism, auth_data)
     assert res.success is False
 
     # We do not support these auth mechanisms. Also make sure random strings
@@ -104,13 +105,16 @@ def test_authenticator_authenticate(
             login=bytes(ea.email_address, "utf-8"),
             password=bytes(password, "utf-8"),
         )
-        res = auth(None, sess, None, mechanism, auth_data)
+        res = await auth(None, sess, None, mechanism, auth_data)
         assert res.success is False
 
 
 ####################################################################
 #
-def test_authenticator_blacklist(email_account_factory, faker, aiosmtp_session):
+@pytest.mark.asyncio
+async def test_authenticator_blacklist(
+    email_account_factory, faker, aiosmtp_session
+):
     """
     Test the Authenticator blacklist mechanism that blocks too many
     authentication failures.
@@ -120,8 +124,8 @@ def test_authenticator_blacklist(email_account_factory, faker, aiosmtp_session):
     #
     sess = aiosmtp_session
     password = faker.pystr(min_chars=8, max_chars=32)
-    ea = email_account_factory(password=password)
-    ea.save()
+    ea = await sync_to_async(email_account_factory)(password=password)
+    await ea.asave()
     auth = Authenticator()
 
     # A time before any failed attempts (so we can check expiry against this)
@@ -139,7 +143,7 @@ def test_authenticator_blacklist(email_account_factory, faker, aiosmtp_session):
         login=bytes(ea.email_address, "utf-8"),
         password=bytes(faker.pystr(), "utf-8"),
     )
-    res = auth(None, sess, None, mechanism, auth_data)
+    res = await auth(None, sess, None, mechanism, auth_data)
     assert res.success is False
 
     # Before any authentications happen connections are not denied.
@@ -153,7 +157,7 @@ def test_authenticator_blacklist(email_account_factory, faker, aiosmtp_session):
             login=bytes(ea.email_address, "utf-8"),
             password=bytes(faker.pystr(), "utf-8"),
         )
-        res = auth(None, sess, None, mechanism, auth_data)
+        res = await auth(None, sess, None, mechanism, auth_data)
         assert res.success is False
 
     # Failure is denied. Failure should be denied for all auths in the next
@@ -174,7 +178,7 @@ def test_authenticator_blacklist(email_account_factory, faker, aiosmtp_session):
     assert auth.check_deny(sess.peer) is False
     assert sess.peer[0] not in auth.blacklist
 
-    res = auth(None, sess, None, mechanism, auth_data)
+    res = await auth(None, sess, None, mechanism, auth_data)
     assert res.success is False
     assert sess.peer[0] in auth.blacklist
 
