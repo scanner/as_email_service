@@ -1026,3 +1026,79 @@ class TestMessageFilterRuleEndpoints:
             pk=other_persons_mfr.pk
         ).exists()
         assert resp.status_code == 403
+
+    ####################################################################
+    #
+    def test_move(self, setup):
+        """
+        Test various values for the 'move' method.
+        """
+        client = setup["client"]
+        ea = setup["email_account"]
+        mfr = ea.message_filter_rules.all().first()
+        assert mfr.email_account == ea
+        assert mfr.order == 0
+        min_order = MessageFilterRule.objects.all().get_min_order()
+        max_order = MessageFilterRule.objects.all().get_max_order()
+        url = reverse(
+            "as_email:message-filter-rule-move",
+            kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
+        )
+
+        resp = client.post(url, data={"command": "down"})
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert mfr.order == 1
+
+        resp = client.post(url, data={"command": "up"})
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert mfr.order == 0
+
+        resp = client.post(url, data={"command": "bottom"})
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert mfr.order == max_order
+
+        resp = client.post(url, data={"command": "top"})
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert mfr.order == min_order
+
+        to_loc = max_order - 1
+        resp = client.post(url, data={"command": "to", "location": to_loc})
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert mfr.order == max_order - 1
+
+        # Moving it below the min order sets it a the min order.
+        #
+        to_loc = min_order - 1
+        resp = client.post(url, data={"command": "to", "location": to_loc})
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert mfr.order == min_order
+
+        # Moving it above the max order, sets it to the max order.
+        #
+        to_loc = max_order + 1
+        resp = client.post(url, data={"command": "to", "location": to_loc})
+        assert resp.status_code == 200
+        mfr.refresh_from_db()
+        assert mfr.order == max_order
+
+        # A `to` without a `location` fails.
+        #
+        resp = client.post(url, data={"command": "to"})
+        assert resp.status_code == 400
+
+        # And we can not move anyone else's mfr's.
+        #
+        other_ea = setup["other_eas"][0]
+        other_mfr = other_ea.message_filter_rules.all().first()
+        url = reverse(
+            "as_email:message-filter-rule-move",
+            kwargs={"email_account_pk": other_ea.pk, "pk": other_mfr.pk},
+        )
+        resp = client.post(url, data={"command": "down"})
+        assert resp.status_code == 403

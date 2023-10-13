@@ -88,6 +88,7 @@ class MessageFilterRuleAdmin(OrderedModelAdmin):
         "destination",
         "created_at",
         "modified_at",
+        "move_up_down_links",
     )
     list_filter = ("email_account", "created_at", "modified_at")
     search_fields = ("pattern", "destination")

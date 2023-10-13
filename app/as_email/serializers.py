@@ -38,6 +38,32 @@ class PasswordSerializer(serializers.Serializer):
 ########################################################################
 ########################################################################
 #
+class MoveOrderSerializer(serializers.Serializer):
+    """
+    Models that use the "ordered" feature need to expose via the REST API
+    methods for changing their ordering. This is done via the "move" method
+    added to the REST API for that model which takes this serializer
+    """
+
+    UP = "up"
+    DOWN = "down"
+    TO = "to"
+    BOTTOM = "bottom"
+    TOP = "top"
+    COMMANDS = [UP, DOWN, TO, BOTTOM, TOP]
+
+    class Meta:
+        model = MessageFilterRule
+        fields = ["command", "location"]
+
+    command = serializers.ChoiceField(required=True, choices=COMMANDS)
+    # Only required if command is "to"
+    location = serializers.IntegerField(required=False)
+
+
+########################################################################
+########################################################################
+#
 class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     url = serializers.HyperlinkedIdentityField(
         view_name="as_email:email-account-detail", read_only=True

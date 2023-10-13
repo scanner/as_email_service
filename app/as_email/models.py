@@ -1086,6 +1086,23 @@ class MessageFilterRule(OrderedModel):
 
     ####################################################################
     #
+    @staticmethod
+    def has_move_permission(request):
+        return True
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_set_move_permission(self, request):
+        """
+        Using DRY Rest Permissions, allow the user to move the ordering of
+        the message fitler rule if the user is the owner of the associated
+        email account.
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
     @classmethod
     def create_from_rule(cls, email_account: EmailAccount, rule_text: str):
         """

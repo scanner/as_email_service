@@ -57,6 +57,7 @@ from .models import EmailAccount, MessageFilterRule, Server
 from .serializers import (
     EmailAccountSerializer,
     MessageFilterRuleSerializer,
+    MoveOrderSerializer,
     PasswordSerializer,
 )
 from .tasks import (
@@ -439,7 +440,8 @@ class EmailAccountViewSet(
             return Response({"status": "password set"})
         else:
             return Response(
-                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
     ####################################################################
@@ -573,6 +575,64 @@ class MessageFilterRuleViewSet(ModelViewSet):
     serializer_class = MessageFilterRuleSerializer
     filter_backends = (EmailAccountOwnerFilterBackend,)
     queryset = MessageFilterRule.objects.all()
+
+    ####################################################################
+    #
+    def get_serializer_class(self):
+        if self.action == "move":
+            return MoveOrderSerializer
+        return MessageFilterRuleSerializer
+
+    ####################################################################
+    #
+    @action(detail=True, methods=["post"])
+    def move(self, request, **kwargs):
+        """
+        Process one of the move commands to change the ordering of message
+        filter rules.
+        """
+        mfr = self.get_object()
+        ser = MoveOrderSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        match ser.validated_data["command"]:
+            case MoveOrderSerializer.UP:
+                mfr.up()
+            case MoveOrderSerializer.DOWN:
+                mfr.down()
+            case MoveOrderSerializer.TOP:
+                mfr.top()
+            case MoveOrderSerializer.BOTTOM:
+                mfr.bottom()
+            case MoveOrderSerializer.TO:
+                if "location" not in ser.validated_data:
+                    return Response(
+                        {"detail": "location required with 'to' command"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # The ordered object supports arbitrary values for the order,
+                # but we want to keep it within the realm of the number of
+                # mfr's that exist so the UI can rely upon the order being in
+                # that range.
+                #
+                min_order = MessageFilterRule.objects.get_min_order()
+                max_order = MessageFilterRule.objects.get_max_order()
+                location = ser.validated_data["location"]
+                if location < min_order:
+                    location = min_order
+                if location > max_order:
+                    location = max_order
+                mfr.to(location)
+
+        return Response(
+            {
+                "status": "movied",
+                "url": mfr.get_absolute_url(),
+                "order": mfr.order,
+            }
+        )
 
     ####################################################################
     #
