@@ -10,7 +10,7 @@ aiologger==0.7.0
     # via -r production.in
 aiosmtpd==1.4.4.post2
     # via -r production.in
-annotated-types==0.5.0
+annotated-types==0.6.0
     # via pydantic
 anyio==4.0.0
     # via httpcore
@@ -178,7 +178,7 @@ uvicorn==0.23.2
     # via -r production.in
 wait-for-it==2.2.2
     # via -r production.in
-whitenoise==6.5.0
+whitenoise==6.6.0
     # via -r production.in
 
 # The following packages are considered to be unsafe in a requirements file:

@@ -10,7 +10,7 @@ aiologger==0.7.0
     # via -r production.txt
 aiosmtpd==1.4.4.post2
     # via -r production.txt
-annotated-types==0.5.0
+annotated-types==0.6.0
     # via
     #   -r production.txt
     #   pydantic
@@ -156,7 +156,7 @@ executing==2.0.0
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==19.8.0
+faker==19.10.0
     # via factory-boy
 fido2==1.1.1
     # via
@@ -278,7 +278,7 @@ ptyprocess==0.7.0
     # via pexpect
 pure-eval==0.2.2
     # via stack-data
-pycodestyle==2.11.0
+pycodestyle==2.11.1
     # via
     #   -r lint.txt
     #   autopep8
@@ -328,7 +328,7 @@ pytest-coverage==0.0
     # via -r development.in
 pytest-django==4.5.2
     # via -r development.in
-pytest-factoryboy==2.5.1
+pytest-factoryboy==2.6.0
     # via -r development.in
 pytest-mock==3.11.1
     # via -r development.in
@@ -426,7 +426,7 @@ types-pyyaml==6.0.12.12
     #   django-stubs
 types-redis==4.6.0.7
     # via -r lint.txt
-types-requests==2.31.0.7
+types-requests==2.31.0.8
     # via -r lint.txt
 types-setuptools==68.2.0.0
     # via -r lint.txt
@@ -474,7 +474,7 @@ wheel==0.41.2
     # via
     #   -r lint.txt
     #   pip-tools
-whitenoise==6.5.0
+whitenoise==6.6.0
     # via -r production.txt
 yapf==0.40.2
     # via -r lint.txt
