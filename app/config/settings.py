@@ -37,6 +37,7 @@ env = environ.Env(
     MAIL_DIRS=(str, "/mnt/mail_dir"),
     DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
     ALLOWED_HOSTS=(list, list()),
+    REDIS_SERVER=(str, "redis"),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -45,7 +46,7 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default=get_random_secret_key())
 DEBUG = env("DEBUG")
 SITE_NAME = env("SITE_NAME")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
-
+REDIS_SERVER = env("REDIS_SERVER")
 
 # Application definition
 
@@ -166,12 +167,11 @@ STATICFILES_FINDERS = [
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-REDIS_SERVER = "redis"
 
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": "redis://redis:6379",
+        "LOCATION": f"redis://{REDIS_SERVER}:6379",
     }
 }
 
@@ -183,7 +183,9 @@ HUEY = {
     "store_none": False,
     "utc": True,  # Use UTC for all times internally.
     "connection": {
-        "connection_pool": redis.ConnectionPool(host="redis", port=6379, db=1),
+        "connection_pool": redis.ConnectionPool(
+            host=REDIS_SERVER, port=6379, db=1
+        ),
     },
     "consumer": {
         "workers": 8,
@@ -274,4 +276,14 @@ LOGGING = {
             "propagate": True,
         },
     },
+}
+
+# Django Compressor
+#
+COMPRESS_FILTERS = {
+    "css": [
+        "compressor.filters.css_default.CssAbsoluteFilter",
+        "compressor.filters.cssmin.rCSSMinFilter",
+        "compressor.filters.cssmin.CSSCompressorFilter",
+    ],
 }

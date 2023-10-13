@@ -34,3 +34,9 @@ HOST_SSL_DIR=/mnt/ssl
 # What docker tag to pull and run
 #
 RELEASE_VERSION=latest
+
+# REDIS is used both for the cache and for huey as well as some other transient
+# data. By default we presume running redis as part of the docker compose and
+# its hostname is "redis"
+#
+REDIS_SERVER=redis
