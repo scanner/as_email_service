@@ -20,12 +20,13 @@
   {% endif %}
   <div class="container">
     <div class="column is-four-fifths">
-      <div class="box">
+      <form class="box" method="post" action="{% url 'login' %}">
+        {% csrf_token %}
         <div class="field">
           <p class="control has-icons-left has-icons-right">
             <input class="input" type="text" name="username" required id="id_username" placeholder="Username">
             <span class="icon is-small is-left">
-              <ion-icon name="heart"></ion-icon>
+              <ion-icon name="person-circle-outline"></ion-icon>
             </span>
             <span class="icon is-small is-right">
               <ion-icon name="checkmark-outline"></ion-icon>
@@ -34,21 +35,22 @@
         </div>
         <div class="field">
           <p class="control has-icons-left">
-            <input class="input" type="password" placeholder="Password">
+            <input class="input" type="password" id="id_password" placeholder="Password">
             <span class="icon is-small is-left">
               <ion-icon name="lock-closed-outline"></ion-icon>
             </span>
           </p>
         </div>
         <div class="field">
-          <p class="control">
-            <button class="button is-success">
-              Login
-            </button>
+          <p class="control has-icons-left">
+            <span class="icon is-small is-left">
+              <ion-icon name="log-in-outline"></ion-icon>
+            </span>
+            <input class="button is-primary" type="submit" value="login">
           </p>
           <input type="hidden" name="next" value="{{ next }}">
         </div>
-      </div>
+      </form>
     </div>
   </div>
 
