@@ -1,34 +1,87 @@
+{% load compress %}
+{% load static %}
 <!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Apricot Systematic Email Service{% endblock %}</title>
-    {% block blockbots %}<meta name="robots" content="NONE,NOARCHIVE" />{% endblock %}
-    <link rel="stylesheet" type="text/css" href="{{ MEDIA_URL }}/css/stylesheet.css" media="screen, projection, tv " />
-    {% block adminstyle %}{% endblock %}
-    {% block styles %}{% endblock %}
-    {% block extrastyle %}{% endblock %}
-    {% block extrahead %}{% endblock %}
-    {% block jshead %}{% endblock %}
-    {% block scripts %}{% endblock %}
+    {% block bulma %}<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">{% endblock %}
+    {% block css %}{% endblock %}
+    {% block robots %}<meta name="robots" content="NONE,NOARCHIVE" />{% endblock %}
   </head>
-  <body class="{%if is_popup %}popup {% endif %}{% block bodyclass %}{% endblock %}">
-    {% block sidebar-nav %}
-      <ul class="sidebar-nav">
-        {% if user.is_authenticated %}
-          <li>User: {{ user }}</li>
-          <li><a href="{% url 'logout' %}?next={{ request.path }}">Logout</a></li>
-          {% if is_staff %}
-            <li><a href="{% url 'admin:index' %}">Admin</li>
-          {% endif %}
-        {% else %}
-            <li><a href="{% url 'login' %}?next={{ request.path }}">Login</a></li>
-        {% endif %}
-      </ul>
+  <body>
+    {% block navbar %}
+      <nav class="navbar" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+          <a class="navbar-item" href="/">AS Email</a>
+
+          <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+          </a>
+        </div>
+
+        <div id="navbarBasicExample" class="navbar-menu">
+          <div class="navbar-start">
+            <a class="navbar-item">
+              Documentation
+            </a>
+
+            <div class="navbar-item has-dropdown is-hoverable">
+              <a class="navbar-link">
+                More
+              </a>
+
+              <div class="navbar-dropdown">
+                <a class="navbar-item">
+                  About
+                </a>
+                <a class="navbar-item">
+                  Contact
+                </a>
+                <hr class="navbar-divider">
+                <a class="navbar-item">
+                  Report an issue
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="navbar-end">
+            {% if user.is_authenticated %}
+              <a class="navbar-item">
+                {{ user }}
+              </a>
+            {% endif %}
+            <div class="navbar-item">
+              <div class="buttons">
+                {% if user.is_authenticated %}
+                  <a class="button is-warning" href="{% url 'logout' %}?next={{ request.path }}">
+                    Log out
+                  </a>
+                {% else %}
+                  <a class="button is-light" href="{% url 'login' %}?next={{ request.path }}">
+                    Log in
+                  </a>
+                  {% endif %}
+              </div>
+            </div>
+        </div>
+        </div>
+      </nav>
     {% endblock %}
-    <main>
-      {% block content %}
-      {% endblock %}
-    </main>
+    {% block sidebar-nav %}{% endblock %}
+    {% block content %}{% endblock %}
+    {% block ionic-icons %}
+      <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+      <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+    {% endblock %}
+    {% block javascript %}
+      {% compress js %}
+      <script src="{% static 'js/base.js' %}"></script>
+      {% endcompress %}
+    {% endblock %}
   </body>
 </html>
