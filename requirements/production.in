@@ -5,6 +5,7 @@ cryptography>=41.0.4
 csscompressor
 django
 django-anymail
+django-bulma
 django-cryptography
 django-dry-rest-permissions
 django-environ

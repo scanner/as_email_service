@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "ordered_model",
     "rest_framework",
     "dry_rest_permissions",
+    "bulma",
     "as_email",
 ]
 
