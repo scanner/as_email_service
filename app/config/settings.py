@@ -65,6 +65,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "dry_rest_permissions",
     "bulma",
+    "django_simple_bulma",
+    "project",  # NOTE: project wide templatetags, etc.
     "as_email",
 ]
 
@@ -158,6 +160,7 @@ STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.FileSystemFinder",
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
     "compressor.finders.CompressorFinder",
+    "django_simple_bulma.finders.SimpleBulmaFinder",
 ]
 
 # Default primary key field type
@@ -283,4 +286,14 @@ COMPRESS_FILTERS = {
         "compressor.filters.cssmin.rCSSMinFilter",
         "compressor.filters.cssmin.CSSCompressorFilter",
     ],
+}
+
+# django-simple-bulma
+#
+BULMA_SETTINGS = {
+    "extensions": [
+        "bulma-collapsible",
+    ],
+    "output_style": "compressed",
+    "fontawesome_token": "e761a01be3",
 }

@@ -1,1 +1,6 @@
 {% extends "base.html" %}
+{% load static %}
+{% block defer_js %}
+  {{ block.super }}
+  <script defer type="text/javascript" src="{% static 'as_email/js/base.js' %}"></script>
+{% endblock defer_js %}

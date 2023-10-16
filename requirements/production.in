@@ -14,6 +14,7 @@ django-filter
 django-guardian
 django-ordered-model
 django-passkeys
+django-simple-bulma
 django_compressor
 djangorestframework
 dnspython

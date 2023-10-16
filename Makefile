@@ -46,8 +46,11 @@ delete: clean	## docker compose down for `dev` and `prod` and `make clean`.
 restart:	## docker compose restart for the `dev` profile
 	@docker compose --profile dev restart
 
-shell:	## Make a bash shell a devweb container
+shell:	## Make a bash shell an ephemeral devweb container
 	@docker compose run --rm devweb /bin/bash
+
+exec_shell: ## Make a bash shell in the docker-compose running devweb container
+	@docker compose exec devweb /bin/bash
 
 manage_shell:	## Run `manage.py shell_plus` in a devweb container.
 	@docker compose run --rm devweb python /app/manage.py shell_plus

@@ -53,6 +53,7 @@ django==4.2.6
     #   django-filter
     #   django-guardian
     #   django-passkeys
+    #   django-simple-bulma
     #   djangorestframework
     #   drf-nested-routers
 django-anymail==10.1
@@ -80,6 +81,8 @@ django-guardian==2.4.0
 django-ordered-model==3.7.4
     # via -r production.in
 django-passkeys==1.2.5
+    # via -r production.in
+django-simple-bulma==2.5.0
     # via -r production.in
 djangorestframework==3.14.0
     # via
@@ -110,6 +113,8 @@ idna==3.4
     #   requests
 influxdb-client==1.38.0
     # via -r production.in
+libsass==0.22.0
+    # via django-simple-bulma
 markdown-it-py==3.0.0
     # via rich
 mdurl==0.1.2
