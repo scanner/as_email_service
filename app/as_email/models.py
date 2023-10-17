@@ -690,8 +690,23 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
+    # XXX Okay, normally since we do not allow the creation of EmailAccounts by
+    #     end users this should return `False`. However, doing that disables
+    #     the ability to fetch the object metadata via the HTTP OPTIONS
+    #     request. This kind of makes sense. .. but you can update the
+    #     object. And the metadata says it is for the 'PUT' command. Not sure
+    #     what is up, but we have disabled the 'Create' endpoint anyways so
+    #     that keeps users out of creating objects via the endpoint anyway. But
+    #     we need to figure out what is going on here.
+    #
+    #     So we return `True` if asking options for the `PUT` command.
+    #
+    #     See: https://github.com/scanner/as_email_service/issues/49
+    #
     @authenticated_users
     def has_object_write_permission(self, request):
+        if request.method == "PUT":
+            return True
         return False
 
     ####################################################################
