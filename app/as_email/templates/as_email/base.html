@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% load static %}
-{% block defer_js %}
-  {{ block.super }}
-{% endblock defer_js %}
-{% block javascript %}
+{% block defer_noncompress_js %}
   {{ block.super }}
   {% if env_name == 'production' %}
-    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+    <script defer type="text/javascript" src="https://cdn.jsdelivr.net/npm/vue"></script>
   {% else %}
-    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    <script defer type="text/javascript" src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
   {% endif %}
-  <script type="text/javascript" src="{% static 'as_email/js/base.js' %}"></script>
-{% endblock javascript %}
+{% endblock defer_noncompress_js %}
+{% block defer_compress_js %}
+  {{ block.super }}
+  <script defer type="text/javascript" src="{% static 'as_email/js/base.js' %}"></script>
+{% endblock defer_compress_js %}

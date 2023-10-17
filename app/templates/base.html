@@ -12,12 +12,16 @@
       {% block extra_css %}{% endblock extra_css %}
     {% endblock css %}
     {% endcompress %}
+    {% block defer_noncompress_js %}
+      <script async type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+      <script async nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+    {% endblock defer_noncompress_js %}
     {% compress js %}
-    {% block defer_js %}
-       {% project_third_party_js %}
-       <script defer type="text/javascript" src="{% static 'js/base.js' %}"></script>
+    {% block defer_compress_js %}
+      {% project_third_party_js %}
+      <script defer type="text/javascript" src="{% static 'js/base.js' %}"></script>
 
-    {% endblock defer_js %}
+    {% endblock defer_compress_js %}
     {% endcompress %}
   </head>
   <body>
@@ -131,12 +135,6 @@
     </footer>
   </div>
 
-  {% compress js %}
-  {% block ionic %}
-    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
-    <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
-  {% endblock ionic %}
-  {% block javascript %}{% endblock javascript %}
-  {% endcompress %}
+  {% compress js %}{% block javascript %}{% endblock javascript %}{% endcompress %}
   </body>
 </html>

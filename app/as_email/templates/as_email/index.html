@@ -1,23 +1,61 @@
 {% extends "as_email/base.html" %}
+{% load static %}
 {% block title %}AS Email - Email Accounts{% endblock %}
 {% block content %}
-  {% if email_accounts %}
-    <ul>
-      {% for email_account in email_accounts %}
-        <li>{{ email_account.email_address }}, type: {{ email_account.delivery_method }}, {{ email_account.handle_blocked_messages }}</li>
-      {% endfor %}
-    </ul>
-  {% else  %}
-    <p>{{ user }}, you have no  email accounts.</p>
-  {% endif %}
-  {{ email_accounts_data|json_script:"email-accounts-data" }}
+  <div class="container">
+    <div id="asemail-vue-app">
+      {% if email_accounts %}
+        {% for email_account in email_accounts %}
+          <div class="card">
+            <header class="card-header">
+              <p class="card-header-title">{{email_account.email_address}}</p>
+              <a href="#collapsible-card" data-action="collapse" class="card-header-icon is-hidden-fullscreen" aria-label="more options">
+                <span class="icon">
+                  <ion-icon name="chevron-down-outline" aria-hidden="true"></ion-icon>
+                </span>
+              </a>
+            </header>
+            <div id="email-account-{{email_account.pk}}" class="is-collapsible">
+              <div class="card-content">
+                <p class="title is-4">
+                  Delivery method: {{ email_account.delivery_method }}
+                </p>
+                <p class="subtitle is-5">
+                  Owner: {{ email_account.owner }}
+                </p>
+              </div>
+              <footer class="card-footer">
+                <p class="card-footer-item">
+                  <span>
+                    <input class="button" type="submit" value="Apply">
+                  </span>
+                </p>
+                <p class="card-footer-item">
+                  <span>
+                    <input class="button" type="reset" value="Reset">
+                  </span>
+                </p>
+              </footer>
+            </div>
+          </div>
+        {% endfor %}
+
+        <ul>
+          {% for email_account in email_accounts %}
+            <li>{{ email_account.email_address }}, type: {{ email_account.delivery_method }}, {{ email_account.handle_blocked_messages }}</li>
+          {% endfor %}
+        </ul>
+      {% else  %}
+        <p>{{ user }}, you have no  email accounts.</p>
+      {% endif %}
+    </div>
+  </div>
+  {{ vue_data|json_script:"vue-data" }}
   <div id="vue-app">
     <h1>[[ myTitle ]]</h1>
   </div>
 {% endblock %}
-{% block javascript %}
+{% block defer_compress_js %}
   {{ block.super }}
-  <script>
-   setupASEmail();
-  </script>
-{% endblock javascript %}
+  <script defer type="text/javascript" src="{% static 'as_email/js/app.js' %}"></script>
+{% endblock defer_compress_js %}

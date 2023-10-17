@@ -289,6 +289,7 @@ COMPRESS_FILTERS = {
         "compressor.filters.cssmin.rCSSMinFilter",
         "compressor.filters.cssmin.CSSCompressorFilter",
     ],
+    "js": ["compressor.filters.jsmin.rJSMinFilter"],
 }
 
 # django-simple-bulma

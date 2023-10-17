@@ -82,6 +82,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = EmailAccount
         fields = [
+            "pk",
             "alias_for",
             "autofile_spam",
             "created_at",
@@ -100,6 +101,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "url",
         ]
         read_only_fields = [
+            "pk",
             "created_at",
             "deactivated",
             "deactivated_reason",
