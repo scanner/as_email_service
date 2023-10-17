@@ -2,5 +2,13 @@
 {% load static %}
 {% block defer_js %}
   {{ block.super }}
-  <script defer type="text/javascript" src="{% static 'as_email/js/base.js' %}"></script>
 {% endblock defer_js %}
+{% block javascript %}
+  {{ block.super }}
+  {% if env_name == 'production' %}
+    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+  {% else %}
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+  {% endif %}
+  <script type="text/javascript" src="{% static 'as_email/js/base.js' %}"></script>
+{% endblock javascript %}

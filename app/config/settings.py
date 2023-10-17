@@ -38,6 +38,7 @@ env = environ.Env(
     DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
     ALLOWED_HOSTS=(list, list()),
     REDIS_SERVER=(str, "redis"),
+    VERSION=(str, "unknown"),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -47,6 +48,7 @@ DEBUG = env("DEBUG")
 SITE_NAME = env("SITE_NAME")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 REDIS_SERVER = env("REDIS_SERVER")
+VERSION = env("RELEASE_VERSION", default="unknown")
 
 # Application definition
 
@@ -94,6 +96,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "django_settings_export.settings_export",
             ],
         },
     },
@@ -293,7 +296,16 @@ COMPRESS_FILTERS = {
 BULMA_SETTINGS = {
     "extensions": [
         "bulma-collapsible",
+        "bulma-notifications",
+        "bulma-modal",
     ],
     "output_style": "compressed",
     "fontawesome_token": "e761a01be3",
 }
+
+# What settings do we export to the template system
+#
+SETTINGS_EXPORT = [
+    "DEBUG",
+    "VERSION",
+]

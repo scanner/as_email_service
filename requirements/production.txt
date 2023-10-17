@@ -53,6 +53,7 @@ django==4.2.6
     #   django-filter
     #   django-guardian
     #   django-passkeys
+    #   django-settings-export
     #   django-simple-bulma
     #   djangorestframework
     #   drf-nested-routers
@@ -81,6 +82,8 @@ django-guardian==2.4.0
 django-ordered-model==3.7.4
     # via -r production.in
 django-passkeys==1.2.5
+    # via -r production.in
+django-settings-export==1.2.1
     # via -r production.in
 django-simple-bulma==2.5.0
     # via -r production.in

@@ -10,4 +10,14 @@
   {% else  %}
     <p>{{ user }}, you have no  email accounts.</p>
   {% endif %}
+  {{ email_accounts_data|json_script:"email-accounts-data" }}
+  <div id="vue-app">
+    <h1>[[ myTitle ]]</h1>
+  </div>
 {% endblock %}
+{% block javascript %}
+  {{ block.super }}
+  <script>
+   setupASEmail();
+  </script>
+{% endblock javascript %}

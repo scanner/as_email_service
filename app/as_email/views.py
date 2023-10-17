@@ -102,8 +102,14 @@ def index(request):
     #     during django template rendering, @login_required)
     user = request.user
     email_accounts = EmailAccount.objects.filter(owner=user)
+    email_account_data = []
+    for ea in email_accounts:
+        email_account_data.append(
+            EmailAccountSerializer(ea, context={"request": request}).data
+        )
     context = {
         "email_accounts": email_accounts,
+        "email_accounts_data": email_account_data,
     }
     return render(request, "as_email/index.html", context)
 
