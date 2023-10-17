@@ -10,3 +10,4 @@ function setupASEmail() {
 }
 
 setupASEmail();
+const emailAccountCards = bulmaCollapsible.attach(".is-collapsible");

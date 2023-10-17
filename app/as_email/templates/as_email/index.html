@@ -1,15 +1,21 @@
 {% extends "as_email/base.html" %}
 {% load static %}
 {% block title %}AS Email - Email Accounts{% endblock %}
+{% block defer_compress_js %}
+  {{ block.super }}
+  <script defer type="text/javascript" src="{% static 'as_email/js/app.js' %}"></script>
+{% endblock defer_compress_js %}
 {% block content %}
   <div class="container">
+    <p class="title is-1">Email Accounts</p>
+
     <div id="asemail-vue-app">
       {% if email_accounts %}
         {% for email_account in email_accounts %}
           <div class="card">
             <header class="card-header">
               <p class="card-header-title">{{email_account.email_address}}</p>
-              <a href="#collapsible-card" data-action="collapse" class="card-header-icon is-hidden-fullscreen" aria-label="more options">
+              <a href="#email-account-{{email_account.pk}}" data-action="collapse" data-target="email-account-{{email_account.pk}}" class="card-header-icon is-hidden-fullscreen" aria-label="more options">
                 <span class="icon">
                   <ion-icon name="chevron-down-outline" aria-hidden="true"></ion-icon>
                 </span>
@@ -55,7 +61,6 @@
     <h1>[[ myTitle ]]</h1>
   </div>
 {% endblock %}
-{% block defer_compress_js %}
+{% block javascript %}
   {{ block.super }}
-  <script defer type="text/javascript" src="{% static 'as_email/js/app.js' %}"></script>
-{% endblock defer_compress_js %}
+{% endblock %}
