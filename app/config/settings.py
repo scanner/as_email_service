@@ -43,8 +43,8 @@ env = environ.Env(
 
 # NOTE: We should try moving secrets to compose secrets.
 #
-SECRET_KEY = env("DJANGO_SECRET_KEY", default=get_random_secret_key())
 DEBUG = env("DEBUG")
+SECRET_KEY = env("DJANGO_SECRET_KEY", default=get_random_secret_key())
 SITE_NAME = env("SITE_NAME")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 REDIS_SERVER = env("REDIS_SERVER")
