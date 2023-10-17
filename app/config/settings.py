@@ -300,7 +300,6 @@ BULMA_SETTINGS = {
         "bulma-modal",
     ],
     "output_style": "compressed",
-    "fontawesome_token": "e761a01be3",
 }
 
 # What settings do we export to the template system
