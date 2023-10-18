@@ -299,8 +299,13 @@ BULMA_SETTINGS = {
         "bulma-collapsible",
         "bulma-notifications",
         "bulma-modal",
+        "bulma-tooltip",
+        "bulma-divider",
+        "bulma-tags",
+        "bulma-switch",
+        "bulma-coolcheckboxes",
     ],
-    "output_style": "compressed",
+    "output_style": "nested" if DEBUG else "compressed",
 }
 
 # What settings do we export to the template system

@@ -178,7 +178,7 @@ ua-parser==0.18.0
     # via
     #   django-passkeys
     #   user-agents
-urllib3==2.0.6
+urllib3==2.0.7
     # via
     #   django-anymail
     #   influxdb-client

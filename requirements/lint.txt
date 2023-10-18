@@ -8,7 +8,7 @@ asgiref==3.7.2
     # via django
 autopep8==2.0.4
     # via -r lint.in
-black==23.9.1
+black==23.10.0
     # via -r lint.in
 build==1.0.3
     # via pip-tools
@@ -32,9 +32,9 @@ django==4.2.6
     # via
     #   django-stubs
     #   django-stubs-ext
-django-stubs==4.2.4
+django-stubs==4.2.5
     # via -r lint.in
-django-stubs-ext==4.2.2
+django-stubs-ext==4.2.5
     # via django-stubs
 filelock==3.12.4
     # via virtualenv
@@ -48,7 +48,7 @@ isort==5.12.0
     # via -r lint.in
 mccabe==0.7.0
     # via flake8
-mypy==1.5.1
+mypy==1.6.1
     # via
     #   -r lint.in
     #   django-stubs
@@ -105,7 +105,7 @@ types-pyyaml==6.0.12.12
     # via django-stubs
 types-redis==4.6.0.7
     # via -r lint.in
-types-requests==2.31.0.9
+types-requests==2.31.0.10
     # via -r lint.in
 types-setuptools==68.2.0.0
     # via -r lint.in
@@ -114,7 +114,7 @@ typing-extensions==4.8.0
     #   django-stubs
     #   django-stubs-ext
     #   mypy
-urllib3==2.0.6
+urllib3==2.0.7
     # via types-requests
 virtualenv==20.24.5
     # via pre-commit
