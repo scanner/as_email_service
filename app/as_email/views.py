@@ -38,14 +38,14 @@ from django.http import (
     QueryDict,
 )
 from django.shortcuts import render
-from django.urls import resolve
+from django.urls import resolve, reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
 )
-from rest_framework import mixins, status
+from rest_framework import mixins, serializers, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -105,10 +105,29 @@ def index(request):
     email_accounts_data = []
     for ea in email_accounts:
         email_accounts_data.append(
-            EmailAccountSerializer(ea, context={"request": request}).data
+            EmailAccountSerializer(ea, context={"request": request})
         )
+
+    # Create a dicdtionary that gives the field info from the django rest
+    # framework for an EmailAccount object so that our UI knows how to
+    # represent them and what info to include in the forms.
+    #
+    actions = {}
+    if email_accounts_data:
+        serializer = email_accounts_data[0]
+        eavs = EmailAccountViewSet()
+        md = eavs.metadata_class()
+        actions = {
+            field_name: md.get_field_info(field)
+            for field_name, field in serializer.fields.items()
+            if not isinstance(field, serializers.HiddenField)
+        }
+
     vue_data = {
-        "email_accounts_data": email_accounts_data,
+        "email_account_list_url": reverse("as_email:email-account-list"),
+        "email_accounts_data": [x.data for x in email_accounts_data],
+        "num_email_accounts": len(email_accounts_data),
+        "email_account_field_info": actions,
         "myTitle": "Hello Vue!",
     }
     context = {
