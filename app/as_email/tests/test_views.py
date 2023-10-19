@@ -85,6 +85,30 @@ def _expected_for_message_filter_rule(mfr: MessageFilterRule) -> dict:
 
 ####################################################################
 #
+def test_index(api_client, user_factory, email_account_factory, faker):
+    password = faker.pystr(min_chars=8, max_chars=32)
+    user = user_factory(password=password)
+    user.save()
+    eas = []
+    for _ in range(5):
+        ea = email_account_factory(owner=user)
+        ea.save()
+        eas.append(ea)
+
+    url = reverse("as_email:index")
+    client = api_client()
+    resp = client.get(url)
+    assert resp.status_code == 302
+    assert reverse("login") == urlparse(resp["Location"]).path
+
+    resp = client.login(username=user.username, password=password)
+    assert resp
+    resp = client.get(url)
+    assert resp.status_code == 200
+
+
+####################################################################
+#
 def test_bounce_webhook(
     email_account_factory,
     api_client,
