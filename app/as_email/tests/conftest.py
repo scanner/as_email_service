@@ -238,6 +238,23 @@ def huey_immediate_mode(settings):
 ####################################################################
 #
 @pytest.fixture
+def dummy_cache(settings):
+    """
+    We may need to make sure that django's caching backend is `dummy` when
+    runing certain tests because we can not guarantee that the default caching
+    backend is actually avaiable when running tests.
+    """
+    caches = settings.CACHES
+    settings.CACHES = {
+        "default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}
+    }
+    yield settings.CACHES
+    settings.CACHES = caches
+
+
+####################################################################
+#
+@pytest.fixture
 def api_client():
     """
     fixture for DRF's APIClient object.

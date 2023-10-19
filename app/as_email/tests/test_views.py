@@ -85,7 +85,9 @@ def _expected_for_message_filter_rule(mfr: MessageFilterRule) -> dict:
 
 ####################################################################
 #
-def test_index(api_client, user_factory, email_account_factory, faker):
+def test_index(
+    dummy_cache, api_client, user_factory, email_account_factory, faker
+):
     password = faker.pystr(min_chars=8, max_chars=32)
     user = user_factory(password=password)
     user.save()
