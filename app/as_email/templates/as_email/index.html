@@ -3,7 +3,7 @@
 {% block title %}AS Email - Email Accounts{% endblock %}
 {% block defer_compress_js %}
   {{ block.super }}
-  <script defer type="text/javascript" src="{% static 'as_email/js/app.js' %}"></script>
+  <script defer type="module" src="{% static 'as_email/js/app.js' %}"></script>
 {% endblock defer_compress_js %}
 {% block content %}
   <div class="container">
@@ -56,5 +56,11 @@
   </div>
 {% endblock %}
 {% block javascript %}
-  {{ block.super }}
-{% endblock %}
+  <script type="text/javascript">
+   // Set APP_DEBUG on the window to indicate if we are in DEBUG mode or not
+   // This comes from the `settings.DEBUG` in the django project's config.
+   //
+   window.APP_DEBUG = {{ settings.DEBUG|lower }};
+  </script>
+  {{ super.block }}
+{% endblock javascript %}

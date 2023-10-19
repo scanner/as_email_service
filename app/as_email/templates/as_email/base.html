@@ -2,11 +2,6 @@
 {% load static %}
 {% block defer_noncompress_js %}
   {{ block.super }}
-  {% if env_name == 'production' %}
-    <script defer type="text/javascript" src="https://cdn.jsdelivr.net/npm/vue"></script>
-  {% else %}
-    <script defer type="text/javascript" src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
-  {% endif %}
 {% endblock defer_noncompress_js %}
 {% block defer_compress_js %}
   {{ block.super }}
