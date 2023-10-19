@@ -172,12 +172,16 @@ STATICFILES_FINDERS = [
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CACHES = {
-    "default": {
+if DEBUG:
+    cache_backend = {
+        "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+    }
+else:
+    cache_backend = {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": f"redis://{REDIS_SERVER}:6379",
     }
-}
+CACHES = {"default": cache_backend}
 
 HUEY = {
     "huey_class": "huey.RedisHuey",
