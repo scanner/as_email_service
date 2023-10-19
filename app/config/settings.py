@@ -27,9 +27,10 @@ BASE_DIR = Path(__file__).parent.parent
 #       during the docker image build phase. When actually run this will be
 #       via a .env passed to the container.
 #
+random_secret = get_random_secret_key()
 env = environ.Env(
     DEBUG=(bool, False),
-    DJANGO_SECRET_KEY=(str, get_random_secret_key()),
+    DJANGO_SECRET_KEY=(str, random_secret),
     SITE_NAME=(str, "example.com"),
     DATABASE_URL=(str, "sqlite:///:memory:"),
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
@@ -44,11 +45,11 @@ env = environ.Env(
 # NOTE: We should try moving secrets to compose secrets.
 #
 DEBUG = env("DEBUG")
-SECRET_KEY = env("DJANGO_SECRET_KEY", default=get_random_secret_key())
+SECRET_KEY = env("DJANGO_SECRET_KEY")
 SITE_NAME = env("SITE_NAME")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 REDIS_SERVER = env("REDIS_SERVER")
-VERSION = env("RELEASE_VERSION", default="unknown")
+VERSION = env("VERSION")
 
 # Application definition
 
