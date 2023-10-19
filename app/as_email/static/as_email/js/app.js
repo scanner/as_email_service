@@ -16,16 +16,31 @@ console.log(initialData.email_account_list_url);
 //
 const emailAccountCards = bulmaCollapsible.attach(".is-collapsible");
 
-let res = await fetch(initialData.email_accounts_data[0].url, {method:"OPTIONS"});
-let emailAccountFieldsOptions = await res.json();
-let emailAccountFields = emailAccountFieldsOptions.actions.PUT;
-console.log(emailAccountFields);
+let res = await fetch(
+    initialData.email_accounts_data[0].url,
+    {method:"OPTIONS"}
+);
+if (res.ok) {
+    let emailAccountFieldsOptions = await res.json();
+    let emailAccountFields = emailAccountFieldsOptions.actions.PUT;
+    console.log(emailAccountFields);
+} else {
+    console.log(`Unable to get field data for EmailAccount: ${res.statusText}(${res.status})`);
+}
+
+const origTitle = "yup, you got that";
+const myTitle = ref(origTitle);
+
+function update_foo() {
+    myTitle.value="Clicked";
+    setTimeout(() => myTitle.value=origTitle, 5000);
+}
 
 createApp({
     setup() {
-        const myTitle = ref('Hello Vue!');
         return {
-            myTitle
+            myTitle,
+            update_foo
         };
     },
     delimiters: ['[[', ']]'],

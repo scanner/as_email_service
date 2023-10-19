@@ -51,8 +51,10 @@
     </div>
   </div>
   {{ vue_data|json_script:"vue-data" }}
+
   <div id="vue-app">
     <h1>[[ myTitle ]]</h1>
+    <button @click="update_foo" class="button">Yes</button>
   </div>
 {% endblock %}
 {% block javascript %}
