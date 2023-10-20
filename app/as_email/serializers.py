@@ -74,15 +74,22 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         view_name="as_email:message-filter-rule-list",
         lookup_url_kwarg="email_account_pk",
     )
-    alias_for = serializers.HyperlinkedIdentityField(
-        view_name="as_email:email-account-detail",
+    alias_for = serializers.SlugRelatedField(
         many=True,
+        slug_field="email_address",
+        queryset=EmailAccount.objects.all(),
+    )
+    aliases = serializers.SlugRelatedField(
+        many=True,
+        slug_field="email_address",
+        queryset=EmailAccount.objects.all(),
     )
 
     class Meta:
         model = EmailAccount
         fields = [
             "pk",
+            "aliases",
             "alias_for",
             "autofile_spam",
             "created_at",

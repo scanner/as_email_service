@@ -29,13 +29,13 @@ from urllib.parse import urlparse
 #
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models.query import prefetch_related_objects
-from django.http import (
+
+# from django.db.models.query import prefetch_related_objects
+from django.http import (  # QueryDict,
     Http404,
     HttpResponse,
     HttpResponseBadRequest,
     JsonResponse,
-    QueryDict,
 )
 from django.shortcuts import render
 from django.urls import resolve, reverse
@@ -514,74 +514,74 @@ class EmailAccountViewSet(
                 )
         return eas
 
-    ####################################################################
-    #
-    def update(self, request, *args, **kwargs):
-        """
-        Since we have a ManyToManyField with a Through relationship we need
-        to handle this ourselves.
-        """
-        instance = self.get_object()
-        partial = kwargs.pop("partial", False)
+    # ####################################################################
+    # #
+    # def update(self, request, *args, **kwargs):
+    #     """
+    #     Since we have a ManyToManyField with a Through relationship we need
+    #     to handle this ourselves.
+    #     """
+    #     instance = self.get_object()
+    #     partial = kwargs.pop("partial", False)
 
-        # We have to copy the QueryDict because the one we got is immutable and
-        # we need to mutate it to remove `alias_for` so that the serializer
-        # does not crap out on our many-to-many-via-through relationship.
-        #
-        qd = request.data.copy()
+    #     # We have to copy the QueryDict because the one we got is immutable and
+    #     # we need to mutate it to remove `alias_for` so that the serializer
+    #     # does not crap out on our many-to-many-via-through relationship.
+    #     #
+    #     qd = request.data.copy()
 
-        # Now we have our logic for if the `alias_for` was included in the
-        # QueryDict. If it is not, then there is no change to the set of
-        # aliases.
-        #
-        alias_for = None
-        if "alias_for" in qd:
-            # If `alias_for` retrieved as a list is a list with a single
-            # element and that element is an empty string, then the user wants
-            # to clear `alias_for`. We have to watch for where the querydict is
-            # actually a dict. (this happens when calling `PUT` in the drf
-            # view)
-            #
-            if isinstance(qd, QueryDict):
-                alias_for = qd.getlist("alias_for")
-                qd.pop("alias_for")
-            else:
-                alias_for = qd["alias_for"]
-                del qd["alias_for"]
-            if alias_for == [""] or alias_for == []:
-                alias_for_eas = []
-            else:
-                try:
-                    alias_for_eas = self._lookup_alias_fors(instance, alias_for)
-                except ValueError as exc:
-                    return Response(
-                        {"detail": str(exc)}, status.HTTP_400_BAD_REQUEST
-                    )
+    #     # Now we have our logic for if the `alias_for` was included in the
+    #     # QueryDict. If it is not, then there is no change to the set of
+    #     # aliases.
+    #     #
+    #     alias_for = None
+    #     if "alias_for" in qd:
+    #         # If `alias_for` retrieved as a list is a list with a single
+    #         # element and that element is an empty string, then the user wants
+    #         # to clear `alias_for`. We have to watch for where the querydict is
+    #         # actually a dict. (this happens when calling `PUT` in the drf
+    #         # view)
+    #         #
+    #         if isinstance(qd, QueryDict):
+    #             alias_for = qd.getlist("alias_for")
+    #             qd.pop("alias_for")
+    #         else:
+    #             alias_for = qd["alias_for"]
+    #             del qd["alias_for"]
+    #         if alias_for == [""] or alias_for == []:
+    #             alias_for_eas = []
+    #         else:
+    #             try:
+    #                 alias_for_eas = self._lookup_alias_fors(instance, alias_for)
+    #             except ValueError as exc:
+    #                 return Response(
+    #                     {"detail": str(exc)}, status.HTTP_400_BAD_REQUEST
+    #                 )
 
-        serializer = self.get_serializer(instance, data=qd, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+    #     serializer = self.get_serializer(instance, data=qd, partial=partial)
+    #     serializer.is_valid(raise_exception=True)
+    #     self.perform_update(serializer)
 
-        # Set the alias_for's if alias_for is NOT None
-        #
-        if alias_for is not None:
-            instance.alias_for.set(alias_for_eas)
-            # We have to build a new serializer to make sure we have the
-            # alias_for field filled in properly.
-            #
-            serializer = self.get_serializer(instance)
+    #     # Set the alias_for's if alias_for is NOT None
+    #     #
+    #     if alias_for is not None:
+    #         instance.alias_for.set(alias_for_eas)
+    #         # We have to build a new serializer to make sure we have the
+    #         # alias_for field filled in properly.
+    #         #
+    #         serializer = self.get_serializer(instance)
 
-        queryset = self.filter_queryset(self.get_queryset())
-        if queryset._prefetch_related_lookups:
-            # If 'prefetch_related' has been applied to a queryset, we need to
-            # forcibly invalidate the prefetch cache on the instance,
-            # and then re-prefetch related objects
-            instance._prefetched_objects_cache = {}
-            prefetch_related_objects(
-                [instance], *queryset._prefetch_related_lookups
-            )
+    #     queryset = self.filter_queryset(self.get_queryset())
+    #     if queryset._prefetch_related_lookups:
+    #         # If 'prefetch_related' has been applied to a queryset, we need to
+    #         # forcibly invalidate the prefetch cache on the instance,
+    #         # and then re-prefetch related objects
+    #         instance._prefetched_objects_cache = {}
+    #         prefetch_related_objects(
+    #             [instance], *queryset._prefetch_related_lookups
+    #         )
 
-        return Response(serializer.data)
+    #     return Response(serializer.data)
 
 
 ########################################################################

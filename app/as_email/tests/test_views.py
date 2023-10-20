@@ -30,14 +30,17 @@ def _expected_for_email_account(ea: EmailAccount) -> dict:
     EmailAccount such that it should match what we get back via the REST API
     when using IsPartialDict.
     """
-    alias_for = [
-        "http://testserver"
-        + reverse("as_email:email-account-detail", kwargs={"pk": x.pk})
-        for x in ea.alias_for.all()
-    ]
+    # alias_for = [
+    #     "http://testserver"
+    #     + reverse("as_email:email-account-detail", kwargs={"pk": x.pk})
+    #     for x in ea.alias_for.all()
+    # ]
+    alias_for = [x.email_address for x in ea.alias_for.all()]
+    aliases = [x.email_address for x in ea.aliases.all()]
 
     expected = {
         "alias_for": alias_for,
+        "aliases": aliases,
         "autofile_spam": ea.autofile_spam,
         "deactivated": ea.deactivated,
         "deactivated_reason": ea.deactivated_reason,
@@ -415,13 +418,14 @@ class TestEmailAccountEndpoints:
         # Try setting the account to be an alias for `ea_dest`
         #
         ea_new = {
-            "alias_for": [
-                "http://testserver"
-                + reverse(
-                    "as_email:email-account-detail",
-                    kwargs={"pk": ea_dest.pk},
-                ),
-            ],
+            # "alias_for": [
+            #     "http://testserver"
+            #     + reverse(
+            #         "as_email:email-account-detail",
+            #         kwargs={"pk": ea_dest.pk},
+            #     ),
+            # ],
+            "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
             "delivery_method": EmailAccount.ALIAS,
             "forward_to": faker.email(),
@@ -478,13 +482,14 @@ class TestEmailAccountEndpoints:
         # Try setting the account to be an alias for `ea_dest`
         #
         ea_new = {
-            "alias_for": [
-                "http://testserver"
-                + reverse(
-                    "as_email:email-account-detail",
-                    kwargs={"pk": ea_dest.pk},
-                ),
-            ],
+            # "alias_for": [
+            #     "http://testserver"
+            #     + reverse(
+            #         "as_email:email-account-detail",
+            #         kwargs={"pk": ea_dest.pk},
+            #     ),
+            # ],
+            "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
             "delivery_method": EmailAccount.ALIAS,
             "forward_to": faker.email(),
@@ -507,13 +512,14 @@ class TestEmailAccountEndpoints:
         # Let us point at something else entirely.
         #
         mfr = message_filter_rule_factory(email_account=ea)
-        ea_new["alias_for"] = [
-            "http://testserver"
-            + reverse(
-                "as_email:message-filter-rule-detail",
-                kwargs={"email_account_pk": mfr.email_account.pk, "pk": mfr.pk},
-            ),
-        ]
+        # ea_new["alias_for"] = [
+        #     "http://testserver"
+        #     + reverse(
+        #         "as_email:message-filter-rule-detail",
+        #         kwargs={"email_account_pk": mfr.email_account.pk, "pk": mfr.pk},
+        #     ),
+        # ]
+        ea_new["alias_for"] = [mfr.email_account.email_address]
         resp = client.put(url, data=ea_new)
         assert resp.status_code == 400
         assert (
@@ -528,9 +534,7 @@ class TestEmailAccountEndpoints:
 
         # Also make sure that if we send garbage it also fails as a bad request.
         #
-        ea_new["alias_for"] = [
-            "http://testserver/foo/bar/bblah/1/",
-        ]
+        ea_new["alias_for"] = ["booboobimap"]
         resp = client.put(url, data=ea_new)
         assert resp.status_code == 404
 
@@ -545,9 +549,7 @@ class TestEmailAccountEndpoints:
         # XXX We should have a better failure for this but this is good enough
         #     for now.
         #
-        ea_new["alias_for"] = [
-            "https://example.com/foo/bar/bblah/1/",
-        ]
+        ea_new["alias_for"] = ["blipblap"]
         resp = client.put(url, data=ea_new)
         assert resp.status_code == 404
 
@@ -644,13 +646,14 @@ class TestEmailAccountEndpoints:
         # Try setting the account to be an alias for `ea_dest`
         #
         patch_data = {
-            "alias_for": [
-                "http://testserver"
-                + reverse(
-                    "as_email:email-account-detail",
-                    kwargs={"pk": ea_dest.pk},
-                ),
-            ],
+            # "alias_for": [
+            #     "http://testserver"
+            #     + reverse(
+            #         "as_email:email-account-detail",
+            #         kwargs={"pk": ea_dest.pk},
+            #     ),
+            # ],
+            "alias_for": [ea_dest.email_address],
         }
 
         resp = client.patch(url, data=patch_data)
@@ -659,11 +662,14 @@ class TestEmailAccountEndpoints:
 
         # The URL's for the objects do not have the netloc, strip that off.
         #
-        alias_for = [
-            urlparse(x.get_absolute_url()).path for x in ea.alias_for.all()
-        ]
-        assert alias_for == [urlparse(x).path for x in patch_data["alias_for"]]
-        assert alias_for == [urlparse(x).path for x in resp.data["alias_for"]]
+        # alias_for = [
+        #     urlparse(x.get_absolute_url()).path for x in ea.alias_for.all()
+        # ]
+        alias_for = [x.email_address for x in ea.alias_for.all()]
+        assert alias_for == patch_data["alias_for"]
+        assert alias_for == resp.data["alias_for"]
+        # assert alias_for == [urlparse(x).path for x in patch_data["alias_for"]]
+        # assert alias_for == [urlparse(x).path for x in resp.data["alias_for"]]
 
         # And if we submit an different alias is replaces what we already have
         #
@@ -673,13 +679,14 @@ class TestEmailAccountEndpoints:
         # Try setting the account to be an alias for `ea_dest`
         #
         patch_data = {
-            "alias_for": [
-                "http://testserver"
-                + reverse(
-                    "as_email:email-account-detail",
-                    kwargs={"pk": ea_dest.pk},
-                ),
-            ],
+            # "alias_for": [
+            #     "http://testserver"
+            #     + reverse(
+            #         "as_email:email-account-detail",
+            #         kwargs={"pk": ea_dest.pk},
+            #     ),
+            # ],
+            "alias_for": [ea_dest.email_address],
         }
 
         resp = client.patch(url, data=patch_data)
@@ -688,15 +695,18 @@ class TestEmailAccountEndpoints:
 
         # The URL's for the objects do not have the netloc, strip that off.
         #
-        alias_for = [
-            urlparse(x.get_absolute_url()).path for x in ea.alias_for.all()
-        ]
-        assert alias_for == [urlparse(x).path for x in patch_data["alias_for"]]
-        assert alias_for == [urlparse(x).path for x in resp.data["alias_for"]]
+        # alias_for = [
+        #     urlparse(x.get_absolute_url()).path for x in ea.alias_for.all()
+        # ]
+        alias_for = [x.email_address for x in ea.alias_for.all()]
+        assert alias_for == patch_data["alias_for"]
+        assert alias_for == resp.data["alias_for"]
+        # assert alias_for == [urlparse(x).path for x in patch_data["alias_for"]]
+        # assert alias_for == [urlparse(x).path for x in resp.data["alias_for"]]
 
         # and submitting an empty string clears the alias_for
         #
-        patch_data = {"alias_for": ""}
+        patch_data = {"alias_for": []}
 
         resp = client.patch(url, data=patch_data)
         assert resp.status_code == 200
