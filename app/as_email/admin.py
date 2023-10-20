@@ -40,6 +40,22 @@ class ServerAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
 
 
+class AliasForInline(admin.TabularInline):
+    model = EmailAccount.alias_for.through
+    fk_name = "from_email_account"
+    extra = 1
+    verbose_name = "alias for"
+    verbose_name_plural = "aliases for"
+
+
+class AliasesInline(admin.TabularInline):
+    model = EmailAccount.alias_for.through
+    fk_name = "to_email_account"
+    extra = 1
+    verbose_name = "alias"
+    verbose_name_plural = "aliases"
+
+
 @admin.register(EmailAccount)
 class EmailAccountAdmin(admin.ModelAdmin):
     list_display = (
@@ -72,7 +88,10 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "owner",
         "email_address",
     )
-    raw_id_fields = ("alias_for",)
+    inlines = [
+        AliasForInline,
+        AliasesInline,
+    ]
     date_hierarchy = "created_at"
 
 
