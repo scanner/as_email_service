@@ -71,7 +71,8 @@ INSTALLED_APPS = [
     "ordered_model",
     "rest_framework",
     "dry_rest_permissions",
-    "bulma",
+    "crispy_forms",
+    "crispy_bulma",
     "django_simple_bulma",
     "project",  # NOTE: project wide templatetags, etc.
     "as_email",
@@ -313,3 +314,8 @@ SETTINGS_EXPORT = [
     "DEBUG",
     "VERSION",
 ]
+
+# django-crispy-forms
+#
+CRISPY_ALLOWED_TEMPLATE_PACKS = ("bulma",)
+CRISPY_TEMPLATE_PACK = "bulma"

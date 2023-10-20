@@ -1,5 +1,5 @@
 {% extends "registration/base.html" %}
-{% load bulma_tags i18n %}
+{% load crispy_forms_tags i18n %}
 
 {% block content %}
 
@@ -9,7 +9,7 @@
 
   <form method="post" action="{% url 'login' %}">
     {% csrf_token %}
-    {{ form|bulma }}
+    {{ form|crispy }}
     <div class="field">
       <button type="submit" class="button is-primary">{% trans 'Log in' %}</button>
     </div>

@@ -1,11 +1,12 @@
 aiofiles
 aiologger
 aiosmtpd
+crispy-bulma
 cryptography>=41.0.4
 csscompressor
 django
 django-anymail
-django-bulma
+django-crispy-forms
 django-cryptography
 django-dry-rest-permissions
 django-environ

@@ -78,6 +78,8 @@ coverage==7.3.2
     #   -r development.in
     #   -r lint.txt
     #   pytest-cov
+crispy-bulma==0.10.0
+    # via -r production.txt
 cryptography==41.0.4
     # via
     #   -r lint.txt
@@ -102,9 +104,10 @@ django==4.2.6
     # via
     #   -r lint.txt
     #   -r production.txt
+    #   crispy-bulma
     #   django-anymail
     #   django-appconf
-    #   django-bulma
+    #   django-crispy-forms
     #   django-cryptography
     #   django-extensions
     #   django-filter
@@ -123,10 +126,12 @@ django-appconf==1.0.5
     #   -r production.txt
     #   django-compressor
     #   django-cryptography
-django-bulma==0.8.3
-    # via -r production.txt
 django-compressor==4.4
     # via -r production.txt
+django-crispy-forms==2.1
+    # via
+    #   -r production.txt
+    #   crispy-bulma
 django-cryptography==1.1
     # via -r production.txt
 django-dry-rest-permissions==1.2.0

@@ -34,6 +34,8 @@ click==8.1.7
     # via
     #   uvicorn
     #   wait-for-it
+crispy-bulma==0.10.0
+    # via -r production.in
 cryptography==41.0.4
     # via
     #   -r production.in
@@ -45,9 +47,10 @@ csscompressor==0.9.5
 django==4.2.6
     # via
     #   -r production.in
+    #   crispy-bulma
     #   django-anymail
     #   django-appconf
-    #   django-bulma
+    #   django-crispy-forms
     #   django-cryptography
     #   django-extensions
     #   django-filter
@@ -63,10 +66,12 @@ django-appconf==1.0.5
     # via
     #   django-compressor
     #   django-cryptography
-django-bulma==0.8.3
-    # via -r production.in
 django-compressor==4.4
     # via -r production.in
+django-crispy-forms==2.1
+    # via
+    #   -r production.in
+    #   crispy-bulma
 django-cryptography==1.1
     # via -r production.in
 django-dry-rest-permissions==1.2.0
