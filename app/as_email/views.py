@@ -22,23 +22,21 @@ These views are for users. It needs to provide functions to:
 #
 import json
 import logging
-from typing import List
-from urllib.parse import urlparse
+from collections import defaultdict
 
 # 3rd party imports
 #
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-
-# from django.db.models.query import prefetch_related_objects
-from django.http import (  # QueryDict,
+from django.http import (
     Http404,
     HttpResponse,
     HttpResponseBadRequest,
     JsonResponse,
+    QueryDict,
 )
 from django.shortcuts import render
-from django.urls import resolve, reverse
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from dry_rest_permissions.generics import (
@@ -47,6 +45,7 @@ from dry_rest_permissions.generics import (
 )
 from rest_framework import mixins, serializers, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ErrorDetail
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
@@ -475,113 +474,46 @@ class EmailAccountViewSet(
 
     ####################################################################
     #
-    def _lookup_alias_fors(
-        self, instance, alias_for: List[str]
-    ) -> List[EmailAccount]:
+    def update(self, request, *args, **kwargs):
         """
-        A helper function for `self.update()` that looks up and validates
-        all of the EmailAccount objects referenced by URL in the `alias_for`
-        list.
-
-        We resolve the path of each URL to the view it reprsents.
-        We make sure that the classes for all the resolutions are EmailAccounts.
-        We make sure that the EmailAccount's are all owned by the same user.
+        Since we have the alias_for ManyToManyField with a through
+        relationship where the user can only add email accounts to aliases and
+        alias_for where the email account owner == instance.owner we have to
+        enforce that check here.
         """
-        # XXX Should make sure that the `netloc` is valid for this server.
-        #     be strange us to ignroe a netlock of,say, 'http://google.com'
+
+        # Make sure all the EmailAccounts aliases and alias_fors listed are
+        # ones owned by the same owner as this EmailAccount object.
         #
-        eas = [urlparse(x).path for x in alias_for]
-
-        # NOTE: Raises a 404 if `x` can not be resolved.
+        # NOTE: If you need to work around this you can do it from the
+        #       django-admin console. Maybe we will add a check for "admin"
+        #       that lets you get around this here but for now the REST
+        #       endpoint only lets you alias to email accounts that have the
+        #       same owner.
         #
-        resolved = [resolve(x) for x in eas]
-        if not all(x[0].cls is EmailAccountViewSet for x in resolved):
-            raise ValueError("All referenced items must be EmailAccounts")
+        instance = self.get_object()
+        bad_fields = defaultdict(list)
+        for field in ["alias_for", "aliases"]:
+            if field in request.data:
+                if isinstance(request.data, QueryDict):
+                    addrs = request.data.getlist(field)
+                else:
+                    addrs = request.data[field]
+                eas = EmailAccount.objects.filter(email_address__in=addrs)
+                for ea in eas:
+                    if ea.owner != instance.owner:
+                        bad_fields[field].append(
+                            ErrorDetail(
+                                f"{ea.email_address}: can only alias email "
+                                "accounts owned by the same user: "
+                                f"{instance.owner}",
+                                code="permission_denied",
+                            )
+                        )
+        if bad_fields:
+            return Response(bad_fields, status.HTTP_403_FORBIDDEN)
 
-        # The `in` relationship works even if these are strings. This is mainly
-        # doing an extra check. Questionable to leave it in here.
-        #
-        pks = [int(x[2]["pk"]) for x in resolved]
-        eas = list(EmailAccount.objects.filter(pk__in=pks))
-        if len(eas) != len(alias_for):
-            # XXX we should determine which reference did not exist and report
-            #     that.
-            raise ValueError("all specified EmailAccounts must actually exist")
-        for ea in eas:
-            if ea.owner != instance.owner:
-                raise ValueError(
-                    "can only alias_for email accounts owned by the same user."
-                )
-        return eas
-
-    # ####################################################################
-    # #
-    # def update(self, request, *args, **kwargs):
-    #     """
-    #     Since we have a ManyToManyField with a Through relationship we need
-    #     to handle this ourselves.
-    #     """
-    #     instance = self.get_object()
-    #     partial = kwargs.pop("partial", False)
-
-    #     # We have to copy the QueryDict because the one we got is immutable and
-    #     # we need to mutate it to remove `alias_for` so that the serializer
-    #     # does not crap out on our many-to-many-via-through relationship.
-    #     #
-    #     qd = request.data.copy()
-
-    #     # Now we have our logic for if the `alias_for` was included in the
-    #     # QueryDict. If it is not, then there is no change to the set of
-    #     # aliases.
-    #     #
-    #     alias_for = None
-    #     if "alias_for" in qd:
-    #         # If `alias_for` retrieved as a list is a list with a single
-    #         # element and that element is an empty string, then the user wants
-    #         # to clear `alias_for`. We have to watch for where the querydict is
-    #         # actually a dict. (this happens when calling `PUT` in the drf
-    #         # view)
-    #         #
-    #         if isinstance(qd, QueryDict):
-    #             alias_for = qd.getlist("alias_for")
-    #             qd.pop("alias_for")
-    #         else:
-    #             alias_for = qd["alias_for"]
-    #             del qd["alias_for"]
-    #         if alias_for == [""] or alias_for == []:
-    #             alias_for_eas = []
-    #         else:
-    #             try:
-    #                 alias_for_eas = self._lookup_alias_fors(instance, alias_for)
-    #             except ValueError as exc:
-    #                 return Response(
-    #                     {"detail": str(exc)}, status.HTTP_400_BAD_REQUEST
-    #                 )
-
-    #     serializer = self.get_serializer(instance, data=qd, partial=partial)
-    #     serializer.is_valid(raise_exception=True)
-    #     self.perform_update(serializer)
-
-    #     # Set the alias_for's if alias_for is NOT None
-    #     #
-    #     if alias_for is not None:
-    #         instance.alias_for.set(alias_for_eas)
-    #         # We have to build a new serializer to make sure we have the
-    #         # alias_for field filled in properly.
-    #         #
-    #         serializer = self.get_serializer(instance)
-
-    #     queryset = self.filter_queryset(self.get_queryset())
-    #     if queryset._prefetch_related_lookups:
-    #         # If 'prefetch_related' has been applied to a queryset, we need to
-    #         # forcibly invalidate the prefetch cache on the instance,
-    #         # and then re-prefetch related objects
-    #         instance._prefetched_objects_cache = {}
-    #         prefetch_related_objects(
-    #             [instance], *queryset._prefetch_related_lookups
-    #         )
-
-    #     return Response(serializer.data)
+        return super().update(request, *args, **kwargs)
 
 
 ########################################################################
