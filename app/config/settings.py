@@ -17,7 +17,7 @@ from pathlib import Path
 #
 import environ
 import redis
-from django.core.management.utils import get_random_secret_key
+from django.utils.crypto import get_random_string
 
 # This is be "/app" inside the docker container.
 #
@@ -27,10 +27,13 @@ BASE_DIR = Path(__file__).parent.parent
 #       during the docker image build phase. When actually run this will be
 #       via a .env passed to the container.
 #
-random_secret = get_random_secret_key()
-env = environ.Env(
+# NOTE: We provide our own set of characters because we need to specifically
+#       exclude '$' so that environ does not think it is some proxied value.
+#
+random_chars = "abcdefghijklmnopqrstuvwxyz0123456789!@#%^&*(-_=+)"
+env = environ.FileAwareEnv(
     DEBUG=(bool, False),
-    DJANGO_SECRET_KEY=(str, random_secret),
+    DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
     SITE_NAME=(str, "example.com"),
     DATABASE_URL=(str, "sqlite:///:memory:"),
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
@@ -40,6 +43,7 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, list()),
     REDIS_SERVER=(str, "redis"),
     VERSION=(str, "unknown"),
+    CACHE_URL=(str, "dummycache://"),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -171,12 +175,7 @@ STATICFILES_FINDERS = [
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": f"redis://{REDIS_SERVER}:6379",
-    }
-}
+CACHES = {"default": env.cache_url("CACHE_URL")}
 
 HUEY = {
     "huey_class": "huey.RedisHuey",
