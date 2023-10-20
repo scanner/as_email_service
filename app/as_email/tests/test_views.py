@@ -424,14 +424,10 @@ class TestEmailAccountEndpoints:
         expected = _expected_for_email_account(ea)
         assert resp.data == IsPartialDict(expected)
 
-        # Also make sure we can remove alias_for's.  NOTE: When using json,
-        # since the remote end gets the complete dict, we have to specify all
-        # required fields. We can get away with leaving them out on
-        # html/formdata.
+        # Also make sure we can remove alias_for's.
         #
         ea_new = {
             "alias_for": [],
-            "aliases": [],
             "autofile_spam": True,
             "delivery_method": EmailAccount.LOCAL_DELIVERY,
             "forward_to": faker.email(),

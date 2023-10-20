@@ -78,11 +78,13 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         many=True,
         slug_field="email_address",
         queryset=EmailAccount.objects.all(),
+        required=False,
     )
     aliases = serializers.SlugRelatedField(
         many=True,
         slug_field="email_address",
         queryset=EmailAccount.objects.all(),
+        required=False,
     )
 
     class Meta:
