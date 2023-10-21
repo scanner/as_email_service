@@ -11,7 +11,7 @@
 
     <div id="asemail-vue-app">
       {% if email_accounts %}
-        {% for email_account in email_accounts %}
+        {% for email_account, email_account_form in email_accounts %}
           <div class="card">
             <header class="card-header">
               <p class="card-header-title">{{email_account.email_address}}</p>
@@ -23,12 +23,7 @@
             </header>
             <div id="email-account-{{email_account.pk}}" class="is-collapsible">
               <div class="card-content">
-                <p class="title is-4">
-                  Delivery method: {{ email_account.delivery_method }}
-                </p>
-                <p class="subtitle is-5">
-                  Owner: {{ email_account.owner }}
-                </p>
+                {% crispy email_account_form %}
               </div>
               <footer class="card-footer">
                 <p class="card-footer-item">

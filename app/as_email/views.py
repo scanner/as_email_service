@@ -50,6 +50,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
+from .forms import EmailAccountForm
+
 # Project imports
 #
 from .models import EmailAccount, MessageFilterRule, Server
@@ -101,11 +103,13 @@ def index(request):
     #     during django template rendering, @login_required)
     user = request.user
     email_accounts = EmailAccount.objects.filter(owner=user)
-    email_accounts_data = []
-    for ea in email_accounts:
-        email_accounts_data.append(
-            EmailAccountSerializer(ea, context={"request": request})
-        )
+    email_accounts_data = [
+        EmailAccountSerializer(ea, context={"request": request})
+        for ea in email_accounts
+    ]
+    email_accounts_w_forms = [
+        (ea, EmailAccountForm(instance=ea)) for ea in email_accounts
+    ]
 
     # Create a dicdtionary that gives the field info from the django rest
     # framework for an EmailAccount object so that our UI knows how to
@@ -130,7 +134,7 @@ def index(request):
         "myTitle": "Hello Vue!",
     }
     context = {
-        "email_accounts": email_accounts,
+        "email_accounts": email_accounts_w_forms,
         "vue_data": vue_data,
     }
     return render(request, "as_email/index.html", context)
