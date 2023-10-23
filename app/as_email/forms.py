@@ -51,6 +51,7 @@ class EmailAccountForm(forms.ModelForm):
             self.fields["aliases"].queryset = EmailAccount.objects.filter(
                 owner=self.instance.owner
             ).exclude(pk=self.instance.pk)
+            self.fields["aliases"].initial = self.instance.aliases.all()
             self.fields["alias_for"].queryset = EmailAccount.objects.filter(
                 owner=self.instance.owner
             ).exclude(pk=self.instance.pk)
