@@ -23,17 +23,17 @@
             </header>
             <div id="email-account-{{email_account.pk}}" class="is-collapsible">
               <div class="card-content">
-                {% crispy email_account_form %}
+                {% crispy email_account_form email_account_form.helper %}
               </div>
               <footer class="card-footer">
                 <p class="card-footer-item">
                   <span>
-                    <input class="button" type="submit" value="Apply">
+                    <input class="button is-primary" type="submit" value="Apply">
                   </span>
                 </p>
                 <p class="card-footer-item">
                   <span>
-                    <input class="button" type="reset" value="Reset">
+                    <input class="button is-info" type="reset" value="Reset">
                   </span>
                 </p>
               </footer>

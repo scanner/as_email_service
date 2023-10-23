@@ -15,6 +15,7 @@ console.log(initialData.email_account_list_url);
 // the EmailAccount cards.
 //
 const emailAccountCards = bulmaCollapsible.attach(".is-collapsible");
+BulmaTagsInput.attach();
 
 let res = await fetch(
     initialData.email_accounts_data[0].url,

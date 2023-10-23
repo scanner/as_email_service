@@ -301,9 +301,10 @@ BULMA_SETTINGS = {
         "bulma-modal",
         "bulma-tooltip",
         "bulma-divider",
-        "bulma-tags",
+        "bulma-tagsinput",
         "bulma-switch",
         "bulma-coolcheckboxes",
+        "bulma-ribbon",
     ],
     "output_style": "nested" if DEBUG else "compressed",
 }
@@ -317,5 +318,6 @@ SETTINGS_EXPORT = [
 
 # django-crispy-forms
 #
-CRISPY_ALLOWED_TEMPLATE_PACKS = ("bulma",)
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bulma"
 CRISPY_TEMPLATE_PACK = "bulma"
+CRISPY_FAIL_SILENTLY = not DEBUG
