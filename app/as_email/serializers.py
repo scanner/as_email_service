@@ -8,6 +8,7 @@ Serializers for the rest framework of our models
 
 # 3rd party imports
 #
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from rest_framework_nested.relations import (
     NestedHyperlinkedIdentityField,
@@ -64,6 +65,49 @@ class MoveOrderSerializer(serializers.Serializer):
 ########################################################################
 ########################################################################
 #
+class EmailAccountRelatedField(serializers.SlugRelatedField):
+    """
+    Override `get_queryset` to provide the limit queryset of only valid
+    EmailAccounts.
+    """
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        """
+        Replace the generic provided queryset with one that only returns
+        the valid related email accounts.
+
+        This field we know is only used by the `EmailAccountSerializer` and we
+        also know that this will **always** be a `many=True` field. Because of
+        this we can safely access `self.parent.parent.instance`. When you make
+        a related field that is `many=True` drf: "Relationships with
+        `many=True` transparently get coerced into instead being a
+        ManyRelatedField with a child relationship."
+
+        See: https://github.com/encode/django-rest-framework/blob/f56b85b7dd7e4f786e0769bba6b7609d4507da83/rest_framework/relations.py#L471
+
+        This lets us access the EmailAccount instance that this serializer is
+        for, which lets us create a QuerySet that only shows to the REST API
+        view the EmailAccounts that this EmailAccount is allowed to have for
+        `aliases` and `alias_for`.
+        """
+        # The pre-populated list of valid EmailAccount's for `aliases` and
+        # `for_alias` are EmailAccounts that have the same owner _except_ for
+        # the EmailAccount being serialized (you can not alias to yourself.)
+        #
+        if self.parent.parent.instance is None:
+            queryset = EmailAccount.objects.none()
+        else:
+            queryset = EmailAccount.objects.filter(
+                owner=self.parent.parent.instance.owner
+            ).exclude(pk=self.parent.parent.instance.pk)
+        return queryset
+
+
+########################################################################
+########################################################################
+#
 class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     url = serializers.HyperlinkedIdentityField(
         view_name="as_email:email-account-detail", read_only=True
@@ -74,21 +118,27 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         view_name="as_email:message-filter-rule-list",
         lookup_url_kwarg="email_account_pk",
     )
-    alias_for = serializers.SlugRelatedField(
+
+    # The `EmailAccountRelatedField` makes sure that the queryset for
+    # presenting valid EmailAccount's is limited to the EmailAccount's a user
+    # is permitted to see.
+    #
+    alias_for = EmailAccountRelatedField(
         many=True,
         slug_field="email_address",
-        queryset=EmailAccount.objects.all(),
         required=False,
-        html_cutoff=0,
-        html_cutoff_text="",
+        help_text=EmailAccount.alias_for.field.help_text,
     )
-    aliases = serializers.SlugRelatedField(
+    aliases = EmailAccountRelatedField(
         many=True,
         slug_field="email_address",
-        queryset=EmailAccount.objects.all(),
         required=False,
-        html_cutoff=0,
-        html_cutoff_text="",
+        help_text=_(
+            "This is the reverse part of the `alias_for` relationship. It "
+            "lists all the EmailAccounts that are an alias for this "
+            "EmailAccount. NOTE: Adding and rmeove entries from this field "
+            "updates `alias_for` on the added or removed EmailAccount."
+        ),
     )
 
     class Meta:

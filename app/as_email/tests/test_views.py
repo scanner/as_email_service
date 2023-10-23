@@ -501,7 +501,6 @@ class TestEmailAccountEndpoints:
             "spam_score_threshold": 10,
         }
         resp = client.put(url, data=ea_new)
-        print(resp.data)
         assert resp.status_code == 403
         # The response has a key for each invalid field in our PUT request
         #
@@ -659,6 +658,8 @@ class TestEmailAccountEndpoints:
             "alias_for": [ea_dest.email_address],
         }
 
+        # Try both as html encoded form and as a json patch.
+        #
         resp = client.patch(url, data=patch_data)
         assert resp.status_code == 200
         ea.refresh_from_db()
@@ -680,7 +681,7 @@ class TestEmailAccountEndpoints:
             "alias_for": [ea_dest.email_address],
         }
 
-        resp = client.patch(url, data=patch_data)
+        resp = client.patch(url, data=patch_data, format="json")
         assert resp.status_code == 200
         ea.refresh_from_db()
 
@@ -701,8 +702,6 @@ class TestEmailAccountEndpoints:
         resp = client.patch(url, data=patch_data, format="json")
         assert resp.status_code == 200
         ea.refresh_from_db()
-        print(f"alias for: {ea.alias_for}")
-        print(f"resp data: {resp.data}")
         assert ea.alias_for.count() == 0
         assert len(resp.data["alias_for"]) == 0
 
@@ -745,6 +744,24 @@ class TestEmailAccountEndpoints:
 
         resp = client.delete(url)
         assert resp.status_code == 405
+
+    ####################################################################
+    #
+    def test_options(self, setup):
+        """
+        Make sure that getting `options` for an EmailAccount works.
+        """
+        client = setup["client"]
+        ea = setup["email_account"]
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+
+        resp = client.options(url)
+        assert resp.status_code == 200
+
+        # We are just going to test that the `aliases` attribute is defined for
+        # `PUT` operations and that it is of type `field`.
+        #
+        assert resp.data["actions"]["PUT"]["aliases"]["type"] == "field"
 
 
 ########################################################################
@@ -1130,3 +1147,19 @@ class TestMessageFilterRuleEndpoints:
         )
         resp = client.post(url, data={"command": "down"})
         assert resp.status_code == 403
+
+    ####################################################################
+    #
+    def test_options(self, setup):
+        """
+        Make sure that getting `options` for an EmailAccount works.
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        mfr = ea.message_filter_rules.all().first()
+        url = reverse(
+            "as_email:message-filter-rule-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": mfr.pk},
+        )
+        resp = client.options(url)
+        assert resp.status_code == 200
