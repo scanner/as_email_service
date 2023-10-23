@@ -136,7 +136,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         help_text=_(
             "This is the reverse part of the `alias_for` relationship. It "
             "lists all the EmailAccounts that are an alias for this "
-            "EmailAccount. NOTE: Adding and rmeove entries from this field "
+            "EmailAccount. NOTE: Adding and removing entries from this field "
             "updates `alias_for` on the added or removed EmailAccount."
         ),
     )

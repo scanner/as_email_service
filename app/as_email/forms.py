@@ -4,12 +4,12 @@ Forms for as_email.
 # system imports
 #
 
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit
-
 # 3rd party imports
 #
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Submit
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 # project imports
 #
@@ -20,8 +20,18 @@ from .models import EmailAccount
 ########################################################################
 #
 class EmailAccountForm(forms.ModelForm):
-    aliases = forms.ModelMultipleChoiceField(queryset=None)
-    alias_for = forms.ModelMultipleChoiceField(queryset=None)
+    aliases = forms.ModelMultipleChoiceField(
+        queryset=None,
+        help_text=_(
+            "This is the reverse part of the `alias_for` relationship. It "
+            "lists all the EmailAccounts that are an alias for this "
+            "EmailAccount. NOTE: Adding and removing entries from this field "
+            "updates `alias_for` on the added or removed EmailAccount."
+        ),
+    )
+    alias_for = forms.ModelMultipleChoiceField(
+        queryset=None, help_text=EmailAccount.alias_for.field.help_text
+    )
 
     class Meta:
         model = EmailAccount
