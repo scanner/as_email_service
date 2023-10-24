@@ -29,12 +29,22 @@ class EmailAccountForm(forms.ModelForm):
             "EmailAccount. NOTE: Adding and removing entries from this field "
             "updates `alias_for` on the added or removed EmailAccount."
         ),
-        # widget=forms.SelectMultiple(attrs={"data-type": "tags", "data-placeholder": "Choose email accounts"}),
+        widget=forms.SelectMultiple(
+            attrs={
+                "data-type": "tags",
+                "data-placeholder": "Choose email accounts",
+            }
+        ),
     )
     alias_for = forms.ModelMultipleChoiceField(
         queryset=None,
         help_text=EmailAccount.alias_for.field.help_text,
-        # widget=forms.SelectMultiple(attrs={"data-type": "tags", "data-placeholder": "Choose email accounts"}),
+        widget=forms.SelectMultiple(
+            attrs={
+                "data-type": "tags",
+                "data-placeholder": "Choose email accounts",
+            }
+        ),
     )
 
     class Meta:

@@ -10,13 +10,15 @@ import { createApp, ref, onMounted } from "https://unpkg.com/vue@3/dist/vue.esm-
 // descriptions.
 //
 const initialData = JSON.parse(document.getElementById('vue-data').textContent);
-console.log(initialData.email_account_list_url);
+
 // Hook up the 'bulma-collapsible' support js code for collapsing and expanding
 // the EmailAccount cards.
 //
 const emailAccountCards = bulmaCollapsible.attach(".is-collapsible");
-BulmaTagsInput.attach();
+const bulmaTags = BulmaTagsInput.attach();
 
+// Example using `await` and `fetch` together.
+//
 let res = await fetch(
     initialData.email_accounts_data[0].url,
     {method:"OPTIONS"}
@@ -30,14 +32,28 @@ if (res.ok) {
 }
 
 const origTitle = "yup, you got that";
+
+//////////////////////////////////////////
+//
+// Vue reference objects
+//
 const myTitle = ref(origTitle);
 
+
+//////////////////////////////////////////
+//
+// Vue component functions
+//
 function update_foo() {
     myTitle.value="Clicked";
     setTimeout(() => myTitle.value=origTitle, 5000);
 }
 
-createApp({
+//////////////////////////////////////////
+//
+// Root Vue app
+//
+const app = createApp({
     setup() {
         return {
             myTitle,
@@ -45,4 +61,5 @@ createApp({
         };
     },
     delimiters: ['[[', ']]'],
-}).mount('#vue-app');
+});
+app.mount('#vue-app');

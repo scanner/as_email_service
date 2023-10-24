@@ -8,6 +8,7 @@
     {% compress css %}
     {% block css %}
       {% project_bulma_css %}
+      <link rel="stylesheet" href="{% static 'css/bulma-tagsinput.min.css' %}">
       <link rel="stylesheet" href="{% static 'css/base.css' %}">
       {% block extra_css %}{% endblock extra_css %}
     {% endblock css %}
@@ -15,10 +16,12 @@
     {% block defer_noncompress_js %}
       <script async type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
       <script async nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+
     {% endblock defer_noncompress_js %}
     {% compress js %}
     {% block defer_compress_js %}
       {% project_third_party_js %}
+      <script defer type="text/javascript" src="{% static 'js/bulma-tagsinput.js' %}"></script>
       <script defer type="text/javascript" src="{% static 'js/base.js' %}"></script>
     {% endblock defer_compress_js %}
     {% endcompress %}
@@ -94,9 +97,7 @@
         </div>
       </nav>
   {% endblock header %}
-
   {% block hero %}{% endblock hero %}
-
   <div class="container hero is-fullheight">
     <section class="section">
       <div class="container">

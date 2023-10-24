@@ -301,7 +301,7 @@ BULMA_SETTINGS = {
         "bulma-modal",
         "bulma-tooltip",
         "bulma-divider",
-        "bulma-tagsinput",
+        # "bulma-tagsinput",  # NOTE: Had to update so we got a working version
         "bulma-switch",
         "bulma-coolcheckboxes",
         "bulma-ribbon",
