@@ -20,7 +20,9 @@ from base64 import b64decode
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.utils import parseaddr
-from typing import List, Optional
+from typing import Any, List, Optional
+
+import sentry_sdk
 
 # 3rd party imports
 #
@@ -38,11 +40,11 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from pydantic import BaseModel
-
-from as_email.deliver import make_delivery_status_notification
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # Project imports
 #
+from as_email.deliver import make_delivery_status_notification
 from as_email.models import EmailAccount, InactiveEmail
 from as_email.tasks import dispatch_incoming_email
 from as_email.utils import write_spooled_email
@@ -83,6 +85,24 @@ class AsyncioAuthSMTP(SMTP):
     server that calls the authenticator via await.
     """
 
+    async def _authenticate(self, mechanism: str, auth_data: Any):
+        if self._authenticator is not None:
+            # self.envelope is likely still empty, but we'll pass it anyways to
+            # make the invocation similar to the one in _call_handler_hook
+            auth_result = await self._authenticator(
+                self, self.session, self.envelope, mechanism, auth_data
+            )
+            return auth_result
+        else:
+            assert self._auth_callback is not None
+            assert isinstance(auth_data, LoginPassword)
+            if self._auth_callback(mechanism, *auth_data):
+                return AuthResult(
+                    success=True, handled=True, auth_data=auth_data
+                )
+            else:
+                return AuthResult(success=False, handled=False)
+
     ####################################################################
     #
     async def auth_PLAIN(self, _, args: List[str]) -> AuthResult:
@@ -113,7 +133,10 @@ class AsyncioAuthSMTP(SMTP):
         # NOTE: The following `await` is the only difference from the original
         #       source.
         #
-        return await self._authenticate("PLAIN", LoginPassword(login, password))
+        auth_result = await self._authenticate(
+            "PLAIN", LoginPassword(login, password)
+        )
+        return auth_result
 
     ####################################################################
     #
@@ -141,7 +164,10 @@ class AsyncioAuthSMTP(SMTP):
         # NOTE: The following `await` is the only difference from the original
         #       source.
         #
-        return await self._authenticate("LOGIN", LoginPassword(login, password))
+        auth_result = await self._authenticate(
+            "LOGIN", LoginPassword(login, password)
+        )
+        return auth_result
 
 
 ########################################################################
@@ -156,6 +182,25 @@ class AsyncioAuthController(Controller):
     #
     def factory(self):
         return AsyncioAuthSMTP(self.handler, **self.SMTP_kwargs)
+
+    ####################################################################
+    #
+    def _run(self, *args, **kwargs):
+        """
+        Hook sentry_io's AsyncioIntegration in to our event loop.
+        """
+        asyncio.set_event_loop(self.loop)
+        if settings.SENTRY_DSN is not None:
+            sentry_sdk.init(
+                dsn=settings.SENTRY_DSN,
+                # Set traces_sample_rate to 1.0 to capture 100%
+                # of transactions for performance monitoring.
+                traces_sample_rate=1.0,
+                integrations=[
+                    AsyncioIntegration(),
+                ],
+            )
+        super()._run(*args, **kwargs)
 
 
 ########################################################################

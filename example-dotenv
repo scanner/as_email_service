@@ -40,3 +40,7 @@ RELEASE_VERSION=latest
 # its hostname is "redis"
 #
 REDIS_SERVER=redis
+
+# If you have a sentry project setup
+#
+SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0

@@ -33,6 +33,7 @@ pytz
 pyyaml
 redispy
 rich
+sentry-sdk[django]
 uvicorn
 wait-for-it
 whitenoise

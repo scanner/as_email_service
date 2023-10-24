@@ -13,10 +13,12 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 #
 from pathlib import Path
 
-# 3rd party imports
-#
 import environ
 import redis
+
+# 3rd party imports
+#
+import sentry_sdk
 from django.utils.crypto import get_random_string
 
 # This is be "/app" inside the docker container.
@@ -44,6 +46,7 @@ env = environ.FileAwareEnv(
     REDIS_SERVER=(str, "redis"),
     VERSION=(str, "unknown"),
     CACHE_URL=(str, "dummycache://"),
+    SENTRY_DSN=(str, None),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -54,6 +57,19 @@ SITE_NAME = env("SITE_NAME")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 REDIS_SERVER = env("REDIS_SERVER")
 VERSION = env("VERSION")
+
+SENTRY_DSN = env("SENTRY_DSN")
+if SENTRY_DSN is not None:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for performance monitoring.
+        traces_sample_rate=1.0,
+        # Set profiles_sample_rate to 1.0 to profile 100%
+        # of sampled transactions.
+        # We recommend adjusting this value in production.
+        profiles_sample_rate=1.0,
+    )
 
 # Application definition
 
