@@ -47,6 +47,7 @@ env = environ.FileAwareEnv(
     VERSION=(str, "unknown"),
     CACHE_URL=(str, "dummycache://"),
     SENTRY_DSN=(str, None),
+    SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -58,13 +59,14 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 REDIS_SERVER = env("REDIS_SERVER")
 VERSION = env("VERSION")
 
+SENTRY_TRACES_SAMPLE_RATE = env("SENTRY_TRACES_SAMPLE_RATE")
 SENTRY_DSN = env("SENTRY_DSN")
 if SENTRY_DSN is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         # Set traces_sample_rate to 1.0 to capture 100%
         # of transactions for performance monitoring.
-        traces_sample_rate=1.0,
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
         # Set profiles_sample_rate to 1.0 to profile 100%
         # of sampled transactions.
         # We recommend adjusting this value in production.
