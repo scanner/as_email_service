@@ -1,6 +1,7 @@
 // AS Email App Vue/JS file
 //
 import { createApp, ref, onMounted } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
+import EmailAccount from './email_account.js';
 
 // Get the data that the as_email service filled the document with that
 // contains information about all the EmailAccount's.
@@ -54,6 +55,9 @@ function update_foo() {
 // Root Vue app
 //
 const app = createApp({
+    components: {
+        EmailAccount
+    },
     setup() {
         return {
             myTitle,
