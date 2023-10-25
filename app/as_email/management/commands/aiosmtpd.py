@@ -200,6 +200,7 @@ class AsyncioAuthController(Controller):
                 integrations=[
                     AsyncioIntegration(),
                 ],
+                environment="devel" if settings.DEBUG else "production",
             )
         super()._run(*args, **kwargs)
 
