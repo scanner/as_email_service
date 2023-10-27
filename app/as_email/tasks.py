@@ -23,7 +23,7 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 
 # Project imports
 #
-from .deliver import deliver_message, make_delivery_status_notification
+from .deliver import deliver_message, report_failed_message
 from .models import EmailAccount, InactiveEmail, Server
 from .utils import BOUNCE_TYPES_BY_TYPE_CODE
 
@@ -64,13 +64,22 @@ def dispatch_spooled_outgoing_email():
         outgoing_spool_dir = Path(server.outgoing_spool_dir)
         for spooled_message_file in outgoing_spool_dir.iterdir():
             msg_count += 1
-            message = spooled_message_file.read_bytes()
+            message = email.message_from_bytes(
+                spooled_message_file.read_bytes(),
+                policy=email.policy.default,
+            )
+            rcpt_tos = []
+            for hdr in ("To", "Cc", "Bcc"):
+                rcpt_tos.extend(message.get_all(hdr, []))
+
             delete_message = True
             try:
                 # Try sending the message again but do not write it to the
                 # spool if it fails.
                 #
-                delete_message = server.send_email(
+                delete_message = server.send_email_via_smtp(
+                    message["From"],
+                    rcpt_tos,
                     message,
                     spool_on_retryable=False,
                 )
@@ -80,6 +89,23 @@ def dispatch_spooled_outgoing_email():
                 #
                 delete_message = True
                 logger.exception(f"Unable to retry sending email: {exc}")
+                failed_message = cast(
+                    EmailMessage,
+                    email.message_from_bytes(
+                        message,
+                        policy=email.policy.default,
+                    ),
+                )
+
+                report_failed_message(
+                    failed_message["From"],
+                    failed_message,
+                    report_text=f"Unable to send email: {str(exc)}",
+                    subject=f"Failed to send: {failed_message['Subject']}",
+                    action="failed",
+                    status="5.1.1",
+                    diagnostic=f"smtp; {str(exc)}",
+                )
 
             if delete_message:
                 spooled_message_file.unlink(missing_ok=True)
@@ -319,38 +345,15 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             fail_silently=True,
         )
 
-    # B-/ email.policy.default really makes this return an EmailMessage, not a
-    # Message. This cast is to make mypy understand this.
-    #
-    bounced_message = cast(
-        EmailMessage,
-        email.message_from_string(
-            bounce_details.Content,
-            policy=email.policy.default,
-        ),
-    )
-    dsn = make_delivery_status_notification(
+    report_failed_message(
         ea,
+        failed_message=bounce_details.Content,
         report_text=report_msg,
         subject="Bounced email: " + bounce_details.Subject,
-        from_addr=from_addr,
         action="failed",
         status="5.1.1",
         diagnostic=f"smtp; {bounce_details.Details}",
-        reported_msg=bounced_message,
     )
-
-    # use our huey task for asynchronously sending email to deliver the bounce
-    # message to this email account.
-    #
-    try:
-        deliver_message(ea, dsn)
-    except Exception:
-        logger.exception(
-            "Failed to deliver DSN message %s to '%s'",
-            dsn["Message-ID"],
-            ea.email_address,
-        )
 
 
 ####################################################################
@@ -502,43 +505,13 @@ def process_email_spam(email_account_pk: int, spam: dict):
             fail_silently=True,
         )
 
-    # B-/ email.policy.default really makes this return an EmailMessage, not a
-    # Message. This cast is to make mypy understand this.
-    #
-    if "Content" in spam:
-        bounced_message = cast(
-            EmailMessage,
-            email.message_from_string(
-                spam["Content"],
-                policy=email.policy.default,
-            ),
-        )
-    else:
-        bounced_message = cast(
-            EmailMessage,
-            email.message_from_string(
-                spam["Description"], policy=email.policy.default
-            ),
-        )
-    dsn = make_delivery_status_notification(
+    msg = spam["Content"] if "Content" in spam else spam["Description"]
+    report_failed_message(
         ea,
+        failed_message=msg,
         report_text=report_msg,
         subject="Message marked as spam: " + spam["Subject"],
-        from_addr=from_addr,
         action="failed",
         status="5.1.1",
         diagnostic=f"smtp; {spam['Details']}",
-        reported_msg=bounced_message,
     )
-
-    # use our huey task for asynchronously sending email to deliver the bounce
-    # message to this email account.
-    #
-    try:
-        deliver_message(ea, dsn)
-    except Exception:
-        logger.exception(
-            "Failed to deliver DSN message %s to '%s'",
-            dsn["Message-ID"],
-            ea.email_address,
-        )

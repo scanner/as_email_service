@@ -166,7 +166,8 @@ def email_account_factory(server_factory):
     """
 
     def make_email_account(*args, **kwargs):
-        kwargs["server"] = server_factory()
+        if "server" not in kwargs:
+            kwargs["server"] = server_factory()
         email_account = EmailAccountFactory(*args, **kwargs)
         return email_account
 

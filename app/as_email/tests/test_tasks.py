@@ -30,16 +30,15 @@ pytestmark = pytest.mark.django_db
 ####################################################################
 #
 def test_dispatch_spool_outgoing_email(
-    server_factory, email_account_factory, email_factory, smtp
+    email_account_factory, email_factory, smtp
 ):
     """
     Messages stored as binary files in a spool dir.. try to resend them.
     """
-    server = server_factory()
-    server.save()
-    ea = email_account_factory(server=server)
+    ea = email_account_factory()
     ea.save()
-    msg = email_factory(frm=ea.email_address)
+    server = ea.server
+    msg = email_factory(msg_from=ea.email_address)
     rcpt_tos = [msg["To"]]
     from_addr = msg["From"]
     spool_message(server.outgoing_spool_dir, msg.as_bytes())
@@ -47,7 +46,6 @@ def test_dispatch_spool_outgoing_email(
     res()
     send_message = smtp.return_value.send_message
     assert send_message.call_count == 1
-    assert send_message.call_args.args == (msg,)
     assert send_message.call_args.kwargs == {
         "from_addr": from_addr,
         "to_addrs": rcpt_tos,

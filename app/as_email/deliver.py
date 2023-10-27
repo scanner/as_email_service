@@ -32,7 +32,7 @@ import logging
 from email.message import EmailMessage
 from email.mime.text import MIMEText
 from mailbox import MH, NoSuchMailboxError
-from typing import List
+from typing import List, Union, cast
 
 # Project imports
 #
@@ -297,7 +297,7 @@ def make_delivery_status_notification(
     - https://www.rfc-editor.org/rfc/rfc3464
     - https://www.rfc-editor.org/rfc/rfc3463
 
-    `report_text` is the over all human readable report.
+    `report_text` is the overall human readable report.
 
     - from_addr: the destination email address that the bounce message was
                  being sent to.
@@ -374,3 +374,96 @@ def make_delivery_status_notification(
     parts[-2].replace_header("Content-Disposition", "inline")
 
     return dsn
+
+
+####################################################################
+#
+def report_failed_message(
+    email_address: Union[str | EmailAccount],
+    failed_message: Union[str | bytes | EmailMessage],
+    report_text: str,
+    subject: str,
+    action: str,
+    status: str,
+    diagnostic: str,
+):
+    """
+    `email_address` is the address we are sending this report to.
+                    It must be one that is associated with an EmailAccount.
+    `failed_message` is the email that we failed to send. It may either be
+                    a message as a string, bytes, or an EmailMessage.
+                    Internally is converted to an EmailMessage if it is bytes
+                    or str.
+    `report_text` is the readable human content for why the message failed
+    `subject` will be the subject of the DSN we send
+    `action` will be a short string, typically `failed`
+    `status` three digit code (like 5.1.1, 5.1.2, etc)
+    `diagnostic` typically something like 'smtp; ### <blah blah blah>'
+
+    Utility function that will construct a DSN and deliver it to the given
+    address. The address may be an EmailAccount or an email address as a string
+    (from which the EmailAccount will be looked up.)
+
+    We ONLY report these messages to email addresses that belong to
+    EmailAccount's.
+    """
+    if isinstance(email_address, str):
+        try:
+            ea = EmailAccount.objects.get(email_address=email_address)
+        except EmailAccount.DoesNotExist:
+            logger.error(
+                "Failed to lookup EmailAccount for '%s' when attempting to deliver a failed message report",
+                email_address,
+                extra={
+                    "subject": subject,
+                    "action": action,
+                    "diagnostic": diagnostic,
+                },
+            )
+            return
+    else:
+        ea = email_address
+
+    # B-/ email.policy.default really makes this return an EmailMessage, not a
+    # Message. We use cast to make mypy understand this.
+    #
+    if isinstance(failed_message, bytes):
+        message = cast(
+            EmailMessage,
+            email.message_from_bytes(
+                failed_message,
+                policy=email.policy.default,
+            ),
+        )
+    elif isinstance(failed_message, str):
+        message = cast(
+            EmailMessage,
+            email.message_from_string(
+                failed_message,
+                policy=email.policy.default,
+            ),
+        )
+    else:
+        message = failed_message
+
+    dsn = make_delivery_status_notification(
+        ea,
+        report_text=report_text,
+        subject=subject,
+        from_addr=message["From"],
+        action=action,
+        status=status,
+        diagnostic=diagnostic,
+        reported_msg=message,
+    )
+
+    try:
+        deliver_message(ea, dsn)
+    except Exception:
+        logger.exception(
+            "Failed to deliver DSN message from %s, '%s' (%s) to %s",
+            message["From"],
+            subject,
+            dsn["Message-ID"],
+            ea.email_address,
+        )

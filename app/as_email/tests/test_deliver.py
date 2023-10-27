@@ -19,6 +19,7 @@ from ..deliver import (
     deliver_message_locally,
     make_delivery_status_notification,
     make_encapsulated_fwd_msg,
+    report_failed_message,
 )
 from ..models import EmailAccount, MessageFilterRule
 from .conftest import assert_email_equal
@@ -389,3 +390,66 @@ def test_generate_forwarded_message(
         if part.get_content_type == "message/rfc822":
             assert part.get_content().as_bytes() == msg.as_bytes()
             break
+
+
+####################################################################
+#
+def test_report_failed_message(
+    email_account_factory, email_factory, caplog, faker
+):
+    ea = email_account_factory()
+    ea.save()
+    msg = email_factory(msg_from=ea.email_address)
+
+    report_failed_message(
+        ea,
+        msg,
+        report_text="Unable to send email",
+        subject=f"Failed to send: {msg['Subject']}",
+        action="failed",
+        status="5.1.1",
+        diagnostic="smtp; yo buddy",
+    )
+
+    # Should now be a message in ea's local mail inbox. Note, we have other
+    # tests for the contents of the DSN so we do not quibble much here except
+    # to make sure that the message was delivered locally.
+    #
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
+
+    # if we try to send email address being a string should also work.
+    #
+    report_failed_message(
+        ea.email_address,
+        msg,
+        report_text="Unable to send email",
+        subject=f"Failed to send: {msg['Subject']}",
+        action="failed",
+        status="5.1.1",
+        diagnostic="smtp; yo buddy",
+    )
+
+    # Should now be a message in ea's local mail inbox.
+    #
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(2)
+    assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
+
+    # And we if try to send to an invalid email address we get a log message.
+    #
+    caplog.clear()
+    bad_email = faker.email()
+    report_failed_message(
+        bad_email,
+        msg,
+        report_text="Unable to send email",
+        subject=f"Failed to send: {msg['Subject']}",
+        action="failed",
+        status="5.1.1",
+        diagnostic="smtp; yo buddy",
+    )
+    assert f"Failed to lookup EmailAccount for '{bad_email}'" in caplog.text
