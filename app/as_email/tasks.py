@@ -82,7 +82,7 @@ def dispatch_spooled_outgoing_email():
                 logger.exception(f"Unable to retry sending email: {exc}")
 
             if delete_message:
-                spooled_message_file.unlink(messing_ok=True)
+                spooled_message_file.unlink(missing_ok=True)
 
             if msg_count > DISPATCH_NUM_PER_RUN:
                 return

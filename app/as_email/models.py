@@ -7,7 +7,6 @@ mostly custom for the service I use: postmark.
 """
 # system imports
 #
-import asyncio
 import email
 import email.message
 import logging
@@ -17,12 +16,13 @@ import smtplib
 import string
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 # 3rd party imports
 #
 import aiofiles
 import pytz
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
@@ -44,17 +44,15 @@ logger = logging.getLogger("as_email.models")
 
 ####################################################################
 #
-def spool_message(spool_dir, message):
+def spool_message(spool_dir: Union[str | Path], message: bytes):
     """
     Logic to write a message to the message spool for later dispatching.
     """
     fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
         "%Y.%m.%d-%H.%M.%S.%f%z"
     )
-    spool_file = Path(spool_dir / fname)
-    # XXX need to convert envelope to a binary stream that
-    #     can be read back in without losing data.
-    #
+    spool_dir = spool_dir if isinstance(spool_dir, Path) else Path(spool_dir)
+    spool_file = spool_dir / fname
     # XXX we should create a db object for each email we
     #     retry so that we can track number of retries and
     #     how long we have been retrying for and how long
@@ -67,7 +65,7 @@ def spool_message(spool_dir, message):
     #
     #     This db object can also track re-send attempts?
     #
-    spool_file.write_bytes(message.original_context)
+    spool_file.write_bytes(message)
 
 
 ########################################################################
@@ -282,7 +280,7 @@ class Server(models.Model):
         rcpt_tos: List[str],
         msg: email.message.EmailMessage,
         spool_on_retryable: bool = True,
-    ):
+    ) -> bool:
         """
         send email via smtp. It is weird to have two different methods, but
         they do have different purposes. One is for email that is being relayed
@@ -320,9 +318,9 @@ class Server(models.Model):
 
         smtp_server, port = self.provider.smtp_server.split(":")
         smtp_client = smtplib.SMTP(smtp_server, int(port))
-        smtp_client.starttls()
-        smtp_client.login(token, token)
         try:
+            smtp_client.starttls()
+            smtp_client.login(token, token)
             smtp_client.send_message(
                 msg, from_addr=email_from, to_addrs=rcpt_tos
             )
@@ -331,11 +329,14 @@ class Server(models.Model):
                 f"Mail from {email_from}, to: {rcpt_tos}, failed with "
                 f"exception: {exc}"
             )
-            spool_message(self.outgoing_spool_dir, msg)
+            if spool_on_retryable:
+                spool_message(self.outgoing_spool_dir, msg.as_bytes())
+            return False
+        return True
 
     ####################################################################
     #
-    def send_email(self, message, spool_on_retryable=True):
+    def send_email(self, message, spool_on_retryable=True) -> bool:
         """
         Send the given email via this server using the server's web API.
 
@@ -357,7 +358,7 @@ class Server(models.Model):
                 f"Failed to send email: {exc}. Spooling for retransmission"
             )
             if spool_on_retryable:
-                spool_message(self.outgoing_spool_dir, message)
+                spool_message(self.outgoing_spool_dir, message.as_bytes())
             return False
         except ClientError as exc:
             # For certain error codes we spool for retry. For everything else
@@ -369,7 +370,7 @@ class Server(models.Model):
                 429,  # Rate limit exceeded
             ):
                 if spool_on_retryable:
-                    spool_message(self.outgoing_spool_dir, message)
+                    spool_message(self.outgoing_spool_dir, message.as_bytes())
                     logger.warn(f"Spooling message for retry ({exc})")
                 else:
                     logger.warn(f"Message retry failed: ({exc})")
@@ -383,13 +384,14 @@ class Server(models.Model):
 
     ####################################################################
     #
-    async def asend_email(self, message, spool_on_retryable=True):
+    async def asend_email(self, message, spool_on_retryable=True) -> bool:
         """
         Send the given email via this server, asyncio version
         """
-        return await asyncio.to_thread(
-            self.send_email(message), spool_on_retryable=spool_on_retryable
+        result = await sync_to_async(self.send_email)(
+            message, spool_on_retryable=spool_on_retryable
         )
+        return result
 
 
 ########################################################################
