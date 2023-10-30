@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "prettier": "3.0.3"
+  },
+  "dependencies": {
+    "@creativebulma/bulma-tagsinput": "^1.0.3"
+  }
+}
