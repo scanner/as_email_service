@@ -98,15 +98,12 @@ def index(request):
     """
     returns a simple view of the email accounts that belong to the user
     """
-    # XXX In Django 5.0 we will see if we can move this to an async view. Too
-    #     much just does not work well with async views (like async db lookups
-    #     during django template rendering, @login_required)
     user = request.user
     email_accounts = EmailAccount.objects.filter(owner=user)
-    email_accounts_data = [
-        EmailAccountSerializer(ea, context={"request": request})
+    email_accounts_data = {
+        ea.pk: EmailAccountSerializer(ea, context={"request": request})
         for ea in email_accounts
-    ]
+    }
     email_accounts_w_forms = [
         (ea, EmailAccountForm(instance=ea)) for ea in email_accounts
     ]
@@ -117,7 +114,7 @@ def index(request):
     #
     actions = {}
     if email_accounts_data:
-        serializer = email_accounts_data[0]
+        serializer = list(email_accounts_data.values())[0]
         eavs = EmailAccountViewSet()
         md = eavs.metadata_class()
         actions = {
@@ -128,8 +125,11 @@ def index(request):
 
     vue_data = {
         "email_account_list_url": reverse("as_email:email-account-list"),
-        "email_accounts_data": [x.data for x in email_accounts_data],
+        "email_accounts_data": {
+            f"pk{k}": v.data for k, v in email_accounts_data.items()
+        },
         "num_email_accounts": len(email_accounts_data),
+        "valid_email_addresses": [x.email_address for x in email_accounts],
         "email_account_field_info": actions,
         "myTitle": "Hello Vue!",
     }

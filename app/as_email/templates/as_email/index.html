@@ -6,10 +6,60 @@
   <script defer type="module" src="{% static 'as_email/js/app.js' %}"></script>
 {% endblock defer_compress_js %}
 {% block content %}
+  <template id="template-email-account">
+    <div>
+      <div class="card-content">
+        <form action="as_email:email-account-detail" id="email-account-form-5" method="post" name="email-account-form-5">
+          <div id="div_id_delivery_method" class="field">
+            <label for="id_delivery_method" class="label">Delivery method <span class="asterisk">*</span></label>
+            <div class="control">
+              <div class="select">
+                <select name="delivery_method" id="id_delivery_method">
+                  <option value="LD" selected>
+                    Local Delivery
+                  </option>
+                  <option value="AL">
+                    Alias
+                  </option>
+                  <option value="FW">
+                    Forwarding
+                  </option>
+                </select>
+              </div>
+
+            </div>
+          </div>
+          <p>[[ autofileSpam || 'Yes, no props passed yet ' ]]</p>
+          <div id="div_id_forward_to" class="field">
+            <label for="id_forward_to" class="label">Forward to</label>
+            <div class="control">
+              <input type="email" name="forward_to" maxlength="254" class="input" id="id_forward_to">
+            </div>
+          </div>
+
+        </form>
+      </div>
+      <footer class="card-footer">
+        <p class="card-footer-item">
+          <span>
+            <input class="button is-primary" type="submit" value="Apply">
+          </span>
+        </p>
+        <p class="card-footer-item">
+          <span>
+            <input class="button is-info" type="reset" value="Reset">
+          </span>
+        </p>
+      </footer>
+    </div>
+  </template>
   <div class="container">
     <p class="title is-1">Email Accounts</p>
 
     <div id="asemail-vue-app">
+      <h1>[[ myTitle ]]</h1>
+      <button @click="update_foo" class="button">Yes</button>
+
       {% if email_accounts %}
         {% for email_account, email_account_form in email_accounts %}
           <div class="card">
@@ -22,23 +72,19 @@
               </a>
             </header>
             <div class="is-collapsible"  id="email-account-{{email_account.pk}}">
-              <email-account>
-                <div class="card-content">
-                  {% crispy email_account_form email_account_form.helper %}
-                </div>
-                <footer class="card-footer">
-                  <p class="card-footer-item">
-                    <span>
-                      <input class="button is-primary" type="submit" value="Apply">
-                    </span>
-                  </p>
-                  <p class="card-footer-item">
-                    <span>
-                      <input class="button is-info" type="reset" value="Reset">
-                    </span>
-                  </p>
-                </footer>
-              </email-account>
+              <email-account
+                v-model:delivery-method="emailAccountsData.pk{{email_account.pk}}.delivery_method"
+                v-model:autofile-spam="emailAccountsData.pk{{email_account.pk}}.autofile_spam"
+                v-model:spam-delivery-folder="emailAccountsData.pk{{email_account.pk}}.spam_delivery_folder"
+                v-model:spam-score-threshold="emailAccountsData.pk{{email_account.pk}}.spam_score_threshold"
+                v-model:alias-for="emailAccountsData.pk{{email_account.pk}}.alias_for"
+                v-model:aliases="emailAccountsData.pk{{email_account.pk}}.aliaases"
+
+                v-model:forward-to="emailAccountsData.pk{{email_account.pk}}.forward_to"
+                v-model:num-bounces="emailAccountsData.pk{{email_account.pk}}.num_bounces"
+                v-model:deactivated="emailAccountsData.pk{{email_account.pk}}.deactivated"
+                v-model:deactivated-reason:="emailAccountsData.pk{{email_account.pk}}.deactivated_reason"
+                v-model:valid-email-addresses="initialData.valid_email_addresses"></email-account>
             </div>
           </div>
         {% endfor %}
@@ -48,11 +94,6 @@
     </div>
   </div>
   {{ vue_data|json_script:"vue-data" }}
-
-  <div id="vue-app">
-    <h1>[[ myTitle ]]</h1>
-    <button @click="update_foo" class="button">Yes</button>
-  </div>
 {% endblock %}
 {% block javascript %}
   <script type="text/javascript">
