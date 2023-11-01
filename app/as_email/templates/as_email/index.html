@@ -42,7 +42,7 @@
 
 
           <div v-if="deactivated">
-            <p>Email Account is deactivated and can not send email: [[ deactivatedReason]]</p>
+            <p>Email Account is deactivated and can not send email: [[ props.deactivatedReason ]]</p>
           </div>
           <div :id="`div_id_forward_to_${pk}`" class="field">
             <label :for="`forward-to-id-${pk}`" class="label">Forward to</label>
@@ -107,7 +107,7 @@
                 v-model:forward-to="emailAccountsData.pk{{email_account.pk}}.forward_to"
                 v-model:num-bounces="emailAccountsData.pk{{email_account.pk}}.num_bounces"
                 v-model:deactivated="emailAccountsData.pk{{email_account.pk}}.deactivated"
-                v-model:deactivated-reason:="emailAccountsData.pk{{email_account.pk}}.deactivated_reason"
+                v-model:deactivated-reason="emailAccountsData.pk{{email_account.pk}}.deactivated_reason"
                 v-model:valid-email-addresses="initialData.valid_email_addresses"></email-account>
             </div>
           </div>

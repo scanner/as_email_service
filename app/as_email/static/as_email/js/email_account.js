@@ -8,6 +8,9 @@ const resetDisabled = ref(false);
 
 export default {
     name: "EmailAccount",
+
+    ////////////////////////////////////////////////////////////////////////////
+    //
     props: {
         pk: { // NOTE: pk == primary key.. unique integer for this EmailAccount
             type: Number,
@@ -69,7 +72,7 @@ export default {
         deactivatedReason: {
             type: String,
             default: "",
-            required: false
+            required: true
         },
         validEmailAddresses: {
             type: Array,
@@ -77,6 +80,9 @@ export default {
             required: false,
         }
     },
+
+    ////////////////////////////////////////////////////////////////////////////
+    //
     // This is the subset of props that when they change we need to emit an
     // event that lets the parent know the values of these have changed.
     //
@@ -91,14 +97,22 @@ export default {
              'update:deactivated',
              'update:deactivatedReason'
            ],
+
+    ////////////////////////////////////////////////////////////////////////////
+    //
     components: {
         MessageFilterRule: MessageFilterRule
     },
 
+    ////////////////////////////////////////////////////////////////////////////
+    //
     // Since we are using Django templating to render the actual HTML page
     // we need to use different delimeters for Vue.
     //
     delimiters: ["[[", "]]"],
+
+    ////////////////////////////////////////////////////////////////////////////
+    //
     setup(props, ctx) {
 
         ////////////////////////////////////////////////////////////////////////
@@ -136,7 +150,7 @@ export default {
                 ctx.emit("update:forwardTo", data.forward_to);
                 ctx.emit("update:numBounces", data.num_bounces);
                 ctx.emit("update:deactivated", data.deactivated);
-                ctx.emit("update:deactivatedReason", data.deactivatedReason);
+                ctx.emit("update:deactivatedReason", data.deactivated_reason);
             } else {
                 console.log(`Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`);
             }

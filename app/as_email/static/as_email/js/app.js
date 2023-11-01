@@ -43,7 +43,7 @@ const emailAccountsData = {};
 for (let k in initialData.email_accounts_data) {
     emailAccountsData[k] = reactive(initialData.email_accounts_data[k]);
 }
-console.log(emailAccountsData);
+console.log(JSON.stringify(emailAccountsData,null,2));
 
 //////////////////////////////////////////
 //
