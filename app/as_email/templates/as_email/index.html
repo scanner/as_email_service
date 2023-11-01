@@ -11,7 +11,7 @@
       <div class="card-content">
         <form action="as_email:email-account-detail" id="email-account-form-5" method="post" name="email-account-form-5">
           <div id="div_id_delivery_method" class="field">
-            <label :for="`id-delivery-method-${pk}`" class="label">[[ pk ]] Delivery method <span class="asterisk">*</span></label>
+            <label :for="`id-delivery-method-${pk}`" class="label">Delivery method <span v-if="labelErrorMessages.delivery_method" class="error">[[ labelErrorMessages.delivery_method ]]</span></label>
             <div class="control">
               <div class="select">
                 <select name="delivery_method" :id="`id-delivery-method-${pk}`">
@@ -59,6 +59,7 @@
           </div>
 
         </form>
+        <span v-if="labelErrorMessages.detail">[[ labelErrorMessages.detail ]]</span>
       </div>
       <footer class="card-footer">
         <p class="card-footer-item">
@@ -108,7 +109,8 @@
                 v-model:num-bounces="emailAccountsData.pk{{email_account.pk}}.num_bounces"
                 v-model:deactivated="emailAccountsData.pk{{email_account.pk}}.deactivated"
                 v-model:deactivated-reason="emailAccountsData.pk{{email_account.pk}}.deactivated_reason"
-                v-model:valid-email-addresses="initialData.valid_email_addresses"></email-account>
+                v-model:valid-email-addresses="initialData.valid_email_addresses"
+                v-model:fieldInfo="initialData.email_account_field_info"></email-account>
             </div>
           </div>
         {% endfor %}

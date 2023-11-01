@@ -6,6 +6,21 @@ import MessageFilterRule from './message_filter_rule.js';
 const submitDisabled = ref(false);
 const resetDisabled = ref(false);
 
+// Messages that appear next to fields (mostly for error messages) For
+// keys/attributes we use the same strings that the server would send us so we
+// can use those directly as keys into this object.
+//
+const labelErrorMessages = ref({
+    detail: "",
+    alias_for: "" ,
+    aliases: "",
+    autofile_spam: "",
+    delivery_method: "",
+    forward_to: "",
+    spam_delivery_folder: "",
+    spam_score_threshold: "",
+});
+
 export default {
     name: "EmailAccount",
 
@@ -78,7 +93,12 @@ export default {
             type: Array,
             default: [],
             required: false,
-        }
+        },
+        fieldInfo: {
+            type: Object,
+            default: {},
+            required: false,
+        },
     },
 
     ////////////////////////////////////////////////////////////////////////////
@@ -121,6 +141,11 @@ export default {
         const submitData = async function () {
             submitDisabled.value = true;
             try {
+                // On `Apply` clear any error messages that may be set.
+                //
+                for (let key in labelErrorMessages.value) {
+                    labelErrorMessages.value[key] = "";
+                }
                 let data = {
                     "delivery_method": props.deliveryMethod,
                     "autofile_spam": props.autofileSpam,
@@ -130,9 +155,36 @@ export default {
                     "aliases": props.aliases,
                     "forward_to": props.forwardTo
                 };
-
                 console.log("Submitting data to " + props.url);
                 console.log("Data: " + JSON.stringify(data,null,2));
+
+                let res = await fetch(props.url, {
+                    method: 'PATCH',
+                    body: JSON.stringify(data),
+                    headers: {
+                        'Content-type': 'application/json; charset=UTF-8',
+                    },
+                });
+                if (res.ok) {
+                    // XXX We should have a visual indicator that the 'Apply'
+                    //     worked, like flash a check mark that fades out after
+                    //     short delay.
+                    //
+                    console.log("PATCH worked..");
+                } else {
+                    // If the PATCH failed we should get back a JSON body which
+                    // has for its keys the fields that had a problem, and the
+                    // value is the error for that field.
+                    //
+                    // XXX we should catch failures that do not return json
+                    //     (like server is down)
+                    //
+                    let errors = await res.json();
+                    for (let label in errors) {
+                        labelErrorMessages.value[label] = errors[label];
+                        console.log(`Field: ${label}: ${errors[label]}`);
+                    }
+                }
 
                 // If the data for aliases or aliasFor changed we need to emit
                 // events upward to tell it the parent to refresh the aliases
@@ -141,9 +193,12 @@ export default {
                 //
                 let emailAccountsChanged = [];
                 ctx.emit("aliasesChanged", emailAccountsChanged);
-                // sleep for a bit so our submit button goes inactive for a
-                // short bit.
-                await new Promise(r => setTimeout(r, 2000));
+
+                // sleep for a bit so our button goes inactive for a
+                // short bit.. mostly to prevent multiple slams on the button
+                // in quick succession.
+                //
+                await new Promise(r => setTimeout(r, 750));
             } finally {
                 submitDisabled.value = false;
             }
@@ -154,6 +209,12 @@ export default {
         const resetData = async function () {
             resetDisabled.value=true;
             try {
+                // On `Reset` clear any error messages that may be set.
+                //
+                for (let key in labelErrorMessages.value) {
+                    labelErrorMessages.value[key] = "";
+                }
+
                 let res = await fetch(props.url);
                 if (res.ok) {
                     let data = await res.json();
@@ -171,6 +232,13 @@ export default {
                 } else {
                     console.log(`Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`);
                 }
+
+                // sleep for a bit so our button goes inactive for a
+                // short bit.. mostly to prevent multiple slams on the button
+                // in quick succession.
+                //
+                await new Promise(r => setTimeout(r, 750));
+
             } finally {
                 resetDisabled.value = false;
             }
@@ -194,6 +262,7 @@ export default {
             submitDisabled,
             resetData,
             resetDisabled,
+            labelErrorMessages,
             props,
         };
     },

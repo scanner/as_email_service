@@ -44,6 +44,10 @@ from dry_rest_permissions.generics import (
     DRYPermissions,
 )
 from rest_framework import mixins, serializers, status
+from rest_framework.authentication import (
+    BasicAuthentication,
+    SessionAuthentication,
+)
 from rest_framework.decorators import action
 from rest_framework.exceptions import ErrorDetail
 from rest_framework.permissions import IsAuthenticated
@@ -425,6 +429,35 @@ def hook_forward_valid(request):
 ########################################################################
 ########################################################################
 #
+class CSRFExemptSessionAuthentication(SessionAuthentication):
+    """
+    Since DRF needs to support both session and non-session based
+    authentication to the same views, it enforces CSRF check for only
+    authenticated users. This means that only authenticated requests require
+    CSRF tokens and anonymous requests may be sent without CSRF tokens.
+
+    We are using an AJAX style API with SessionAuthentication, so we want to
+    disable CSRF requirement for unsafe HTTP method. There is no form and I do
+    not want to complicate the JavaScript with the need to continually fetch
+    CSRF tokens.
+
+    See: https://stackoverflow.com/questions/30871033/django-rest-framework-remove-csrf
+
+    Basically this REST API is meant to be used from JavaScript.
+
+    NOTE: Consider extending the code that submits data via PUT/PATCH/POST to
+          fetch a CSRF token right before it submits.
+    """
+
+    ####################################################################
+    #
+    def enforce_csrf(self, request):
+        return  # To not perform the csrf check previously happening
+
+
+########################################################################
+########################################################################
+#
 class OwnerFilterBackend(DRYPermissionFiltersBase):
     def filter_list_queryset(self, request, queryset, view):
         """
@@ -453,6 +486,10 @@ class EmailAccountViewSet(
     serializer_class = EmailAccountSerializer
     queryset = EmailAccount.objects.all()
     filter_backends = (OwnerFilterBackend,)
+    authentication_classes = (
+        CSRFExemptSessionAuthentication,
+        BasicAuthentication,
+    )
 
     ####################################################################
     #
@@ -540,6 +577,10 @@ class MessageFilterRuleViewSet(ModelViewSet):
     serializer_class = MessageFilterRuleSerializer
     filter_backends = (EmailAccountOwnerFilterBackend,)
     queryset = MessageFilterRule.objects.all()
+    authentication_classes = (
+        CSRFExemptSessionAuthentication,
+        BasicAuthentication,
+    )
 
     ####################################################################
     #
