@@ -95,6 +95,7 @@
             </header>
             <div class="is-collapsible"  id="email-account-{{email_account.pk}}">
               <email-account
+                @aliases-changed="updateAliases"
                 v-model:pk="emailAccountsData.pk{{email_account.pk}}.pk"
                 v-model:url="emailAccountsData.pk{{email_account.pk}}.url"
                 v-model:email-address="emailAccountsData.pk{{email_account.pk}}.email_address"

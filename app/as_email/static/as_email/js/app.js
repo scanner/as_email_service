@@ -65,6 +65,11 @@ function update_foo() {
 // presented information.)
 //
 async function updateAliases(emailAddresses) {
+    if (emailAddresses.length == 0) {
+        console.log("updateAliases called, but no email address listed for updating");
+        return;
+    }
+
     // We have the list of email addresses that have been updated. We could
     // make one query for each, but instead we will just query the endpoint
     // that lists all of the EmailAccounts because:
@@ -82,7 +87,7 @@ async function updateAliases(emailAddresses) {
         return;
     }
     let emailAccounts = await res.json();
-    console.log(JSON.stringify(emailAccounts));
+    console.log(JSON.stringify(emailAccounts, null, 2));
     // Loop through the email accounts and if the emailAccount.email_address is
     // in the list of email addresses, then update the reactive list of aliases
     // and aliasFor in emailAccountsData.
@@ -117,6 +122,7 @@ const app = createApp({
             emailAccountsData,
             initialData,
             update_foo,
+            updateAliases,
         };
     },
     delimiters: ["[[", "]]"],
