@@ -11,10 +11,10 @@
       <div class="card-content">
         <form action="as_email:email-account-detail" id="email-account-form-5" method="post" name="email-account-form-5">
           <div id="div_id_delivery_method" class="field">
-            <label for="id_delivery_method" class="label">Delivery method <span class="asterisk">*</span></label>
+            <label :for="`id-delivery-method-${pk}`" class="label">[[ pk ]] Delivery method <span class="asterisk">*</span></label>
             <div class="control">
               <div class="select">
-                <select name="delivery_method" id="id_delivery_method">
+                <select name="delivery_method" :id="`id-delivery-method-${pk}`">
                   <option value="LD" selected>
                     Local Delivery
                   </option>
@@ -26,14 +26,35 @@
                   </option>
                 </select>
               </div>
-
             </div>
           </div>
-          <p>[[ autofileSpam || 'Yes, no props passed yet ' ]]</p>
-          <div id="div_id_forward_to" class="field">
-            <label for="id_forward_to" class="label">Forward to</label>
+
+          <div id="div_id_autofile_spam" class="field">
             <div class="control">
-              <input type="email" name="forward_to" maxlength="254" class="input" id="id_forward_to">
+              <label :for="`id_autofile_spam-${pk}`" class="checkbox">
+                <input type="checkbox" name="autofile_spam"
+                  :id="`id_autofile_spam-${pk}`"  checked> Autofile spam</label>
+            </div>
+            <p id="hint_id_autofile_spam" class="help">When incoming mail exceeds the threshold set in
+              `spam_score_threshold` then this email will automatically files in the `spam_delivery_folder`
+              mailbox. NOTE: This only apply if local or IMAP delivery is selected in `delivery_method`.</p>
+          </div>
+
+
+          <div v-if="deactivated">
+            <p>Email Account is deactivated and can not send email: [[ deactivatedReason]]</p>
+          </div>
+          <div id="div_id_forward_to" class="field">
+            <label :for="`forward-to-id-${pk}`" class="label">Forward to</label>
+            <div class="control">
+              <input
+                type="email"
+                name="forward_to"
+                maxlength="254"
+                class="input"
+                :id="`forward-to-id-${pk}`"
+                :value="forwardTo" @input="$emit('update:forwardTo', $event.target.value)"
+              />
             </div>
           </div>
 
@@ -42,7 +63,7 @@
       <footer class="card-footer">
         <p class="card-footer-item">
           <span>
-            <input class="button is-primary" type="submit" value="Apply">
+            <input class="button is-primary" @click="submitData" value="Apply">
           </span>
         </p>
         <p class="card-footer-item">
@@ -73,6 +94,9 @@
             </header>
             <div class="is-collapsible"  id="email-account-{{email_account.pk}}">
               <email-account
+                v-model:pk="emailAccountsData.pk{{email_account.pk}}.pk"
+                v-model:url="emailAccountsData.pk{{email_account.pk}}.url"
+                v-model:email-address="emailAccountsData.pk{{email_account.pk}}.email_address"
                 v-model:delivery-method="emailAccountsData.pk{{email_account.pk}}.delivery_method"
                 v-model:autofile-spam="emailAccountsData.pk{{email_account.pk}}.autofile_spam"
                 v-model:spam-delivery-folder="emailAccountsData.pk{{email_account.pk}}.spam_delivery_folder"

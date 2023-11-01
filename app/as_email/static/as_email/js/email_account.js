@@ -6,6 +6,18 @@ import MessageFilterRule from './message_filter_rule.js';
 export default {
     name: "EmailAccount",
     props: {
+        pk: { // NOTE: pk == primary key.. unique integer for this EmailAccount
+            type: Number,
+            required: true,
+        },
+        url: {
+            type: String,
+            required: true
+        },
+        emailAddress: {
+            type: String,
+            required: true,
+        },
         deliveryMethod: {
             type: String,
             default: "LD",
@@ -76,15 +88,33 @@ export default {
     components: {
         MessageFilterRule: MessageFilterRule
     },
+
+    // Since we are using Django templating to render the actual HTML page
+    // we need to use different delimeters for Vue.
+    //
     delimiters: ["[[", "]]"],
     setup(props, ctx) {
         // access props.alias_for, etc.
-        console.log("Props: " + props.forwardTo);
+        const submitData = function () {
+            let data = {
+                "delivery_method": props.deliveryMethod,
+                "autofile_spam": props.autofileSpam,
+                "spam_delivery_folder": props.spamDeliveryFolder,
+                "spam_score_threshold": props.spamSoreThreshold,
+                "alias_for": props.aliasFor,
+                "aliases": props.aliases,
+                "forward_to": props.forwardTo
+            };
+            console.log("Submitting data to " + props.url);
+            console.log("Data: " + JSON.stringify(data));
+        };
 
-        // The object we return from `setup()` is all the public methods and
-        // data properties of the EmailAccount component
-        //
+        // const url = props.url;
+        console.log("Primary key: " + props.pk + " email address: " + props.emailAddress);
+
         return {
+            submitData,
+            props,
         };
     },
     template: '#template-email-account'
