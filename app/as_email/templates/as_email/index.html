@@ -44,7 +44,7 @@
           <div v-if="deactivated">
             <p>Email Account is deactivated and can not send email: [[ deactivatedReason]]</p>
           </div>
-          <div id="div_id_forward_to" class="field">
+          <div :id="`div_id_forward_to_${pk}`" class="field">
             <label :for="`forward-to-id-${pk}`" class="label">Forward to</label>
             <div class="control">
               <input
@@ -63,12 +63,12 @@
       <footer class="card-footer">
         <p class="card-footer-item">
           <span>
-            <input class="button is-primary" @click="submitData" value="Apply">
+            <input class="button is-primary" @click="submitData" type="submit" value="Apply" :disabled="submitDisabled">
           </span>
         </p>
         <p class="card-footer-item">
           <span>
-            <input class="button is-info" type="reset" value="Reset">
+            <input class="button is-info" @click="resetData" type="reset" value="Reset" :disabled="resetDisabled">
           </span>
         </p>
       </footer>

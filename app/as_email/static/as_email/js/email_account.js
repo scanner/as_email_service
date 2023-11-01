@@ -3,6 +3,9 @@
 import { ref } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
 import MessageFilterRule from './message_filter_rule.js';
 
+const submitDisabled = ref(false);
+const resetDisabled = ref(false);
+
 export default {
     name: "EmailAccount",
     props: {
@@ -80,10 +83,13 @@ export default {
     emits: [ 'update:deliveryMethod',
              'update:autofileSpam',
              'update:spamDeliveryFolder',
-             'update:spamScoreThredshold',
+             'update:spamScoreThreshold',
              'update:aliasFor',
              'update:aliases',
-             'update:forwardTo'
+             'update:forwardTo',
+             'update:numBounces',
+             'update:deactivated',
+             'update:deactivatedReason'
            ],
     components: {
         MessageFilterRule: MessageFilterRule
@@ -94,8 +100,11 @@ export default {
     //
     delimiters: ["[[", "]]"],
     setup(props, ctx) {
-        // access props.alias_for, etc.
+
+        ////////////////////////////////////////////////////////////////////////
+        //
         const submitData = function () {
+            submitDisabled.value = true;
             let data = {
                 "delivery_method": props.deliveryMethod,
                 "autofile_spam": props.autofileSpam,
@@ -105,15 +114,53 @@ export default {
                 "aliases": props.aliases,
                 "forward_to": props.forwardTo
             };
+
             console.log("Submitting data to " + props.url);
-            console.log("Data: " + JSON.stringify(data));
+            console.log("Data: " + JSON.stringify(data,null,2));
         };
 
-        // const url = props.url;
+        ////////////////////////////////////////////////////////////////////////
+        //
+        const resetData = async function () {
+            resetDisabled.value=true;
+            let res = await fetch(props.url);
+            if (res.ok) {
+                let data = await res.json();
+                console.log("Got data from server: " + JSON.stringify(data,null,2));
+                ctx.emit("update:deliveryMethod", data.delivery_method);
+                ctx.emit("update:autofileSpam", data.auto_file_spam);
+                ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
+                ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
+                ctx.emit("update:aliasFor", data.alias_for);
+                ctx.emit("update:aliases", data.aliases);
+                ctx.emit("update:forwardTo", data.forward_to);
+                ctx.emit("update:numBounces", data.num_bounces);
+                ctx.emit("update:deactivated", data.deactivated);
+                ctx.emit("update:deactivatedReason", data.deactivatedReason);
+            } else {
+                console.log(`Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`);
+            }
+            resetDisabled.value = false;
+        };
+
+        //////////
+        //
+        // setup code that does stuff
+        //
+        //////////
         console.log("Primary key: " + props.pk + " email address: " + props.emailAddress);
 
+        //////////////////////////////////////////////////////////////////////
+        //
+        // Return the public attributes and methods on the EmailAccount
+        // component
+        //
+        //////////////////////////////////////////////////////////////////////
         return {
             submitData,
+            submitDisabled,
+            resetData,
+            resetDisabled,
             props,
         };
     },
