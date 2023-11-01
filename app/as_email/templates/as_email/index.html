@@ -14,8 +14,13 @@
             <label :for="`id-delivery-method-${pk}`" class="label">Delivery method <span v-if="labelErrorMessages.delivery_method" class="error">[[ labelErrorMessages.delivery_method ]]</span></label>
             <div class="control">
               <div class="select">
-                <select name="delivery_method" :id="`id-delivery-method-${pk}`">
-                  <option value="LD" selected>
+                <select
+                  name="delivery_method"
+                  :id="`id-delivery-method-${pk}`"
+                  :value="deliveryMethod"
+                  @input="$emit('update:deliveryMethod', $event.target.value)"
+                >
+                  <option value="LD">
                     Local Delivery
                   </option>
                   <option value="AL">
@@ -33,7 +38,7 @@
             <div class="control">
               <label :for="`id_autofile_spam-${pk}`" class="checkbox">
                 <input type="checkbox" name="autofile_spam"
-                  :id="`id_autofile_spam-${pk}`" :checked="autofileSpam" @input="$emit('update:autofileSpam', $event.target.value != 'on')"> Autofile spam</label>
+                  :id="`id_autofile_spam-${pk}`" :checked="autofileSpam" @input="$emit('update:autofileSpam', $event.target.checked)"> Autofile spam</label>
             </div>
             <p id="hint_id_autofile_spam" class="help">When incoming mail exceeds the threshold set in
               `spam_score_threshold` then this email will automatically files in the `spam_delivery_folder`
@@ -53,7 +58,8 @@
                 maxlength="254"
                 class="input"
                 :id="`forward-to-id-${pk}`"
-                :value="forwardTo" @input="$emit('update:forwardTo', $event.target.value)"
+                :value="forwardTo"
+                @input="$emit('update:forwardTo', $event.target.value)"
               />
             </div>
           </div>

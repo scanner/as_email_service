@@ -174,7 +174,7 @@ export default {
                     //
                     let data = await res.json();
                     ctx.emit("update:deliveryMethod", data.delivery_method);
-                    ctx.emit("update:autofileSpam", data.auto_file_spam);
+                    ctx.emit("update:autofileSpam", data.autofile_spam);
                     ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
                     ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
                     ctx.emit("update:aliasFor", data.alias_for);
@@ -235,7 +235,7 @@ export default {
                     let data = await res.json();
                     console.log("Got data from server: " + JSON.stringify(data,null,2));
                     ctx.emit("update:deliveryMethod", data.delivery_method);
-                    ctx.emit("update:autofileSpam", data.auto_file_spam);
+                    ctx.emit("update:autofileSpam", data.autofile_spam);
                     ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
                     ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
                     ctx.emit("update:aliasFor", data.alias_for);
@@ -246,6 +246,7 @@ export default {
                     ctx.emit("update:deactivatedReason", data.deactivated_reason);
                 } else {
                     console.log(`Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`);
+                    labelErrorMessages['detail'] = `HTTP: ${res.status}: ${res.statusText}`;
                 }
 
                 // sleep for a bit so our button goes inactive for a
