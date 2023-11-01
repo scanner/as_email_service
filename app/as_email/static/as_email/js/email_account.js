@@ -170,7 +170,22 @@ export default {
                     //     worked, like flash a check mark that fades out after
                     //     short delay.
                     //
-                    console.log("PATCH worked..");
+                    // XXX We should make this a function.. DRY and all.
+                    //
+                    let data = await res.json();
+                    ctx.emit("update:deliveryMethod", data.delivery_method);
+                    ctx.emit("update:autofileSpam", data.auto_file_spam);
+                    ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
+                    ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
+                    ctx.emit("update:aliasFor", data.alias_for);
+                    ctx.emit("update:aliases", data.aliases);
+                    ctx.emit("update:forwardTo", data.forward_to);
+                    ctx.emit("update:numBounces", data.num_bounces);
+                    ctx.emit("update:deactivated", data.deactivated);
+                    ctx.emit("update:deactivatedReason", data.deactivated_reason);
+                    // XXX Should also emit aliasesChanged if aliaases are
+                    //     different in our props from what we got from the
+                    //     server.
                 } else {
                     // If the PATCH failed we should get back a JSON body which
                     // has for its keys the fields that had a problem, and the
