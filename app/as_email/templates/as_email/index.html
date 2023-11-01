@@ -33,7 +33,7 @@
             <div class="control">
               <label :for="`id_autofile_spam-${pk}`" class="checkbox">
                 <input type="checkbox" name="autofile_spam"
-                  :id="`id_autofile_spam-${pk}`"  checked> Autofile spam</label>
+                  :id="`id_autofile_spam-${pk}`" :checked="autofileSpam" @input="$emit('update:autofileSpam', $event.target.value != 'on')"> Autofile spam</label>
             </div>
             <p id="hint_id_autofile_spam" class="help">When incoming mail exceeds the threshold set in
               `spam_score_threshold` then this email will automatically files in the `spam_delivery_folder`
