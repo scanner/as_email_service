@@ -5,7 +5,7 @@ import {
     ref,
     reactive,
     onMounted,
-} from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
+} from "vue";
 import EmailAccount from "./email_account.js";
 
 // Get the data that the as_email service filled the document with that
@@ -116,7 +116,11 @@ const app = createApp({
         // Hook up the 'bulma-collapsible' and bulma-tags-input support js code
         //
         const emailAccountCards = bulmaCollapsible.attach(".is-collapsible");
-        const bulmaTags = BulmaTagsInput.attach();
+        // const bulmaTags = BulmaTagsInput.attach();
     },
 });
 app.mount("#asemail-vue-app");
+
+if (HTMLScriptElement.supports('importmap')) {
+    console.log("The importmap feature is supported.");
+}

@@ -1,6 +1,7 @@
 // Vue Component for an EmailAccount
 //
-import { ref } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
+import { ref } from "vue";
+import VueSelect from "vue-select";
 import MessageFilterRule from './message_filter_rule.js';
 
 // Messages that appear next to fields (mostly for error messages) For
@@ -133,7 +134,8 @@ export default {
     ////////////////////////////////////////////////////////////////////////////
     //
     components: {
-        MessageFilterRule: MessageFilterRule
+        MessageFilterRule: MessageFilterRule,
+        "v-select": VueSelect
     },
 
     ////////////////////////////////////////////////////////////////////////////

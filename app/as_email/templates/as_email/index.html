@@ -1,6 +1,19 @@
 {% extends "as_email/base.html" %}
 {% load static crispy_forms_tags %}
 {% block title %}AS Email - Email Accounts{% endblock %}
+{% block importmap %}
+  <script type="importmap">
+   {
+     "imports": {
+       "vue": "{% static 'js/vue.esm-browser.js' %}",
+       "vue-select": "{% static 'js/vue-select.es.js' %}"
+     }
+   }
+  </script>
+{% endblock importmap %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'css/vue-select.css' %}">
+{% endblock extra_css %}
 {% block defer_compress_js %}
   {{ block.super }}
   <script defer type="module" src="{% static 'as_email/js/app.js' %}"></script>
@@ -74,7 +87,7 @@
                   :value="aliases"
                   @change="selectMultiple('update:aliases',$event)"
                   multiple>
-                  <option v-for="email_addr in filteredValidEmailAddrs">
+                  <option v-for="email_addr in filteredValidEmailAddrs" :value="email_addr">
                     [[ email_addr ]]
                   </option>
                 </select>
