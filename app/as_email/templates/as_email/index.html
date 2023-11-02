@@ -34,7 +34,7 @@
             </div>
           </div>
 
-          <div id="div_id_autofile_spam" class="field">
+          <div class="field">
             <div class="control">
               <label :for="`id_autofile_spam-${pk}`" class="checkbox">
                 <input type="checkbox" name="autofile_spam"
@@ -45,6 +45,43 @@
               mailbox. NOTE: This only apply if local or IMAP delivery is selected in `delivery_method`.</p>
           </div>
 
+          <div class="field">
+            <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
+            <div class="control">
+              <div class="select is-multiple">
+                <select data-type="tags"
+                  name="alias_for"
+                  :id="`id_alias_for-${pk}`"
+                  :value="aliasFor"
+                  @change="selectMultiple('update:aliasFor',$event)"
+                  multiple>
+                  <option v-for="email_addr in filteredValidEmailAddrs">
+                    [[ email_addr ]]
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <p>[[ aliasFor ]]</p>
+
+          <div class="field">
+            <label :for="`id_aliases-${pk}`" class="label">aliases <span v-if="labelErrorMessages.aliases" class="error">[[ labelErrorMessages.aliases ]]</span></label>
+            <div class="control">
+              <div class="select is-multiple">
+                <select data-type="tags"
+                  name="aliases"
+                  :id="`id_aliases-${pk}`"
+                  :value="aliases"
+                  @change="selectMultiple('update:aliases',$event)"
+                  multiple>
+                  <option v-for="email_addr in filteredValidEmailAddrs">
+                    [[ email_addr ]]
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <p>[[ aliases ]]</p>
 
           <div v-if="deactivated">
             <p>Email Account is deactivated and can not send email: [[ props.deactivatedReason ]]</p>
@@ -110,7 +147,7 @@
                 v-model:spam-delivery-folder="emailAccountsData.pk{{email_account.pk}}.spam_delivery_folder"
                 v-model:spam-score-threshold="emailAccountsData.pk{{email_account.pk}}.spam_score_threshold"
                 v-model:alias-for="emailAccountsData.pk{{email_account.pk}}.alias_for"
-                v-model:aliases="emailAccountsData.pk{{email_account.pk}}.aliaases"
+                v-model:aliases="emailAccountsData.pk{{email_account.pk}}.aliases"
 
                 v-model:forward-to="emailAccountsData.pk{{email_account.pk}}.forward_to"
                 v-model:num-bounces="emailAccountsData.pk{{email_account.pk}}.num_bounces"

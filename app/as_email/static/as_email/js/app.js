@@ -16,22 +16,6 @@ import EmailAccount from "./email_account.js";
 // descriptions.
 //
 const initialData = JSON.parse(document.getElementById("vue-data").textContent);
-
-// Example using `await` and `fetch` together.
-//
-// let res = await fetch(initialData.email_accounts_data[0].url, {
-//   method: "OPTIONS",
-// });
-// if (res.ok) {
-//   let emailAccountFieldsOptions = await res.json();
-//   let emailAccountFields = emailAccountFieldsOptions.actions.PUT;
-//   console.log(emailAccountFields);
-// } else {
-//   console.log(
-//     `Unable to get field data for EmailAccount: ${res.statusText}(${res.status})`,
-//   );
-// }
-
 const origTitle = "yup, you got that";
 
 //////////////////////////////////////////
@@ -43,7 +27,6 @@ const emailAccountsData = {};
 for (let k in initialData.email_accounts_data) {
     emailAccountsData[k] = reactive(initialData.email_accounts_data[k]);
 }
-console.log(JSON.stringify(emailAccountsData,null,2));
 
 //////////////////////////////////////////
 //
@@ -95,6 +78,9 @@ async function updateAliases(emailAddresses) {
     for (const emailAccount of emailAccounts) {
         if (emailAddresses.includes(emailAccount.email_address)) {
             console.log(`Updating aliases for ${emailAccount.email_address}`);
+            console.log("ALIASES: " + JSON.stringify(emailAccount.aliases, null, 2));
+            console.log("ALIAS FOR: " + JSON.stringify(emailAccount.alias_for, null, 2));
+
             // The key into the object of reactive email account data is the
             // primary key of the specific email account with `pk` prefixed.
             //

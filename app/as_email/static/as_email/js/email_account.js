@@ -3,9 +3,6 @@
 import { ref } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
 import MessageFilterRule from './message_filter_rule.js';
 
-const submitDisabled = ref(false);
-const resetDisabled = ref(false);
-
 // Messages that appear next to fields (mostly for error messages) For
 // keys/attributes we use the same strings that the server would send us so we
 // can use those directly as keys into this object.
@@ -21,6 +18,20 @@ const labelErrorMessages = ref({
     spam_score_threshold: "",
 });
 
+////////////////////////////////////////////////////////////////////////////
+//
+// Compare two arrays, ignoring order of elements.
+//
+function array_equals(a,b) {
+    const asorted = [...a].sort();
+    const bsorted = [...b].sort();
+
+    return asorted.every((v,i) => v === bsorted[i]);
+}
+
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+//
 export default {
     name: "EmailAccount",
 
@@ -135,6 +146,25 @@ export default {
     ////////////////////////////////////////////////////////////////////////////
     //
     setup(props, ctx) {
+        const submitDisabled = ref(false);
+        const resetDisabled = ref(false);
+        const filteredValidEmailAddrs = ref([]);
+
+        // We fill up "filteredValidEmailAddrs" because the list of valid email
+        // addresses is used for "aliasFor" and "aliases" and you are not
+        // allowed to alias for yourself, so just to prevent confusion we
+        // remove our own email address from the list of valid email addresse.
+        //
+        filteredValidEmailAddrs.value = props.validEmailAddresses.filter(
+            (x) => { return x != props.emailAddress; }
+        );
+
+        ////////////////////////////////////////////////////////////////////////
+        //
+        const selectMultiple = (event_name, event) => {
+            let selected = Array.from(event.target.selectedOptions).map((x) => x.value);
+            ctx.emit(event_name, selected);
+        };
 
         ////////////////////////////////////////////////////////////////////////
         //
@@ -146,13 +176,20 @@ export default {
                 for (let key in labelErrorMessages.value) {
                     labelErrorMessages.value[key] = "";
                 }
+
+                // aliasFor and aliases may be a string instead of an array (I
+                // can not figure out how to get vue to do this which it does
+                // with v-model when using v-bind and v-on)
+                //
+                let aliases = Array.isArray(props.aliases)? props.aliases : [props.aliases];
+                let aliasFor = Array.isArray(props.aliasFor)? props.aliasFor : [props.aliasFor];
                 let data = {
                     "delivery_method": props.deliveryMethod,
                     "autofile_spam": props.autofileSpam,
                     "spam_delivery_folder": props.spamDeliveryFolder,
                     "spam_score_threshold": props.spamSoreThreshold,
-                    "alias_for": props.aliasFor,
-                    "aliases": props.aliases,
+                    "alias_for": aliasFor,
+                    "aliases": aliases,
                     "forward_to": props.forwardTo
                 };
                 console.log("Submitting data to " + props.url);
@@ -166,6 +203,17 @@ export default {
                     },
                 });
                 if (res.ok) {
+                    // Before we emit data updates, compared the props for
+                    // aliase and aliasFor to see if they differ from the data
+                    // we got back from the server. If they do then after we
+                    // emit the other events we will need to emit a
+                    // `aliasesChanged` update that tells the parent component
+                    // to refresh the data from the server so that all the
+                    // EmailAccount components update.
+                    //
+                    let aliasesChange = false;
+
+
                     // XXX We should have a visual indicator that the 'Apply'
                     //     worked, like flash a check mark that fades out after
                     //     short delay.
@@ -197,7 +245,6 @@ export default {
                     let errors = await res.json();
                     for (let label in errors) {
                         labelErrorMessages.value[label] = errors[label];
-                        console.log(`Field: ${label}: ${errors[label]}`);
                     }
                 }
 
@@ -262,10 +309,11 @@ export default {
 
         //////////
         //
-        // setup code that does stuff
+        // setup code that does stuff goes here (as opposed to variable
+        // declarations, initialization, and functions we are exporting.)
         //
         //////////
-        console.log("Primary key: " + props.pk + " email address: " + props.emailAddress);
+
 
         //////////////////////////////////////////////////////////////////////
         //
@@ -274,12 +322,14 @@ export default {
         //
         //////////////////////////////////////////////////////////////////////
         return {
+            selectMultiple,
             submitData,
             submitDisabled,
             resetData,
             resetDisabled,
             labelErrorMessages,
-            props,
+            filteredValidEmailAddrs,
+            props
         };
     },
     template: '#template-email-account'
