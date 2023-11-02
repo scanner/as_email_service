@@ -1,6 +1,6 @@
 // Vue Component for an EmailAccount
 //
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import VueSelect from "vue-select";
 import MessageFilterRule from './message_filter_rule.js';
 
@@ -151,6 +151,7 @@ export default {
         const submitDisabled = ref(false);
         const resetDisabled = ref(false);
         const filteredValidEmailAddrs = ref([]);
+        const localAliasFor = ref([]);
 
         // We fill up "filteredValidEmailAddrs" because the list of valid email
         // addresses is used for "aliasFor" and "aliases" and you are not
@@ -160,11 +161,30 @@ export default {
         filteredValidEmailAddrs.value = props.validEmailAddresses.filter(
             (x) => { return x != props.emailAddress; }
         );
+        localAliasFor.value = props.aliasFor.map((x) => x);
+
+        //////////
+        //
+        // public methods
+        //
+        //////////
+
+
+        ////////////////////////////////////////////////////////////////////////
+        //
+        // When our v-select changes, emit upwards the referenced data that has
+        // changed.
+        //
+        const vSelectInput = (eventName, reference) => {
+            console.log(`${eventName}: ${reference}` );
+            ctx.emit(eventName, reference);
+        };
 
         ////////////////////////////////////////////////////////////////////////
         //
         const selectMultiple = (event_name, event) => {
-            let selected = Array.from(event.target.selectedOptions).map((x) => x.value);
+            let selected = Array.from(event.target.selectedOptions).
+                map((x) => x.value);
             ctx.emit(event_name, selected);
         };
 
@@ -271,58 +291,73 @@ export default {
         ////////////////////////////////////////////////////////////////////////
         //
         const resetData = async function () {
-            resetDisabled.value=true;
-            try {
-                // On `Reset` clear any error messages that may be set.
-                //
-                for (let key in labelErrorMessages.value) {
-                    labelErrorMessages.value[key] = "";
-                }
-
-                let res = await fetch(props.url);
-                if (res.ok) {
-                    let data = await res.json();
-                    console.log("Got data from server: " + JSON.stringify(data,null,2));
-                    ctx.emit("update:deliveryMethod", data.delivery_method);
-                    ctx.emit("update:autofileSpam", data.autofile_spam);
-                    ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
-                    ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
-                    ctx.emit("update:aliasFor", data.alias_for);
-                    ctx.emit("update:aliases", data.aliases);
-                    ctx.emit("update:forwardTo", data.forward_to);
-                    ctx.emit("update:numBounces", data.num_bounces);
-                    ctx.emit("update:deactivated", data.deactivated);
-                    ctx.emit("update:deactivatedReason", data.deactivated_reason);
-                } else {
-                    console.log(`Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`);
-                    labelErrorMessages['detail'] = `HTTP: ${res.status}: ${res.statusText}`;
-                }
-
-                // sleep for a bit so our button goes inactive for a
-                // short bit.. mostly to prevent multiple slams on the button
-                // in quick succession.
-                //
-                await new Promise(r => setTimeout(r, 750));
-
-            } finally {
-                resetDisabled.value = false;
+        resetDisabled.value=true;
+        try {
+            // On `Reset` clear any error messages that may be set.
+            //
+            for (let key in labelErrorMessages.value) {
+                labelErrorMessages.value[key] = "";
             }
-        };
 
-        //////////
-        //
-        // setup code that does stuff goes here (as opposed to variable
-        // declarations, initialization, and functions we are exporting.)
-        //
-        //////////
+            let res = await fetch(props.url);
+            if (res.ok) {
+                let data = await res.json();
+                console.log("Got data from server: " + JSON.stringify(data,null,2));
+                ctx.emit("update:deliveryMethod", data.delivery_method);
+                ctx.emit("update:autofileSpam", data.autofile_spam);
+                ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
+                ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
+                ctx.emit("update:aliasFor", data.alias_for);
+                ctx.emit("update:aliases", data.aliases);
+                ctx.emit("update:forwardTo", data.forward_to);
+                ctx.emit("update:numBounces", data.num_bounces);
+                ctx.emit("update:deactivated", data.deactivated);
+                ctx.emit("update:deactivatedReason", data.deactivated_reason);
+            } else {
+                console.log(`Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`);
+                labelErrorMessages['detail'] = `HTTP: ${res.status}: ${res.statusText}`;
+            }
+
+            // sleep for a bit so our button goes inactive for a
+            // short bit.. mostly to prevent multiple slams on the button
+            // in quick succession.
+            //
+            await new Promise(r => setTimeout(r, 750));
+
+        } finally {
+            resetDisabled.value = false;
+        }
+    };
+
+    //////////
+    //
+    // computed items
+    //
+    //////////
+    // const computedAliasFor = computed({
+    //     get() {
+    //         return props.aliasFor;
+    //     },
+    //     set(newValue) {
+    //         console.log(`computedAliasFor, set: ${newValue}`);
+    //         ctx.emit("update:aliasFor", newValue);
+    //     }
+    // });
+
+    //////////
+    //
+    // setup code that does stuff goes here (as opposed to variable
+    // declarations, initialization, and functions we are exporting.)
+    //
+    //////////
 
 
-        //////////////////////////////////////////////////////////////////////
-        //
-        // Return the public attributes and methods on the EmailAccount
-        // component
-        //
-        //////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////
+    //
+    // Return the public attributes and methods on the EmailAccount
+    // component
+    //
+    //////////////////////////////////////////////////////////////////////
         return {
             selectMultiple,
             submitData,
@@ -331,6 +366,8 @@ export default {
             resetDisabled,
             labelErrorMessages,
             filteredValidEmailAddrs,
+            localAliasFor,
+            vSelectInput,
             props
         };
     },

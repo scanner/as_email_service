@@ -120,7 +120,3 @@ const app = createApp({
     },
 });
 app.mount("#asemail-vue-app");
-
-if (HTMLScriptElement.supports('importmap')) {
-    console.log("The importmap feature is supported.");
-}

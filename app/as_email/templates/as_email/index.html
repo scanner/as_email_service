@@ -51,24 +51,34 @@
             <div class="control">
               <label :for="`id_autofile_spam-${pk}`" class="checkbox">
                 <input type="checkbox" name="autofile_spam"
-                  :id="`id_autofile_spam-${pk}`" :checked="autofileSpam" @input="$emit('update:autofileSpam', $event.target.checked)"> Autofile spam</label>
+                  :id="`id_autofile_spam-${pk}`"
+                  :checked="autofileSpam"
+                  @input="$emit('update:autofileSpam', $event.target.checked)">
+                Autofile spam</label>
             </div>
             <p id="hint_id_autofile_spam" class="help">When incoming mail exceeds the threshold set in
               `spam_score_threshold` then this email will automatically files in the `spam_delivery_folder`
               mailbox. NOTE: This only apply if local or IMAP delivery is selected in `delivery_method`.</p>
           </div>
 
+          <v-select multiple
+            v-model="localAliasFor"
+            :options="filteredValidEmailAddrs"
+            @option:selected="vSelectInput('update:aliasFor', localAliasFor)"
+            @option:deselected="vSelectInput('update:aliasFor', localAliasFor)"
+          ></v-select>
+          <p>[[ localAliasFor ]]</p>
           <div class="field">
             <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
             <div class="control">
               <div class="select is-multiple">
-                <select data-type="tags"
+                <select
                   name="alias_for"
                   :id="`id_alias_for-${pk}`"
                   :value="aliasFor"
                   @change="selectMultiple('update:aliasFor',$event)"
                   multiple>
-                  <option v-for="email_addr in filteredValidEmailAddrs">
+                  <option selected v-for="email_addr in filteredValidEmailAddrs" >
                     [[ email_addr ]]
                   </option>
                 </select>
