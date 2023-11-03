@@ -62,12 +62,10 @@
           </div>
 
           <v-select multiple
-            v-model="localAliasFor"
+            v-model="computedAliasFor"
             :options="filteredValidEmailAddrs"
-            @option:selected="vSelectInput('update:aliasFor', localAliasFor)"
-            @option:deselected="vSelectInput('update:aliasFor', localAliasFor)"
           ></v-select>
-          <p>[[ localAliasFor ]]</p>
+          <p>[[ aliasFor ]]</p>
           <div class="field">
             <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
             <div class="control">
