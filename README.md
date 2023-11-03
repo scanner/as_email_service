@@ -78,6 +78,7 @@ development. See [https://github.com/FiloSottile/mkcert](https://github.com/Filo
 
 Even if you are not going to download new python and node modules you need at
 least these packages installed for local development:
+
 - python (3.11 or greater)
 - npm
 - docker
