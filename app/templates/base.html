@@ -14,7 +14,6 @@
     {% compress css %}
     {% block css %}
       {% project_bulma_css %}
-      <link rel="stylesheet" href="{% static 'css/bulma-tagsinput.min.css' %}">
       <link rel="stylesheet" href="{% static 'css/base.css' %}">
       {% block extra_css %}{% endblock extra_css %}
     {% endblock css %}
@@ -27,7 +26,6 @@
     {% compress js %}
     {% block defer_compress_js %}
       {% project_third_party_js %}
-      <script defer type="text/javascript" src="{% static 'js/bulma-tagsinput.js' %}"></script>
       <script defer type="text/javascript" src="{% static 'js/base.js' %}"></script>
     {% endblock defer_compress_js %}
     {% endcompress %}
