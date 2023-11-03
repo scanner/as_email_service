@@ -65,10 +65,7 @@
             <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
             <div class="control">
               <div class="select is-multiple">
-                <v-select multiple
-                  v-model="computedAliasFor"
-                  :options="filteredValidEmailAddrs"
-                ></v-select>
+                <v-select multiple v-model="computedAliasFor" :options="filteredValidEmailAddrs"></v-select>
               </div>
             </div>
           </div>
