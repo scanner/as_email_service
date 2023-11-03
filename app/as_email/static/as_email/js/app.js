@@ -33,9 +33,6 @@ for (let k in initialData.email_accounts_data) {
 //
 async function updateAliases(emailAddresses) {
   if (emailAddresses.length == 0) {
-    console.log(
-      "updateAliases called, but no email address listed for updating",
-    );
     return;
   }
 
@@ -45,6 +42,10 @@ async function updateAliases(emailAddresses) {
   // 1) it is only one round trip to the server
   // 2) the amount of total data is really small.. so it is cheaper to do
   //    just this one call instead of several for smaller amounts.
+  //
+  // XXX we should consider installing `drf-flex-fields` in the server and only
+  //     querying aliases/aliasFor (and only for the email accounts listed. But
+  //     for now this brute force approach is good enough.
   //
   let res = await fetch(initialData.email_account_list_url);
   if (!res.ok) {
@@ -56,19 +57,12 @@ async function updateAliases(emailAddresses) {
   }
 
   let emailAccounts = await res.json();
-  console.log(JSON.stringify(emailAccounts, null, 2));
   // Loop through the email accounts and if the emailAccount.email_address is
   // in the list of email addresses, then update the reactive list of aliases
   // and aliasFor in emailAccountsData.
   //
   for (const emailAccount of emailAccounts) {
     if (emailAddresses.includes(emailAccount.email_address)) {
-      console.log(`Updating aliases for ${emailAccount.email_address}`);
-      console.log("ALIASES: " + JSON.stringify(emailAccount.aliases, null, 2));
-      console.log(
-        "ALIAS FOR: " + JSON.stringify(emailAccount.alias_for, null, 2),
-      );
-
       // The key into the object of reactive email account data is the
       // primary key of the specific email account with `pk` prefixed.
       //

@@ -142,6 +142,13 @@ export default {
     const resetDisabled = ref(false);
     const filteredValidEmailAddrs = ref([]);
 
+    // These two arrays track changes in aliases and aliasFors between
+    // updates sent to the REST endpoint so we can know if these fields
+    // changed. They are updated after a successful submit to the REST endpoint.
+    //
+    let preupdateAliases = [...props.aliases];
+    let preupdateAliasFor = [...props.aliasFor];
+
     // We fill up "filteredValidEmailAddrs" because the list of valid email
     // addresses is used for "aliasFor" and "aliases" and you are not
     // allowed to alias for yourself, so just to prevent confusion we
@@ -228,12 +235,9 @@ export default {
           // to refresh the data from the server so that all the
           // EmailAccount components update.
           //
-          let aliasesDiffs = arrayDiff(props.aliases, data.aliases);
-          let aliasForDiffs = arrayDiff(props.aliasFor, data.alias_for);
+          let aliasesDiffs = arrayDiff(preupdateAliases, data.aliases);
+          let aliasForDiffs = arrayDiff(preupdateAliasFor, data.alias_for);
           let aliasChanges = [...new Set(aliasesDiffs.concat(aliasForDiffs))];
-          console.log(`post patch, aliasesDiffs: ${aliasesDiffs}`);
-          console.log(`post patch, aliasForDiffs: ${aliasForDiffs}`);
-          console.log(`post patch, aliasChanges: ${aliasChanges}`);
 
           ctx.emit("update:deliveryMethod", data.delivery_method);
           ctx.emit("update:autofileSpam", data.autofile_spam);
@@ -247,11 +251,13 @@ export default {
           ctx.emit("update:deactivatedReason", data.deactivated_reason);
 
           // If aliases or aliasFor contents have changed update our parent
-          // with the affected email addresses
+          // with the affected email addresses. Also update the preserved set
+          // of aliases for the next submit.
           //
           if (aliasChanges.length != 0) {
-            console.log(`alias changes: ${aliasChanges}`);
             ctx.emit("aliasesChanged", aliasChanges);
+            preupdateAliases = [...data.aliases];
+            preupdateAliasFor = [...data.alias_for];
           }
         } else {
           // If the PATCH failed we should get back a JSON body which
@@ -291,7 +297,6 @@ export default {
         let res = await fetch(props.url);
         if (res.ok) {
           let data = await res.json();
-          console.log("Got data from server: " + JSON.stringify(data, null, 2));
           ctx.emit("update:deliveryMethod", data.delivery_method);
           ctx.emit("update:autofileSpam", data.autofile_spam);
           ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
