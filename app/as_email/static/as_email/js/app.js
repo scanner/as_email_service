@@ -11,25 +11,14 @@ import EmailAccount from "./email_account.js";
 // descriptions.
 //
 const initialData = JSON.parse(document.getElementById("vue-data").textContent);
-const origTitle = "yup, you got that";
 
 //////////////////////////////////////////
 //
-// Vue reference objects
+// Global, loaded once Vue reference objects
 //
-const myTitle = ref(origTitle);
 const emailAccountsData = {};
 for (let k in initialData.email_accounts_data) {
   emailAccountsData[k] = reactive(initialData.email_accounts_data[k]);
-}
-
-//////////////////////////////////////////
-//
-// Vue component functions
-//
-function update_foo() {
-  myTitle.value = "Clicked";
-  setTimeout(() => (myTitle.value = origTitle), 5000);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -59,13 +48,13 @@ async function updateAliases(emailAddresses) {
   //
   let res = await fetch(initialData.email_account_list_url);
   if (!res.ok) {
+    // XXX put up some sort of error notice on the main page
+    //
     console.log(
       `Unable to get field data for EmailAccount: ${res.statusText}(${res.status})`,
     );
-    // XXX put up some sort of error notice on the main page
-    //
-    return;
   }
+
   let emailAccounts = await res.json();
   console.log(JSON.stringify(emailAccounts, null, 2));
   // Loop through the email accounts and if the emailAccount.email_address is
@@ -103,10 +92,8 @@ const app = createApp({
   },
   setup() {
     return {
-      myTitle,
       emailAccountsData,
       initialData,
-      update_foo,
       updateAliases,
     };
   },
@@ -115,7 +102,6 @@ const app = createApp({
     // Hook up the 'bulma-collapsible' and bulma-tags-input support js code
     //
     const emailAccountCards = bulmaCollapsible.attach(".is-collapsible");
-    // const bulmaTags = BulmaTagsInput.attach();
   },
 });
 app.mount("#asemail-vue-app");

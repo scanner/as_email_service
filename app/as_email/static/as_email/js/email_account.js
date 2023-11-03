@@ -6,13 +6,16 @@ import MessageFilterRule from "./message_filter_rule.js";
 
 ////////////////////////////////////////////////////////////////////////////
 //
-// Compare two arrays, ignoring order of elements.
+// Return the difference (ie: changes) between two arrays.  We want the list of
+// elements that have been added or removed from a compared to b.
 //
-function array_equals(a, b) {
-  const asorted = [...a].sort();
-  const bsorted = [...b].sort();
-
-  return asorted.every((v, i) => v === bsorted[i]);
+// See: https://stackoverflow.com/questions/1187518/how-to-get-the-difference-between-two-arrays-in-javascript/3476612#3476612
+//
+function arrayDiff(a, b) {
+  return [
+    ...a.filter((x) => !b.includes(x)),
+    ...b.filter((x) => !a.includes(x)),
+  ];
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -189,23 +192,13 @@ export default {
           labelErrorMessages.value[key] = "";
         }
 
-        // aliasFor and aliases may be a string instead of an array (I
-        // can not figure out how to get vue to do this which it does
-        // with v-model when using v-bind and v-on)
-        //
-        let aliases = Array.isArray(props.aliases)
-          ? props.aliases
-          : [props.aliases];
-        let aliasFor = Array.isArray(props.aliasFor)
-          ? props.aliasFor
-          : [props.aliasFor];
         let data = {
           delivery_method: props.deliveryMethod,
           autofile_spam: props.autofileSpam,
           spam_delivery_folder: props.spamDeliveryFolder,
           spam_score_threshold: props.spamSoreThreshold,
-          alias_for: aliasFor,
-          aliases: aliases,
+          alias_for: props.aliasFor,
+          aliases: props.aliases,
           forward_to: props.forwardTo,
         };
         console.log("Submitting data to " + props.url);
@@ -219,6 +212,14 @@ export default {
           },
         });
         if (res.ok) {
+          // XXX We should have a visual indicator that the 'Apply'
+          //     worked, like flash a check mark that fades out after
+          //     short delay.
+          //
+          // XXX We should make this a function.. DRY and all.
+          //
+          let data = await res.json();
+
           // Before we emit data updates, compared the props for
           // aliase and aliasFor to see if they differ from the data
           // we got back from the server. If they do then after we
@@ -227,15 +228,13 @@ export default {
           // to refresh the data from the server so that all the
           // EmailAccount components update.
           //
-          let aliasesChange = false;
+          let aliasesDiffs = arrayDiff(props.aliases, data.aliases);
+          let aliasForDiffs = arrayDiff(props.aliasFor, data.alias_for);
+          let aliasChanges = [...new Set(aliasesDiffs.concat(aliasForDiffs))];
+          console.log(`post patch, aliasesDiffs: ${aliasesDiffs}`);
+          console.log(`post patch, aliasForDiffs: ${aliasForDiffs}`);
+          console.log(`post patch, aliasChanges: ${aliasChanges}`);
 
-          // XXX We should have a visual indicator that the 'Apply'
-          //     worked, like flash a check mark that fades out after
-          //     short delay.
-          //
-          // XXX We should make this a function.. DRY and all.
-          //
-          let data = await res.json();
           ctx.emit("update:deliveryMethod", data.delivery_method);
           ctx.emit("update:autofileSpam", data.autofile_spam);
           ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
@@ -246,9 +245,14 @@ export default {
           ctx.emit("update:numBounces", data.num_bounces);
           ctx.emit("update:deactivated", data.deactivated);
           ctx.emit("update:deactivatedReason", data.deactivated_reason);
-          // XXX Should also emit aliasesChanged if aliaases are
-          //     different in our props from what we got from the
-          //     server.
+
+          // If aliases or aliasFor contents have changed update our parent
+          // with the affected email addresses
+          //
+          if (aliasChanges.length != 0) {
+            console.log(`alias changes: ${aliasChanges}`);
+            ctx.emit("aliasesChanged", aliasChanges);
+          }
         } else {
           // If the PATCH failed we should get back a JSON body which
           // has for its keys the fields that had a problem, and the
@@ -262,14 +266,6 @@ export default {
             labelErrorMessages.value[label] = errors[label];
           }
         }
-
-        // If the data for aliases or aliasFor changed we need to emit
-        // events upward to tell it the parent to refresh the aliases
-        // for some EmailAccounts. We use the `aliasesChanged` event
-        // for this.
-        //
-        let emailAccountsChanged = [];
-        ctx.emit("aliasesChanged", emailAccountsChanged);
 
         // sleep for a bit so our button goes inactive for a
         // short bit.. mostly to prevent multiple slams on the button
