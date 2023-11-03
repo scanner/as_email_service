@@ -163,18 +163,33 @@ export default {
 
         //////////
         //
-        // public methods
+        // computed items
         //
         //////////
 
-
         ////////////////////////////////////////////////////////////////////////
         //
-        const selectMultiple = (event_name, event) => {
-            let selected = Array.from(event.target.selectedOptions).
-                map((x) => x.value);
-            ctx.emit(event_name, selected);
-        };
+        // aliasFor and aliases are passed in to a v-select component, but are
+        // given data that came in as a prop. We need to make sure that changes
+        // to the prop are passed into the v-select and that changes to the
+        // selected options in the v-select are passed back up to our parent
+        // via update events. We do this by having a read/write computed item
+        // that handles this translation.
+        //
+        const computedAliasFor = computed({
+            get: () => props.aliasFor,
+            set: (value) => ctx.emit("update:aliasFor", value)
+        });
+        const computedAliases = computed({
+            get: () => props.aliases,
+            set: (value) => ctx.emit("update:aliases", value)
+        });
+
+        //////////
+        //
+        // public methods
+        //
+        //////////
 
         ////////////////////////////////////////////////////////////////////////
         //
@@ -319,16 +334,6 @@ export default {
 
         //////////
         //
-        // computed items
-        //
-        //////////
-        const computedAliasFor = computed({
-            get: () => props.aliasFor,
-            set: (value) => ctx.emit("update:aliasFor", value)
-        });
-
-        //////////
-        //
         // setup code that does stuff goes here (as opposed to variable
         // declarations, initialization, and functions we are exporting.)
         //
@@ -342,7 +347,6 @@ export default {
         //
         //////////////////////////////////////////////////////////////////////
         return {
-            selectMultiple,
             submitData,
             submitDisabled,
             resetData,
@@ -350,6 +354,7 @@ export default {
             labelErrorMessages,
             filteredValidEmailAddrs,
             computedAliasFor,
+            computedAliases,
             props
         };
     },

@@ -61,48 +61,29 @@
               mailbox. NOTE: This only apply if local or IMAP delivery is selected in `delivery_method`.</p>
           </div>
 
-          <v-select multiple
-            v-model="computedAliasFor"
-            :options="filteredValidEmailAddrs"
-          ></v-select>
-          <p>[[ aliasFor ]]</p>
           <div class="field">
             <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
             <div class="control">
               <div class="select is-multiple">
-                <select
-                  name="alias_for"
-                  :id="`id_alias_for-${pk}`"
-                  :value="aliasFor"
-                  @change="selectMultiple('update:aliasFor',$event)"
-                  multiple>
-                  <option selected v-for="email_addr in filteredValidEmailAddrs" >
-                    [[ email_addr ]]
-                  </option>
-                </select>
+                <v-select multiple
+                  v-model="computedAliasFor"
+                  :options="filteredValidEmailAddrs"
+                ></v-select>
               </div>
             </div>
           </div>
-          <p>[[ aliasFor ]]</p>
 
           <div class="field">
-            <label :for="`id_aliases-${pk}`" class="label">aliases <span v-if="labelErrorMessages.aliases" class="error">[[ labelErrorMessages.aliases ]]</span></label>
+            <label :for="`id_aliases-${pk}`" class="label">Aliases <span v-if="labelErrorMessages.aliases" class="error">[[ labelErrorMessages.aliases ]]</span></label>
             <div class="control">
               <div class="select is-multiple">
-                <select data-type="tags"
-                  name="aliases"
-                  :id="`id_aliases-${pk}`"
-                  :value="aliases"
-                  @change="selectMultiple('update:aliases',$event)"
-                  multiple>
-                  <option v-for="email_addr in filteredValidEmailAddrs" :value="email_addr">
-                    [[ email_addr ]]
-                  </option>
-                </select>
+                <v-select multiple
+                  v-model="computedAliases"
+                  :options="filteredValidEmailAddrs"
+                ></v-select>
               </div>
             </div>
           </div>
-          <p>[[ aliases ]]</p>
 
           <div v-if="deactivated">
             <p>Email Account is deactivated and can not send email: [[ props.deactivatedReason ]]</p>
