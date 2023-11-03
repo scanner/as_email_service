@@ -57,6 +57,7 @@ lint: venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only ru
 	@$(ACTIVATE) pre-commit run -a
 
 PY_FILES=$(shell find $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/ -type f -name '*.py')
+JS_FILES=$(shell find $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/ -type f -name '*.js')
 .blackened: $(PY_FILES) venv
 	@$(ACTIVATE) black $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
 	@touch .blackened
@@ -65,9 +66,14 @@ PY_FILES=$(shell find $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/ -type f -name '*.py'
 	@$(ACTIVATE) isort $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
 	@touch .isorted
 
-formatting: isort black	## Run `isort` and `black` over all files in project.
+.prettier: $(JS_FILES)
+	@npx prettier --write ./app
+	@touch .prettier
+
+formatting: isort black prettier	## Run `isort`, `black`, `prettier` over all files in project.
 isort: .isorted
 black: .blackened
+prettier: .prettier
 
 mypy: venv  ## Run `mypy` over `app/` and `scripts/`
 	@$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/ ./scripts/

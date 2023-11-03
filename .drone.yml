@@ -23,8 +23,8 @@ depends_on:
 
 trigger:
   status:
-  - success
-  - failure
+    - success
+    - failure
 
 steps:
   - name: slack notification

@@ -1,3 +1,18 @@
 # Ignore artifacts:
 build
 coverage
+venv
+staticfiles
+
+# XXX We should copy these files in to the docker image during the build step
+#
+**/vue-select.es.js
+**/vue.esm-browser.js
+**/vue.esm-browser.prod.js
+**/bulma*.js
+
+# XXX We should revisit which html, css, yaml, markdown we want prettier.
+#
+**/*.html
+**/*.css
+**/*.webmanifest
