@@ -1,0 +1,43 @@
+<div class="card-content">
+  <form >
+    <div class="field">
+      <label for="id_delivery_method" class="label">Delivery method</label>
+      <div class="control">
+        <div class="select">
+          <select name="delivery_method" id="id_delivery_method">
+            <option value="LD" selected>
+              Local Delivery
+            </option>
+            <option value="AL">
+              Alias
+            </option>
+            <option value="FW">
+              Forwarding
+            </option>
+          </select>
+        </div>
+
+      </div>
+    </div>
+    <p>{{ modelValue || 'no props passed yet ' }}</p>
+    <div id="div_id_forward_to" class="field">
+      <label for="id_forward_to" class="label">Forward to</label>
+      <div class="control">
+        <input :value="forwardTo" @inut="$emit('update:forwardTo', $event.target.value)" type="email" name="forward_to" maxlength="254" class="input" id="id_forward_to">
+      </div>
+    </div>
+
+  </form>
+</div>
+<footer class="card-footer">
+  <p class="card-footer-item">
+    <span>
+      <input class="button is-primary" type="submit" value="Apply">
+    </span>
+  </p>
+  <p class="card-footer-item">
+    <span>
+      <input class="button is-info" type="reset" value="Reset">
+    </span>
+  </p>
+</footer>

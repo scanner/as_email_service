@@ -76,4 +76,13 @@ development. See [https://github.com/FiloSottile/mkcert](https://github.com/Filo
 
 ## License
 
-BSD 3-Clause License
+[./LICENSE](BSD 3-Clause License)
+
+### Favicon
+
+This favicon was generated using the following graphics from Twitter Twemoji:
+
+- Graphics Title: 1f4e8.svg
+- Graphics Author: Copyright 2020 Twitter, Inc and other contributors (https://github.com/twitter/twemoji)
+- Graphics Source: https://github.com/twitter/twemoji/blob/master/assets/svg/1f4e8.svg
+- Graphics License: CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
