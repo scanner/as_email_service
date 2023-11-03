@@ -1,6 +1,6 @@
 // Vue Component for an EmailAccount
 //
-import { ref, computed, watch } from "vue";
+import { ref, computed } from "vue";
 import VueSelect from "vue-select";
 import MessageFilterRule from './message_filter_rule.js';
 
@@ -151,7 +151,6 @@ export default {
         const submitDisabled = ref(false);
         const resetDisabled = ref(false);
         const filteredValidEmailAddrs = ref([]);
-        const localAliasFor = ref([]);
 
         // We fill up "filteredValidEmailAddrs" because the list of valid email
         // addresses is used for "aliasFor" and "aliases" and you are not
@@ -161,7 +160,6 @@ export default {
         filteredValidEmailAddrs.value = props.validEmailAddresses.filter(
             (x) => { return x != props.emailAddress; }
         );
-        localAliasFor.value = props.aliasFor.map((x) => x);
 
         //////////
         //
@@ -169,15 +167,6 @@ export default {
         //
         //////////
 
-
-        ////////////////////////////////////////////////////////////////////////
-        //
-        // When our v-select changes, emit upwards the referenced data that has
-        // changed.
-        //
-        const vSelectInput = (eventName, reference) => {
-            ctx.emit(eventName, reference);
-        };
 
         ////////////////////////////////////////////////////////////////////////
         //
@@ -360,9 +349,7 @@ export default {
             resetDisabled,
             labelErrorMessages,
             filteredValidEmailAddrs,
-            localAliasFor,
             computedAliasFor,
-            vSelectInput,
             props
         };
     },
