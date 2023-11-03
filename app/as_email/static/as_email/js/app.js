@@ -46,6 +46,7 @@ async function updateAliases(emailAddresses) {
   // XXX we should consider installing `drf-flex-fields` in the server and only
   //     querying aliases/aliasFor (and only for the email accounts listed. But
   //     for now this brute force approach is good enough.
+  //     see: https://sunscrapers.com/blog/the-ultimate-tutorial-for-django-rest-framework-selective-fields-and-related-objects-part-7/
   //
   let res = await fetch(initialData.email_account_list_url);
   if (!res.ok) {

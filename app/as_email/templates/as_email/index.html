@@ -5,7 +5,7 @@
   <script type="importmap">
    {
      "imports": {
-       "vue": "{% static 'js/vue.esm-browser.js' %}",
+       "vue": "{% if settings.DEBUG %}{% static 'js/vue.esm-browser.js' %}{% else %}{% static 'js/vue.esm-browser.prod.js' %}{% endif %}",
        "vue-select": "{% static 'js/vue-select.es.js' %}"
      }
    }
@@ -25,7 +25,7 @@
         <form action="as_email:email-account-detail" id="email-account-form-5" method="post" name="email-account-form-5">
           <div id="div_id_delivery_method" class="field">
             <label :for="`id-delivery-method-${pk}`" class="label">Delivery method <span v-if="labelErrorMessages.delivery_method" class="error">[[ labelErrorMessages.delivery_method ]]</span></label>
-            <div class="control">
+            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.delivery_method}`">
               <div class="select">
                 <select
                   name="delivery_method"
@@ -48,7 +48,7 @@
           </div>
 
           <div class="field">
-            <div class="control">
+            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.autofile_spam}`">
               <label :for="`id_autofile_spam-${pk}`" class="checkbox">
                 <input type="checkbox" name="autofile_spam"
                   :id="`id_autofile_spam-${pk}`"
@@ -56,14 +56,11 @@
                   @input="$emit('update:autofileSpam', $event.target.checked)">
                 Autofile spam</label>
             </div>
-            <p id="hint_id_autofile_spam" class="help">When incoming mail exceeds the threshold set in
-              `spam_score_threshold` then this email will automatically files in the `spam_delivery_folder`
-              mailbox. NOTE: This only apply if local or IMAP delivery is selected in `delivery_method`.</p>
           </div>
 
           <div class="field">
-            <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
-            <div class="control">
+            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.alias_for}`">
+              <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
               <div class="select is-multiple">
                 <v-select multiple v-model="computedAliasFor" :options="filteredValidEmailAddrs"></v-select>
               </div>
@@ -71,8 +68,8 @@
           </div>
 
           <div class="field">
-            <label :for="`id_aliases-${pk}`" class="label">Aliases <span v-if="labelErrorMessages.aliases" class="error">[[ labelErrorMessages.aliases ]]</span></label>
-            <div class="control">
+            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
+              <label :for="`id_aliases-${pk}`" class="label">Aliases <span v-if="labelErrorMessages.aliases" class="error">[[ labelErrorMessages.aliases ]]</span></label>
               <div class="select is-multiple">
                 <v-select multiple
                   v-model="computedAliases"
@@ -86,8 +83,8 @@
             <p>Email Account is deactivated and can not send email: [[ props.deactivatedReason ]]</p>
           </div>
           <div :id="`div_id_forward_to_${pk}`" class="field">
-            <label :for="`forward-to-id-${pk}`" class="label">Forward to</label>
-            <div class="control">
+            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
+              <label :for="`forward-to-id-${pk}`" class="label">Forward to</label>
               <input
                 type="email"
                 name="forward_to"
@@ -150,7 +147,7 @@
                 v-model:deactivated="emailAccountsData.pk{{email_account.pk}}.deactivated"
                 v-model:deactivated-reason="emailAccountsData.pk{{email_account.pk}}.deactivated_reason"
                 v-model:valid-email-addresses="initialData.valid_email_addresses"
-                v-model:fieldInfo="initialData.email_account_field_info"></email-account>
+                v-model:field-info="initialData.email_account_field_info"></email-account>
             </div>
           </div>
         {% endfor %}

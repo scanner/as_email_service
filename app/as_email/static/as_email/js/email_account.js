@@ -19,6 +19,20 @@ function arrayDiff(a, b) {
 }
 
 ////////////////////////////////////////////////////////////////////////////
+//
+// Wraps a string to a given number of characters using a string break
+// character
+//
+// from: https://www.30secondsofcode.org/js/s/word-wrap/
+//
+function wordWrap(str, max, br = "\n") {
+  return str.replace(
+    new RegExp(`(?![^\\n]{1,${max}}$)([^\\n]{1,${max}})\\s`, "g"),
+    "$1" + br,
+  );
+}
+
+////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 //
 export default {
@@ -142,12 +156,39 @@ export default {
     const resetDisabled = ref(false);
     const filteredValidEmailAddrs = ref([]);
 
+    // Messages that appear next to fields (mostly for error messages) For
+    // keys/attributes we use the same strings that the server would send us so
+    // we can use those directly as keys into this object.
+    //
+    const labelErrorMessages = ref({
+      detail: "",
+      alias_for: "",
+      aliases: "",
+      autofile_spam: "",
+      delivery_method: "",
+      forward_to: "",
+      spam_delivery_folder: "",
+      spam_score_threshold: "",
+    });
+
     // These two arrays track changes in aliases and aliasFors between
     // updates sent to the REST endpoint so we can know if these fields
     // changed. They are updated after a successful submit to the REST endpoint.
     //
     let preupdateAliases = [...props.aliases];
     let preupdateAliasFor = [...props.aliasFor];
+
+    // Extract our field help text in to text wrapped with the creativeBulma
+    // tooltip wrap character at a certain length (otherwise tool tips are just
+    // very long single line strings).
+    //
+    const labelTooltips = {};
+    for (let [k, v] of Object.entries(props.fieldInfo)) {
+      if ("help_text" in v) {
+        // labelTooltips[k] = wordWrap(v.help_text, 50, '&#10;');
+        labelTooltips[k] = v.help_text;
+      }
+    }
 
     // We fill up "filteredValidEmailAddrs" because the list of valid email
     // addresses is used for "aliasFor" and "aliases" and you are not
@@ -326,21 +367,6 @@ export default {
       }
     };
 
-    // Messages that appear next to fields (mostly for error messages) For
-    // keys/attributes we use the same strings that the server would send us so we
-    // can use those directly as keys into this object.
-    //
-    const labelErrorMessages = ref({
-      detail: "",
-      alias_for: "",
-      aliases: "",
-      autofile_spam: "",
-      delivery_method: "",
-      forward_to: "",
-      spam_delivery_folder: "",
-      spam_score_threshold: "",
-    });
-
     //////////
     //
     // setup code that does stuff goes here (as opposed to variable
@@ -363,6 +389,7 @@ export default {
       filteredValidEmailAddrs,
       computedAliasFor,
       computedAliases,
+      labelTooltips,
       props,
     };
   },
