@@ -244,7 +244,7 @@ export default {
           delivery_method: props.deliveryMethod,
           autofile_spam: props.autofileSpam,
           spam_delivery_folder: props.spamDeliveryFolder,
-          spam_score_threshold: props.spamSoreThreshold,
+          spam_score_threshold: props.spamScoreThreshold,
           alias_for: props.aliasFor,
           aliases: props.aliases,
           forward_to: props.forwardTo,

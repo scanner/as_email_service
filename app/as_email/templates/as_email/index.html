@@ -22,83 +22,108 @@
   <template id="template-email-account">
     <div>
       <div class="card-content">
-        <form action="as_email:email-account-detail" id="email-account-form-5" method="post" name="email-account-form-5">
-          <div id="div_id_delivery_method" class="field">
-            <label :for="`id-delivery-method-${pk}`" class="label">Delivery method <span v-if="labelErrorMessages.delivery_method" class="error">[[ labelErrorMessages.delivery_method ]]</span></label>
-            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.delivery_method}`">
-              <div class="select">
-                <select
-                  name="delivery_method"
-                  :id="`id-delivery-method-${pk}`"
-                  :value="deliveryMethod"
-                  @input="$emit('update:deliveryMethod', $event.target.value)"
-                >
-                  <option value="LD">
-                    Local Delivery
-                  </option>
-                  <option value="AL">
-                    Alias
-                  </option>
-                  <option value="FW">
-                    Forwarding
-                  </option>
-                </select>
-              </div>
+        <p class="help is-danger has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.deactivated}`" v-if="deactivated"><b>NOTE:</b> Email Account is deactivated and can not send email: [[ props.deactivatedReason ]]</p>
+        <p class="help is-danger" v-if="labelErrorMessages.detail">[[ labelErrorMessages.detail ]]</p>
+        <p class="help is-danger has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.num_bounces}`" v-if="numBounces">Number of sent email bounces: [[ numBounces ]]</p>
+
+        <div class="field has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.delivery_method}`">
+          <label class="label" :for="`id-delivery-method-${pk}`">Delivery method </label>
+          <div class="control">
+            <div class="select">
+              <select
+                name="delivery_method"
+                :id="`id-delivery-method-${pk}`"
+                :value="deliveryMethod"
+                @input="$emit('update:deliveryMethod', $event.target.value)"
+              >
+                <option value="LD">
+                  Local Delivery
+                </option>
+                <option value="AL">
+                  Alias
+                </option>
+                <option value="FW">
+                  Forwarding
+                </option>
+              </select>
             </div>
           </div>
+          <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.delivery_method ]]</p>
+        </div>
 
-          <div class="field">
-            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.autofile_spam}`">
-              <label :for="`id_autofile_spam-${pk}`" class="checkbox">
-                <input type="checkbox" name="autofile_spam"
-                  :id="`id_autofile_spam-${pk}`"
-                  :checked="autofileSpam"
-                  @input="$emit('update:autofileSpam', $event.target.checked)">
-                Autofile spam</label>
+        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.autofile_spam}`">
+          <label class="checkbox" :for="`id_autofile_spam-${pk}`" >
+            <div class="control">
+              <input type="checkbox" name="autofile_spam"
+                :id="`id_autofile_spam-${pk}`"
+                :checked="autofileSpam"
+                @input="$emit('update:autofileSpam', $event.target.checked)">
+              Autofile spam</label>
+            </div>
+            <p v-if="labelErrorMessages.autofile_spam" class="help is-danger">[[ labelErrorMessages.autofile_spam ]]</p>
+        </div>
+
+        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_score_threshold}`">
+          <label class="label" :for="`id_spam_score_threshold-${pk}`" >Spam score threshold</label>
+          <div class="control">
+            <input type="number" class="numberinput input"
+              name="spam_score_threshold"
+              :id="`id_spam_score_threshold-${pk}`"
+              :value="spamScoreThreshold"
+              @input="$emit('update:spamScoreThreshold', $event.target.value)">
+          </div>
+          <p v-if="labelErrorMessages.spam_score_threshold" class="help is-danger">[[ labelErrorMessages.spam_score_threshold ]]</p>
+        </div>
+
+        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_delivery_folder}`">
+          <label  class="label" :for="`id_spam_delivery_folder-${pk}`">Spam delivery folder</label>
+          <div class="control">
+            <input type="text" class="input" name="spam_delivery_folder"
+              maxlength="1024"
+              :value="spamDeliveryFolder"
+              @input="$emit('update:spamDeliveryFolder', $event.target.value)"
+              :id="`id_spam_delivery_folder-${pk}`">
+          </div>
+          <p v-if="labelErrorMessages.spam_delivery_folder" class="help is-danger">[[ labelErrorMessages.spam_delivery_folder ]]</p>
+        </div>
+
+        <div class="field has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.alias_for}`">
+          <div class="control">
+            <label :for="`id_alias_for-${pk}`" class="label">Alias for</label>
+            <div class="select is-multiple">
+              <v-select multiple v-model="computedAliasFor" :options="filteredValidEmailAddrs"></v-select>
             </div>
           </div>
+          <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.alias_for ]]</p>
+        </div>
 
-          <div class="field">
-            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.alias_for}`">
-              <label :for="`id_alias_for-${pk}`" class="label">Alias for <span v-if="labelErrorMessages.alias_for" class="error">[[ labelErrorMessages.alias_for ]]</span></label>
-              <div class="select is-multiple">
-                <v-select multiple v-model="computedAliasFor" :options="filteredValidEmailAddrs"></v-select>
-              </div>
+        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
+          <div class="control">
+            <label :for="`id_aliases-${pk}`" class="label">Aliases</label>
+            <div class="select is-multiple">
+              <v-select multiple
+                v-model="computedAliases"
+                :options="filteredValidEmailAddrs"
+              ></v-select>
             </div>
           </div>
+          <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.aliases ]]</p>
+        </div>
 
-          <div class="field">
-            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
-              <label :for="`id_aliases-${pk}`" class="label">Aliases <span v-if="labelErrorMessages.aliases" class="error">[[ labelErrorMessages.aliases ]]</span></label>
-              <div class="select is-multiple">
-                <v-select multiple
-                  v-model="computedAliases"
-                  :options="filteredValidEmailAddrs"
-                ></v-select>
-              </div>
-            </div>
+        <div :id="`div_id_forward_to_${pk}`" class="field">
+          <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
+            <label :for="`forward-to-id-${pk}`" class="label">Forward to</label>
+            <input
+              type="email"
+              name="forward_to"
+              maxlength="254"
+              class="input"
+              :id="`forward-to-id-${pk}`"
+              :value="forwardTo"
+              @input="$emit('update:forwardTo', $event.target.value)"
+            />
           </div>
-
-          <div v-if="deactivated">
-            <p>Email Account is deactivated and can not send email: [[ props.deactivatedReason ]]</p>
-          </div>
-          <div :id="`div_id_forward_to_${pk}`" class="field">
-            <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
-              <label :for="`forward-to-id-${pk}`" class="label">Forward to</label>
-              <input
-                type="email"
-                name="forward_to"
-                maxlength="254"
-                class="input"
-                :id="`forward-to-id-${pk}`"
-                :value="forwardTo"
-                @input="$emit('update:forwardTo', $event.target.value)"
-              />
-            </div>
-          </div>
-
-        </form>
-        <span v-if="labelErrorMessages.detail">[[ labelErrorMessages.detail ]]</span>
+        </div>
       </div>
       <footer class="card-footer">
         <p class="card-footer-item">
