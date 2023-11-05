@@ -51,40 +51,42 @@
           <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.delivery_method ]]</p>
         </div>
 
-        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.autofile_spam}`">
-          <label class="checkbox is-small" :for="`id_autofile_spam-${pk}`" >
-            <div class="control is-small">
-              <input type="checkbox" name="autofile_spam"
-                :id="`id_autofile_spam-${pk}`"
-                :checked="autofileSpam"
-                @input="$emit('update:autofileSpam', $event.target.checked)">
-              Autofile spam</label>
+        <div class="field is-grouped">
+          <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.autofile_spam}`">
+            <label class="checkbox is-small" :for="`id_autofile_spam-${pk}`" >
+              <div class="control is-small">
+                <input type="checkbox" name="autofile_spam"
+                  :id="`id_autofile_spam-${pk}`"
+                  :checked="autofileSpam"
+                  @input="$emit('update:autofileSpam', $event.target.checked)">
+                Autofile spam</label>
+              </div>
+              <p v-if="labelErrorMessages.autofile_spam" class="help is-danger">[[ labelErrorMessages.autofile_spam ]]</p>
+          </div>
+
+          <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_score_threshold}`">
+            <label class="label is-small" :for="`id_spam_score_threshold-${pk}`" >Spam score threshold</label>
+            <div class="control">
+              <input type="number" class="numberinput input is-small"
+                name="spam_score_threshold"
+                :id="`id_spam_score_threshold-${pk}`"
+                :value="spamScoreThreshold"
+                @input="$emit('update:spamScoreThreshold', $event.target.value)">
             </div>
-            <p v-if="labelErrorMessages.autofile_spam" class="help is-danger">[[ labelErrorMessages.autofile_spam ]]</p>
-        </div>
-
-        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_score_threshold}`">
-          <label class="label is-small" :for="`id_spam_score_threshold-${pk}`" >Spam score threshold</label>
-          <div class="control">
-            <input type="number" class="numberinput input is-small"
-              name="spam_score_threshold"
-              :id="`id_spam_score_threshold-${pk}`"
-              :value="spamScoreThreshold"
-              @input="$emit('update:spamScoreThreshold', $event.target.value)">
+            <p v-if="labelErrorMessages.spam_score_threshold" class="help is-danger">[[ labelErrorMessages.spam_score_threshold ]]</p>
           </div>
-          <p v-if="labelErrorMessages.spam_score_threshold" class="help is-danger">[[ labelErrorMessages.spam_score_threshold ]]</p>
-        </div>
 
-        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_delivery_folder}`">
-          <label  class="label is-small" :for="`id_spam_delivery_folder-${pk}`">Spam delivery folder</label>
-          <div class="control">
-            <input type="text" class="input is-small" name="spam_delivery_folder"
-              maxlength="1024"
-              :value="spamDeliveryFolder"
-              @input="$emit('update:spamDeliveryFolder', $event.target.value)"
-              :id="`id_spam_delivery_folder-${pk}`">
+          <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_delivery_folder}`">
+            <label  class="label is-small" :for="`id_spam_delivery_folder-${pk}`">Spam delivery folder</label>
+            <div class="control is-expanded">
+              <input type="text" class="input is-small" name="spam_delivery_folder"
+                maxlength="1024"
+                :value="spamDeliveryFolder"
+                @input="$emit('update:spamDeliveryFolder', $event.target.value)"
+                :id="`id_spam_delivery_folder-${pk}`">
+            </div>
+            <p v-if="labelErrorMessages.spam_delivery_folder" class="help is-danger">[[ labelErrorMessages.spam_delivery_folder ]]</p>
           </div>
-          <p v-if="labelErrorMessages.spam_delivery_folder" class="help is-danger">[[ labelErrorMessages.spam_delivery_folder ]]</p>
         </div>
 
         <div class="field has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.alias_for}`">
@@ -125,6 +127,11 @@
             />
           </div>
         </div>
+        <div class="field is-grouped is-grouped-centered">
+          <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Sets the password for SMTP and IMAP access to this mail service for this email account.">
+            <button class="js-modal-trigger" :data-target="`set-password-modal-${pk}`" @click="openChangePassword($event)">Set Email Account Password</button>
+          </div>
+        </div>
       </div>
       <footer class="card-footer">
         <p class="card-footer-item">
@@ -138,6 +145,15 @@
           </span>
         </p>
       </footer>
+      <div :id="`set-password-modal-${pk}`" class="modal">
+        <div class="modal-background"></div>
+        <div class="modal-content">
+          <div class="box">
+            <p>Modal to set password for [[ emailAddress ]]</p>
+          </div>
+        </div>
+        <button class="modal-close is-large" aria-label="close" @click="closeChangePassword($event)"></button>
+      </div>
     </div>
   </template>
   <div class="container">

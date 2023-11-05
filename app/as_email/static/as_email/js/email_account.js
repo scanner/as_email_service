@@ -367,6 +367,28 @@ export default {
       }
     };
 
+    ////////////////////////////////////////////////////////////////////////
+    //
+    const openChangePassword = function ($event) {
+      const modal = $event.target.dataset.target;
+      const $target = document.getElementById(modal);
+      if ($target) {
+        $target.classList.add("is-active");
+      }
+    };
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    const closeChangePassword = function ($event) {
+      console.log($event.target);
+      const modal = $event.target.dataset.target;
+      const $target = document.getElementById(modal);
+
+      if ($target) {
+        $target.classList.remove("is-active");
+      }
+    };
+
     //////////
     //
     // setup code that does stuff goes here (as opposed to variable
@@ -390,6 +412,8 @@ export default {
       computedAliasFor,
       computedAliases,
       labelTooltips,
+      openChangePassword,
+      closeChangePassword,
       props,
     };
   },
