@@ -129,7 +129,10 @@
         </div>
         <div class="field is-grouped is-grouped-centered">
           <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Sets the password for SMTP and IMAP access to this mail service for this email account.">
-            <button class="js-modal-trigger" :data-target="`set-password-modal-${pk}`" @click="openChangePassword($event)">Set Email Account Password</button>
+            <button class="button is-normal is-link" :data-target="`set-password-modal-${pk}`" @click="openChangePassword($event)">Set Email Account Password</button>
+          </div>
+          <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Opens the dialog for working with message filter rules. Message filter rules apply to IMAP and Local Delivery for auto-filing messages in to mailboxes based on their headers.">
+            <button class="button is-normal is-link" :data-target="`message-filter-rules-modal-${pk}`" @click="openMessageFilterRules($event)">Message Filter Rules</button>
           </div>
         </div>
       </div>
@@ -154,6 +157,26 @@
         </div>
         <button class="modal-close is-large" aria-label="close" @click="closeChangePassword($event)"></button>
       </div>
+      <div :id="`message-filter-rules-modal-${pk}`" class="modal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+          <header class="modal-card-head">
+            <p class="modal-card-title">Modal title</p>
+            <button class="delete" aria-label="close">
+          </header>
+          <section class="modal-card-body">
+            <Suspense>
+              <message-filter-rules>
+              </message-filter-rules>
+            </Suspense>
+          </section>
+          <footer class="modal-card-foot">
+            <button class="button is-success">Save changes</button>
+            <button class="button">Cancel</button>
+          </footer>
+        </div>
+      </div>
+
     </div>
   </template>
   <div class="container">
