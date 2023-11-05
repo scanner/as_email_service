@@ -51,7 +51,7 @@
           <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.delivery_method ]]</p>
         </div>
 
-        <div class="field is-grouped">
+        <div class="field is-grouped" v-bind:class="{ 'has-background-grey-light': !autofileSpam}">
           <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.autofile_spam}`">
             <label class="checkbox is-small" :for="`id_autofile_spam-${pk}`" >
               <div class="control is-small">
@@ -69,6 +69,7 @@
             <div class="control">
               <input type="number" class="numberinput input is-small"
                 name="spam_score_threshold"
+                :disabled="!autofileSpam"
                 :id="`id_spam_score_threshold-${pk}`"
                 :value="spamScoreThreshold"
                 @input="$emit('update:spamScoreThreshold', $event.target.value)">
@@ -81,6 +82,7 @@
             <div class="control is-expanded">
               <input type="text" class="input is-small" name="spam_delivery_folder"
                 maxlength="1024"
+                :disabled="!autofileSpam"
                 :value="spamDeliveryFolder"
                 @input="$emit('update:spamDeliveryFolder', $event.target.value)"
                 :id="`id_spam_delivery_folder-${pk}`">
@@ -166,8 +168,14 @@
           </header>
           <section class="modal-card-body">
             <Suspense>
-              <message-filter-rules>
-              </message-filter-rules>
+              <template #default>
+                <message-filter-rules></message-filter-rules>
+              </template>
+              <template #fallback>
+                <div>
+                  <button class="button is-info is-loading is-large" disabled></button>
+                </div>
+              </template>
             </Suspense>
           </section>
           <footer class="modal-card-foot">
