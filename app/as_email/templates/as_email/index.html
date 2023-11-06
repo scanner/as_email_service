@@ -134,7 +134,7 @@
             <button class="button is-normal is-link" :data-target="`set-password-modal-${pk}`" @click="openChangePassword($event)">Set Email Account Password</button>
           </div>
           <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Opens the dialog for working with message filter rules. Message filter rules apply to IMAP and Local Delivery for auto-filing messages in to mailboxes based on their headers.">
-            <button class="button is-normal is-link" :data-target="`message-filter-rules-modal-${pk}`" @click="openMessageFilterRules($event)">Message Filter Rules</button>
+            <button class="button is-normal is-link" disabled :data-target="`message-filter-rules-modal-${pk}`" @click="openMessageFilterRules($event)">Message Filter Rules</button>
           </div>
         </div>
       </div>
@@ -152,12 +152,50 @@
       </footer>
       <div :id="`set-password-modal-${pk}`" class="modal">
         <div class="modal-background"></div>
-        <div class="modal-content">
-          <div class="box">
-            <p>Modal to set password for [[ emailAddress ]]</p>
-          </div>
+        <div class="modal-card">
+          <header class="modal-card-head">
+            <p class="modal-card-title">Setting SMTP / IMAP for '[[ emailAddress ]]'</p>
+            <button class="delete" aria-label="close">
+          </header>
+          <section class="modal-card-body">
+            <div class="box">
+              <div class="field is-centered">
+                <div class="control">
+                  <label :for="`set-password-id-${pk}`" class="label is-large">Password</label>
+                  <input
+                    type="pasword"
+                    name="set_password"
+                    maxlength="64"
+                    class="input is-large"
+                    :id="`set-pasword-id-${pk}`"
+                    v-model="emailAccountPassword"
+                    placeholder="Email Account password"
+                  />
+                </div>
+              </div>
+              <div class="field is-centered">
+                <div class="control">
+                  <label :for="`set-password-confirm-id-${pk}`" class="label is-large">Confirm Password</label>
+                  <input
+                    type="pasword"
+                    name="set_confirm_password"
+                    maxlength="64"
+                    class="input is-large"
+                    :id="`set-pasword-confirm-id-${pk}`"
+                    v-model="emailAccountPasswordConfirm"
+                    placeholder="Confirm Email Account password"
+                  />
+                </div>
+                <p v-if="labelErrorMessages.set_password" class="help is-danger">[[ labelErrorMessages.set_password ]]</p>
+              </div>
+            </div>
+          </section>
+          <footer class="modal-card-foot">
+            <button class="button is-success" @click="setPassword($event)" :data-target="`set-password-modal-${pk}`">Set Password</button>
+            <button class="button" @click="closeChangePassword($event)" :data-target="`set-password-modal-${pk}`">Cancel</button>
+          </footer>
         </div>
-        <button class="modal-close is-large" aria-label="close" @click="closeChangePassword($event)"></button>
+        <button class="modal-close is-large" aria-label="close" @click="closeChangePassword($event)" :data-target="`set-password-modal-${pk}`"></button>
       </div>
       <div :id="`message-filter-rules-modal-${pk}`" class="modal">
         <div class="modal-background"></div>
@@ -169,7 +207,7 @@
           <section class="modal-card-body">
             <Suspense>
               <template #default>
-                <message-filter-rules></message-filter-rules>
+                <message-filter-rules v-model:url="messageFilterRules"></message-filter-rules>
               </template>
               <template #fallback>
                 <div>
@@ -186,6 +224,9 @@
       </div>
 
     </div>
+  </template>
+  <template id="template-message-filter-rules">
+    <p>Message filter rules</p>
   </template>
   <div class="container">
     <p class="title is-1">Email Accounts</p>
@@ -216,6 +257,7 @@
                 v-model:aliases="emailAccountsData.pk{{email_account.pk}}.aliases"
 
                 v-model:forward-to="emailAccountsData.pk{{email_account.pk}}.forward_to"
+                v-model:message-filter-rules="emailAccountsData.pk{{email_account.pk}}.message_filter_rules"
                 v-model:num-bounces="emailAccountsData.pk{{email_account.pk}}.num_bounces"
                 v-model:deactivated="emailAccountsData.pk{{email_account.pk}}.deactivated"
                 v-model:deactivated-reason="emailAccountsData.pk{{email_account.pk}}.deactivated_reason"

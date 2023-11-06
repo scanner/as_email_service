@@ -2,7 +2,7 @@
 //
 import { ref, computed } from "vue";
 import VueSelect from "vue-select";
-import MessageFilterRule from "./message_filter_rule.js";
+import MessageFilterRules from "./MessageFilterRules.js";
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -89,6 +89,11 @@ export default {
       default: "",
       required: true,
     },
+    messageFilterRules: {
+      type: String,
+      default: "",
+      required: true,
+    },
     numBounces: {
       type: Number,
       default: 0,
@@ -138,7 +143,7 @@ export default {
   ////////////////////////////////////////////////////////////////////////////
   //
   components: {
-    MessageFilterRule: MessageFilterRule,
+    MessageFilterRules: MessageFilterRules,
     "v-select": VueSelect,
   },
 
@@ -155,6 +160,8 @@ export default {
     const submitDisabled = ref(false);
     const resetDisabled = ref(false);
     const filteredValidEmailAddrs = ref([]);
+    const emailAccountPassword = ref("");
+    const emailAccountPasswordConfirm = ref("");
 
     // Messages that appear next to fields (mostly for error messages) For
     // keys/attributes we use the same strings that the server would send us so
@@ -169,6 +176,7 @@ export default {
       forward_to: "",
       spam_delivery_folder: "",
       spam_score_threshold: "",
+      set_password: "",
     });
 
     // These two arrays track changes in aliases and aliasFors between
@@ -389,6 +397,26 @@ export default {
       }
     };
 
+    ////////////////////////////////////////////////////////////////////////
+    //
+    const setPassword = async function ($event) {
+      console.log($event.target);
+      const modal = $event.target.dataset.target;
+      const $target = document.getElementById(modal);
+
+      labelErrorMessages.value["set_password"] = "Password set!";
+
+      // sleep for a bit so our button goes inactive for a
+      // short bit.. mostly to prevent multiple slams on the button
+      // in quick succession.
+      //
+      await new Promise((r) => setTimeout(r, 750));
+
+      if ($target) {
+        $target.classList.remove("is-active");
+      }
+    };
+
     //////////
     //
     // setup code that does stuff goes here (as opposed to variable
@@ -412,8 +440,11 @@ export default {
       computedAliasFor,
       computedAliases,
       labelTooltips,
+      emailAccountPassword,
+      emailAccountPasswordConfirm,
       openChangePassword,
       closeChangePassword,
+      setPassword,
       props,
     };
   },
