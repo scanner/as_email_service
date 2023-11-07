@@ -119,6 +119,11 @@ export default {
       default: {},
       required: false,
     },
+    setPasswordAction: {
+      type: String,
+      default: "set_password/",
+      required: false,
+    },
   },
 
   ////////////////////////////////////////////////////////////////////////////
@@ -162,6 +167,7 @@ export default {
     const filteredValidEmailAddrs = ref([]);
     const emailAccountPassword = ref("");
     const emailAccountPasswordConfirm = ref("");
+    const emailAccountPasswordStatus = ref("");
 
     // Messages that appear next to fields (mostly for error messages) For
     // keys/attributes we use the same strings that the server would send us so
@@ -377,43 +383,107 @@ export default {
 
     ////////////////////////////////////////////////////////////////////////
     //
-    const openChangePassword = function ($event) {
-      const modal = $event.target.dataset.target;
-      const $target = document.getElementById(modal);
-      if ($target) {
-        $target.classList.add("is-active");
-      }
-    };
-
-    ////////////////////////////////////////////////////////////////////////
+    // Check to see if the password is strong enough to let the user use it. It
+    // is used on key up to highlight the password field if it is or is not
+    // good enough. It also is used by the setPassword method to make sure that
+    // the password is good enough before posting it to the server.
     //
-    const closeChangePassword = function ($event) {
-      console.log($event.target);
-      const modal = $event.target.dataset.target;
-      const $target = document.getElementById(modal);
+    const checkPassword = function (target) {
+      const result = zxcvbn(emailAccountPassword.value);
 
-      if ($target) {
-        $target.classList.remove("is-active");
+      if (result.score <= 2) {
+        target.classList.add("is-danger");
+        target.classList.remove("is-warning", "is-success");
+
+        let suggestions = result.feedback.suggestions.join(", ");
+        let feedback =
+          result.feedback.warning.length > 0
+            ? `${result.feedback.warning}: ${suggestions}`
+            : suggestions;
+
+        labelErrorMessages.value["set_password"] = feedback;
+      } else {
+        target.classList.remove("is-danger");
+        if (result.score == 3) {
+          target.classList.remove("is-success");
+          target.classList.add("is-warning");
+        } else {
+          target.classList.remove("is-warning");
+          target.classList.add("is-success");
+        }
+        labelErrorMessages.value["set_password"] = "";
       }
     };
 
     ////////////////////////////////////////////////////////////////////////
     //
     const setPassword = async function ($event) {
-      console.log($event.target);
       const modal = $event.target.dataset.target;
       const $target = document.getElementById(modal);
+      const set_password_url = new URL(props.setPasswordAction, props.url);
+      const result = zxcvbn(emailAccountPassword.value);
 
-      labelErrorMessages.value["set_password"] = "Password set!";
-
-      // sleep for a bit so our button goes inactive for a
-      // short bit.. mostly to prevent multiple slams on the button
-      // in quick succession.
+      // Disable the button while we are checking values and talking to the
+      // server.
       //
-      await new Promise((r) => setTimeout(r, 750));
+      $event.target.setAttribute("disabled", true);
 
-      if ($target) {
-        $target.classList.remove("is-active");
+      // If the score is 2 or less then idle for a bit, re-enable the set
+      // password button, and return. Do not even bother trying to set the
+      // password.
+      //
+      if (result.score <= 2) {
+        await new Promise((r) => setTimeout(r, 1500));
+        $event.target.removeAttribute("disabled");
+        return;
+      }
+
+      labelErrorMessages.value["set_password"] = "";
+
+      try {
+        emailAccountPasswordStatus.value = "Setting...";
+
+        if (emailAccountPassword.value != emailAccountPasswordConfirm.value) {
+          labelErrorMessages.value["set_password"] =
+            "Password and Confirm password do not match.";
+          return;
+        }
+
+        console.log(
+          `set password to: ${emailAccountPassword.value} (confirm: $emailAccountPasswordConfirm.value)`,
+        );
+
+        let res = await fetch(set_password_url.href, {
+          method: "POST",
+          body: JSON.stringify({ password: emailAccountPassword.value }),
+          headers: {
+            "Content-type": "application/json; charset=UTF-8",
+          },
+        });
+
+        if (res.ok) {
+          if ($target) {
+            emailAccountPasswordStatus.value = "Password set successfully";
+            // sleep for a bit so our button goes inactive for a short
+            // bit.. mostly to prevent multiple slams on the button in quick
+            // succession.
+            //
+            await new Promise((r) => setTimeout(r, 1500));
+            $target.classList.remove("is-active");
+          }
+        } else {
+          let errors = await res.json();
+          emailAccountPasswordStatus.value = "";
+          labelErrorMessages.value["set_password"] = errors["details"];
+          // sleep for a bit so our button goes inactive for a short
+          // bit.. mostly to prevent multiple slams on the button in quick
+          // succession.
+          //
+          await new Promise((r) => setTimeout(r, 750));
+        }
+      } finally {
+        emailAccountPasswordStatus.value = "";
+        $event.target.removeAttribute("disabled");
       }
     };
 
@@ -442,8 +512,8 @@ export default {
       labelTooltips,
       emailAccountPassword,
       emailAccountPasswordConfirm,
-      openChangePassword,
-      closeChangePassword,
+      emailAccountPasswordStatus,
+      checkPassword,
       setPassword,
       props,
     };

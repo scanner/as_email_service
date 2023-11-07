@@ -500,6 +500,9 @@ class EmailAccountViewSet(
 
     ####################################################################
     #
+    # XXX We should use python version of zxcvbn to make sure a password
+    #     that is too weak is not used.
+    #
     @action(detail=True, methods=["post"])
     def set_password(self, request, pk=None):
         ea = self.get_object()

@@ -131,10 +131,10 @@
         </div>
         <div class="field is-grouped is-grouped-centered">
           <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Sets the password for SMTP and IMAP access to this mail service for this email account.">
-            <button class="button is-normal is-link" :data-target="`set-password-modal-${pk}`" @click="openChangePassword($event)">Set Email Account Password</button>
+            <button class="button modal-button is-normal is-link" :data-target="`set-password-modal-${pk}`">Set Email Account Password</button>
           </div>
           <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Opens the dialog for working with message filter rules. Message filter rules apply to IMAP and Local Delivery for auto-filing messages in to mailboxes based on their headers.">
-            <button class="button is-normal is-link" disabled :data-target="`message-filter-rules-modal-${pk}`" @click="openMessageFilterRules($event)">Message Filter Rules</button>
+            <button class="button modal-button is-normal is-link" disabled :data-target="`message-filter-rules-modal-${pk}`" @click="openMessageFilterRules($event)">Message Filter Rules</button>
           </div>
         </div>
       </div>
@@ -163,13 +163,15 @@
                 <div class="control">
                   <label :for="`set-password-id-${pk}`" class="label is-large">Password</label>
                   <input
-                    type="pasword"
+                    type="password"
                     name="set_password"
                     maxlength="64"
                     class="input is-large"
                     :id="`set-pasword-id-${pk}`"
                     v-model="emailAccountPassword"
-                    placeholder="Email Account password"
+                    placeholder="Email account password"
+                    @keyup="checkPassword($event.target)"
+
                   />
                 </div>
               </div>
@@ -177,7 +179,7 @@
                 <div class="control">
                   <label :for="`set-password-confirm-id-${pk}`" class="label is-large">Confirm Password</label>
                   <input
-                    type="pasword"
+                    type="password"
                     name="set_confirm_password"
                     maxlength="64"
                     class="input is-large"
@@ -188,14 +190,21 @@
                 </div>
                 <p v-if="labelErrorMessages.set_password" class="help is-danger">[[ labelErrorMessages.set_password ]]</p>
               </div>
+              <div class="field is-centered">
+                <div class="control">
+                  <button class="button is-success" @click="setPassword($event)" :data-target="`set-password-modal-${pk}`">Set Password</button><p class="help is-success" v-if="emailAccountPasswordStatus">[[ emailAccountPasswordStatus ]]</p>
+                </div>
+              </div>
             </div>
           </section>
           <footer class="modal-card-foot">
-            <button class="button is-success" @click="setPassword($event)" :data-target="`set-password-modal-${pk}`">Set Password</button>
-            <button class="button" @click="closeChangePassword($event)" :data-target="`set-password-modal-${pk}`">Cancel</button>
+            <div class="field">
+              <div class="control">
+                <button class="button">Cancel</button>
+              </div>
+            </div>
           </footer>
         </div>
-        <button class="modal-close is-large" aria-label="close" @click="closeChangePassword($event)" :data-target="`set-password-modal-${pk}`"></button>
       </div>
       <div :id="`message-filter-rules-modal-${pk}`" class="modal">
         <div class="modal-background"></div>
@@ -217,8 +226,11 @@
             </Suspense>
           </section>
           <footer class="modal-card-foot">
-            <button class="button is-success">Save changes</button>
-            <button class="button">Cancel</button>
+            <div class="field">
+              <div class="control">
+                <button class="button">Close</button>
+              </div>
+            </div>
           </footer>
         </div>
       </div>

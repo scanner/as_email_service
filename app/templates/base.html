@@ -27,6 +27,7 @@
     {% compress js %}
     {% block defer_compress_js %}
       {% project_third_party_js %}
+      <script defer type="text/javascript" src="{% static 'js/zxcvbn.js' %}"></script>
       <script defer type="text/javascript" src="{% static 'js/base.js' %}"></script>
     {% endblock defer_compress_js %}
     {% endcompress %}

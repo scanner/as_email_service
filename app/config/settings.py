@@ -318,6 +318,7 @@ BULMA_SETTINGS = {
         "bulma-collapsible",
         "bulma-notifications",
         "bulma-modal",
+        "bulma-navbar-burger",
         "bulma-tooltip",
         "bulma-divider",
         "bulma-switch",
