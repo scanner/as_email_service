@@ -25,13 +25,13 @@ depends_on:
 steps:
   - name: Build prod
     image: plugins/docker
-    repo: https://ghcr.io/scanner/as_email_service
-    registry: https://ghcr.io
+    repo: scanner/as_email_service
+    # registry: https://ghcr.io
     settings:
       username:
-        from_secret: GHCR_USER
+        from_secret: DOCKER_USER
       password:
-        from_secret: GHCR_PAT
+        from_secret: DOCKER_PAT
     auto_tag: true
     target: prod
 
