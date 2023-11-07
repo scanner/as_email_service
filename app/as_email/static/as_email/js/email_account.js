@@ -401,6 +401,17 @@ export default {
 
         labelErrorMessages.value["set_password"] = feedback;
       } else {
+        // If the score is above 3 there will be no result.feedback. We check
+        // if the confirm password is the same or not at this point.
+        //
+        if (emailAccountPassword.value != emailAccountPasswordConfirm.value) {
+          labelErrorMessages.value["set_password"] =
+            "Password and Confirm password do not match.";
+          target.classList.add("is-danger");
+          target.classList.remove("is-warning", "is-success");
+          return;
+        }
+
         target.classList.remove("is-danger");
         if (result.score == 3) {
           target.classList.remove("is-success");

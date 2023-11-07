@@ -171,7 +171,6 @@
                     v-model="emailAccountPassword"
                     placeholder="Email account password"
                     @keyup="checkPassword($event.target)"
-
                   />
                 </div>
               </div>
@@ -186,6 +185,7 @@
                     :id="`set-pasword-confirm-id-${pk}`"
                     v-model="emailAccountPasswordConfirm"
                     placeholder="Confirm Email Account password"
+                    @keyup="checkPassword($event.target)"
                   />
                 </div>
                 <p v-if="labelErrorMessages.set_password" class="help is-danger">[[ labelErrorMessages.set_password ]]</p>
