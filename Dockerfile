@@ -20,6 +20,10 @@ RUN . /venv/bin/activate && \
 #
 FROM builder as dev
 
+LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
+LABEL org.opencontainers.image.description="Apricot Systematic Email Service"
+LABEL org.opencontainers.image.licenses=BSD-3-Clause
+
 ENV PYTHONUNBUFFERED 1
 ENV PYTHONDONTWRITEBYTECODE 1
 
@@ -52,6 +56,10 @@ CMD ["/app/scripts/start_app.sh"]
 # `app` - The docker image for the django app web service
 #
 FROM python:3.11-slim as prod
+
+LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
+LABEL org.opencontainers.image.description="Apricot Systematic Email Service"
+LABEL org.opencontainers.image.licenses=BSD-3-Clause
 
 ARG APP_HOME=/app
 
