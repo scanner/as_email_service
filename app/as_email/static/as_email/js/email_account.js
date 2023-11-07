@@ -263,8 +263,6 @@ export default {
           aliases: props.aliases,
           forward_to: props.forwardTo,
         };
-        console.log("Submitting data to " + props.url);
-        console.log("Data: " + JSON.stringify(data, null, 2));
 
         let res = await fetch(props.url, {
           method: "PATCH",
@@ -448,10 +446,6 @@ export default {
             "Password and Confirm password do not match.";
           return;
         }
-
-        console.log(
-          `set password to: ${emailAccountPassword.value} (confirm: $emailAccountPasswordConfirm.value)`,
-        );
 
         let res = await fetch(set_password_url.href, {
           method: "POST",
