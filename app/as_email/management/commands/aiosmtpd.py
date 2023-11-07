@@ -570,8 +570,8 @@ class RelayHandler:
         try:
             await relay_email_to_provider(account, envelope.rcpt_tos, msg)
         except Exception as exc:
-            logger.exception(f"Failed: {exc}")
-            return f"500 {exc}"
+            logger.error(f"Failed: {exc}")
+            return f"500 Mail Provider error: {exc}"
 
         return "250 OK"
 
