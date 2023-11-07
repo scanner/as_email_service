@@ -95,7 +95,7 @@
           <div class="control">
             <label :for="`id_alias_for-${pk}`" class="label is-small">Alias for</label>
             <div class="select is-multiple is-small">
-              <v-select multiple v-model="computedAliasFor" :options="filteredValidEmailAddrs"></v-select>
+              <v-select multiple v-model="computedAliasFor" :options="filteredValidEmailAddrs" placeholder="Email accounts that this is an alias for"></v-select>
             </div>
           </div>
           <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.alias_for ]]</p>
@@ -108,6 +108,7 @@
               <v-select multiple
                 v-model="computedAliases"
                 :options="filteredValidEmailAddrs"
+                placeholder="Email accounts that alias to this email account"
               ></v-select>
             </div>
           </div>
