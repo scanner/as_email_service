@@ -8,6 +8,7 @@ steps:
     environment:
       PYTHONUNBUFFERED: 1
     commands:
+      - pip install -U pip
       - pip install -r ./requirements/development.txt
       - cd ./app/
       - mkdir ./staticfiles
@@ -24,13 +25,13 @@ depends_on:
 steps:
   - name: Build prod
     image: plugins/docker
+    repo: https://ghcr.io/scanner/as_email_service
+    registry: https://ghcr.io
     settings:
       username:
         from_secret: GHCR_USER
       password:
         from_secret: GHCR_PAT
-    repo: ghcr.io/scanner/as_email_service
-    registry: ghcr.io
     auto_tag: true
     target: prod
 
