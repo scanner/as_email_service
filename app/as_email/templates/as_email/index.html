@@ -104,7 +104,7 @@
         <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
           <div class="control">
             <label :for="`id_aliases-${pk}`" class="label is-small">Aliases</label>
-            <div class="select is-multiple">
+            <div class="select is-multiple is-small">
               <v-select multiple
                 v-model="computedAliases"
                 :options="filteredValidEmailAddrs"
