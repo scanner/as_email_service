@@ -48,8 +48,6 @@ steps:
   #   target: dev
 
 trigger:
-  branch:
-    - main
   event:
     - tag
 
