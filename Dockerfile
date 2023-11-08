@@ -33,6 +33,8 @@ WORKDIR ${APP_HOME}
 COPY requirements/development.txt /app/requirements/development.txt
 RUN . /venv/bin/activate && pip install -r requirements/development.txt
 
+RUN apt update && apt install --assume-yes jove vim && apt clean
+
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
 #
@@ -42,7 +44,8 @@ WORKDIR ${APP_HOME}
 COPY ./app ./
 
 RUN /venv/bin/python \
-    /app/manage.py collectstatic --clear --no-input --verbosity 0
+    /app/manage.py collectstatic --clear --no-input --verbosity 0 && \
+    /venv/bin/python /app/manage.py compress
 
 RUN addgroup --system --gid 900 app \
     && adduser --system --uid 900 --ingroup app app
@@ -83,7 +86,8 @@ WORKDIR ${APP_HOME}
 COPY ./app ./
 
 RUN /venv/bin/python \
-    /app/manage.py collectstatic --clear --no-input --verbosity 0
+    /app/manage.py collectstatic --clear --no-input --verbosity 0 && \
+    /venv/bin/python /app/manage.py compress
 RUN  /venv/bin/python /app/manage.py compile_pyc
 
 RUN addgroup --system --gid 900 app \

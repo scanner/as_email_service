@@ -13,6 +13,7 @@ steps:
       - cd ./app/
       - mkdir ./staticfiles
       - python ./manage.py collectstatic --clear --no-input --verbosity 0
+      - python ./manage.py compress
       - pytest
 
 ---
