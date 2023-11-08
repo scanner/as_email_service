@@ -303,6 +303,7 @@ LOGGING = {
 
 # Django Compressor
 #
+COMPRESS_OFFLINE = not DEBUG
 COMPRESS_FILTERS = {
     "css": [
         "compressor.filters.css_default.CssAbsoluteFilter",
