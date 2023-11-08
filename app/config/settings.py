@@ -72,6 +72,7 @@ if SENTRY_DSN is not None:
         # We recommend adjusting this value in production.
         profiles_sample_rate=1.0,
         environment="devel" if DEBUG else "production",
+        release=f"as_email_service@{VERSION}",
     )
 
 # Application definition
