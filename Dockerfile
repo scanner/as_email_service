@@ -44,8 +44,8 @@ WORKDIR ${APP_HOME}
 COPY ./app ./
 
 RUN /venv/bin/python \
-    /app/manage.py collectstatic --clear --no-input --verbosity 0 && \
-    /venv/bin/python /app/manage.py compress
+    /app/manage.py collectstatic --clear --no-input --verbosity 0
+RUN /venv/bin/python /app/manage.py compress
 
 RUN addgroup --system --gid 900 app \
     && adduser --system --uid 900 --ingroup app app
@@ -86,9 +86,9 @@ WORKDIR ${APP_HOME}
 COPY ./app ./
 
 RUN /venv/bin/python \
-    /app/manage.py collectstatic --clear --no-input --verbosity 0 && \
-    /venv/bin/python /app/manage.py compress
-RUN  /venv/bin/python /app/manage.py compile_pyc
+    /app/manage.py collectstatic --clear --no-input --verbosity 0
+RUN /venv/bin/python /app/manage.py compress
+RUN /venv/bin/python /app/manage.py compile_pyc
 
 RUN addgroup --system --gid 900 app \
     && adduser --system --uid 900 --ingroup app app
