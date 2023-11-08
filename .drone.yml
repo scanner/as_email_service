@@ -7,6 +7,7 @@ steps:
     image: "python:3.11"
     environment:
       PYTHONUNBUFFERED: 1
+      DEBUG: true
     commands:
       - pip install -U pip
       - pip install -r ./requirements/development.txt
