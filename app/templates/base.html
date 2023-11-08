@@ -24,13 +24,13 @@
       <script async nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
 
     {% endblock defer_noncompress_js %}
-    {% compress js %}
     {% block defer_compress_js %}
+      {% compress js %}
       {% project_third_party_js %}
       <script defer type="text/javascript" src="{% static 'js/zxcvbn.js' %}"></script>
       <script defer type="text/javascript" src="{% static 'js/base.js' %}"></script>
+      {% endcompress %}
     {% endblock defer_compress_js %}
-    {% endcompress %}
   </head>
   <body>
     {% block header %}

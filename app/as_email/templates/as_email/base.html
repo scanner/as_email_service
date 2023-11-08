@@ -1,9 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
+{% load compress static %}
 {% block defer_noncompress_js %}
   {{ block.super }}
 {% endblock defer_noncompress_js %}
 {% block defer_compress_js %}
   {{ block.super }}
+  {% compress js %}
   <script defer type="text/javascript" src="{% static 'as_email/js/base.js' %}"></script>
+  {% endcompress %}
 {% endblock defer_compress_js %}
