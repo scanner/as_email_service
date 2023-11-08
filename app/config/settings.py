@@ -297,7 +297,7 @@ LOGGING = {
         },
         "mail": {
             "handlers": ["console"],
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "DEBUG" if DEBUG else "WARNING",
             "propagate": True,
         },
     },
