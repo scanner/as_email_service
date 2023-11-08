@@ -10,4 +10,4 @@ echo "Running django migrations.."
 /venv/bin/python /app/manage.py migrate
 
 echo "Starting uvicorn.."
-/venv/bin/gunicorn config.asgi --bind 0.0.0.0:8000 --chdir=/app -w 4 -k uvicorn.workers.UvicornWorker
+/venv/bin/gunicorn config.asgi --bind 127.0.0.1:8000 --chdir=/app -w 4 -k config.uvicorn_worker.UvicornWorker
