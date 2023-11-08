@@ -45,7 +45,7 @@ steps:
       repo: ghcr.io/scanner/as_email_service
       registry: ghcr.io
       auto_tag: true
-      auto_tag_suffix: -dev
+      auto_tag_suffix: dev
       target: dev
 
 trigger:
