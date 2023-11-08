@@ -44,8 +44,8 @@ COPY ./app ./
 RUN /venv/bin/python \
     /app/manage.py collectstatic --clear --no-input --verbosity 0
 
-RUN addgroup --system app \
-    && adduser --system --ingroup app app
+RUN addgroup --system --gid 900 app \
+    && adduser --system --uid 900 --ingroup app app
 
 USER app
 
@@ -84,8 +84,8 @@ RUN /venv/bin/python \
     /app/manage.py collectstatic --clear --no-input --verbosity 0
 RUN  /venv/bin/python /app/manage.py compile_pyc
 
-RUN addgroup --system app \
-    && adduser --system --ingroup app app
+RUN addgroup --system --gid 900 app \
+    && adduser --system --uid 900 --ingroup app app
 
 USER app
 CMD ["/app/scripts/start_app.sh"]
