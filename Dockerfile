@@ -47,6 +47,8 @@ RUN /venv/bin/python \
 RUN addgroup --system --gid 900 app \
     && adduser --system --uid 900 --ingroup app app
 
+RUN chown -R app /app
+
 USER app
 
 CMD ["/app/scripts/start_app.sh"]
