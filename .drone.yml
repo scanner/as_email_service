@@ -35,18 +35,18 @@ steps:
       auto_tag: true
       target: prod
 
-  # - name: Build dev
-  #   image: plugins/docker
-  #   settings:
-  #     username:
-  #       from_secret: GHCR_USER
-  #     password:
-  #       from_secret: GHCR_PAT
-  #   repo: ghcr.io/scanner/as_email_service
-  #   registry: ghcr.io
-  #   auto_tag: true
-  #   auto_tag_suffix: dev
-  #   target: dev
+  - name: Build dev
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: GHCR_USER
+      password:
+        from_secret: GHCR_PAT
+      repo: ghcr.io/scanner/as_email_service
+      registry: ghcr.io
+      auto_tag: true
+      auto_tag_suffix: -dev
+      target: dev
 
 trigger:
   event:
