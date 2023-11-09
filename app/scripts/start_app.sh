@@ -6,6 +6,8 @@ set -o nounset
 
 wait-for-it --service redis:6379 -- echo "Redis available"
 
+/venv/bin/python /app/manage.py compress
+
 echo "Running django migrations.."
 /venv/bin/python /app/manage.py migrate
 

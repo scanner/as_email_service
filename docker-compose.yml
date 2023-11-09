@@ -19,7 +19,7 @@ services:
     ports:
       - "11578:8000"
     command: /app/scripts/start_app.sh
-    restart: always
+    restart: unless-stopped
     env_file: .env
     volumes:
       - "${HOST_DB_DIR}:/mnt/db:z"
@@ -34,7 +34,7 @@ services:
     ports:
       - "587:587"
     command: /app/scripts/start_smtpd.sh
-    restart: always
+    restart: unless-stopped
     env_file: .env
     volumes:
       - "${HOST_DB_DIR}:/mnt/db:z"
@@ -47,7 +47,7 @@ services:
     image: as_email_service_app
     container_name: worker
     command: /app/scripts/start_worker.sh
-    restart: always
+    restart: unless-stopped
     env_file: .env
     volumes:
       - "${HOST_DB_DIR}:/mnt/db:z"
@@ -70,10 +70,10 @@ services:
     ports:
       - "11578:8000"
     command: wait-for-it --service redis:6379 -- /app/manage.py runserver_plus --cert-file /mnt/ssl/ssl_crt.pem --key-file /mnt/ssl/ssl_key.pem 0.0.0.0:8000
-    restart: always
+    restart: unless-stopped
     env_file: .env
     volumes:
-      - ./app:/app:z
+      # - ./app:/app:z
       - "${HOST_DB_DIR}:/mnt/db:z"
       - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
       - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
@@ -96,7 +96,7 @@ services:
     ports:
       - "587:587"
     command: /app/scripts/start_smtpd.sh
-    restart: always
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./app:/app:z
@@ -109,7 +109,7 @@ services:
   redis:
     image: redis:latest
     container_name: redis
-    restart: always
+    restart: unless-stopped
     volumes:
       - "redis_data:/data"
       - type: bind
@@ -124,7 +124,7 @@ services:
   mailhog:
     image: druidfi/mailhog:1.0.1
     container_name: mailhog
-    restart: always
+    restart: unless-stopped
     ports:
       - "8025:8025"
     profiles:
