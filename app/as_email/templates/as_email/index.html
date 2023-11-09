@@ -12,14 +12,14 @@
   </script>
 {% endblock importmap %}
 {% block extra_css %}
+  {{ block.super }}
   <link rel="stylesheet" href="{% static 'css/vue-select.css' %}">
 {% endblock extra_css %}
-{% block defer_compress_js %}
+{% block defer_noncompress_js %}
   {{ block.super }}
-  {% compress js %}
   <script defer type="module" src="{% static 'as_email/js/app.js' %}"></script>
-  {% endcompress %}
-{% endblock defer_compress_js %}
+{% endblock defer_noncompress_js %}
+
 {% block content %}
   <template id="template-email-account">
     <div>
