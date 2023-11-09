@@ -44,7 +44,6 @@ ENV PATH /venv/bin:$PATH
 WORKDIR ${APP_HOME}
 COPY ./app ./
 
-RUN /venv/bin/python /app/manage.py compress
 RUN /venv/bin/python /app/manage.py collectstatic --no-input
 
 RUN addgroup --system --gid 900 app \
@@ -85,12 +84,13 @@ ENV PATH /venv/bin:$PATH
 WORKDIR ${APP_HOME}
 COPY ./app ./
 
-RUN /venv/bin/python /app/manage.py compress
 RUN /venv/bin/python /app/manage.py collectstatic --no-input
 RUN /venv/bin/python /app/manage.py compile_pyc
 
 RUN addgroup --system --gid 900 app \
     && adduser --system --uid 900 --ingroup app app
+
+RUN chown -R app /app/staticfiles
 
 USER app
 CMD ["/app/scripts/start_app.sh"]
