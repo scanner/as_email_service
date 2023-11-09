@@ -305,9 +305,6 @@ LOGGING = {
 
 # Django Compressor
 #
-# This is cross-os friendly
-esbuild_path = BASE_DIR / "node_modules/.bin/esbuild"
-
 COMPRESS_OFFLINE = not DEBUG
 COMPRESS_FILTERS = {
     "css": [
@@ -317,22 +314,6 @@ COMPRESS_FILTERS = {
     ],
     "js": ["compressor.filters.jsmin.rJSMinFilter"],
 }
-
-# For now we turn off the compress precompilers when in DEBUG. Compress is not
-# enabled anyways. When we stop mounting /app in dev environments and switch to
-# using docker sync maybe we can leave this on.
-#
-if not DEBUG:
-    COMPRESS_PRECOMPILERS = (
-        (
-            "text/javascript",
-            f"{esbuild_path} {{infile}} --bundle --outfile={{outfile}}",
-        ),
-        (
-            "module",
-            f"{esbuild_path} {{infile}} --bundle --external:vue --external:vue-select --outfile={{outfile}}",
-        ),
-    )
 
 # django-simple-bulma
 #

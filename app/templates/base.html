@@ -19,10 +19,6 @@
       {% block extra_css %}{% endblock extra_css %}
     {% endblock css %}
     {% endcompress %}
-    {% block defer_noncompress_js %}
-      <script async type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
-      <script async nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
-    {% endblock defer_noncompress_js %}
     {% block defer_compress_js %}
       {% compress js %}
       {% project_third_party_js %}
@@ -30,6 +26,10 @@
       <script defer type="text/javascript" src="{% static 'js/base.js' %}"></script>
       {% endcompress %}
     {% endblock defer_compress_js %}
+    {% block defer_noncompress_js %}
+      <script async type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+      <script async nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+    {% endblock defer_noncompress_js %}
   </head>
   <body>
     {% block header %}
