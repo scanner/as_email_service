@@ -48,6 +48,8 @@ env = environ.FileAwareEnv(
     CACHE_URL=(str, "dummycache://"),
     SENTRY_DSN=(str, None),
     SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
+    COMPRESS_ENABLED=(bool, True),
+    COMPRESS_OFFLINE=(bool, True),
 )
 
 # NOTE: We should try moving secrets to compose secrets.
@@ -305,8 +307,8 @@ LOGGING = {
 
 # Django Compressor
 #
-COMPRESS_ENABLED = True
-COMPRESS_OFFLINE = False
+COMPRESS_ENABLED = env("COMPRESS_ENABLED")
+COMPRESS_OFFLINE = env("COMPRESS_OFFLINE")
 COMPRESS_FILTERS = {
     "css": [
         "compressor.filters.css_default.CssAbsoluteFilter",
