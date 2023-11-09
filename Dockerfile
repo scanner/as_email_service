@@ -28,6 +28,7 @@ ENV PATH /venv/bin:$PATH
 #
 FROM builder as precompiler
 
+ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 COPY ./app ./
 RUN apt update
