@@ -46,7 +46,6 @@ COPY ./app ./
 
 RUN /venv/bin/python \
     /app/manage.py collectstatic --clear --no-input --verbosity 0
-RUN /venv/bin/python /app/manage.py compress
 
 RUN addgroup --system --gid 900 app \
     && adduser --system --uid 900 --ingroup app app
@@ -88,7 +87,6 @@ COPY ./app ./
 
 RUN /venv/bin/python \
     /app/manage.py collectstatic --clear --no-input --verbosity 0
-RUN /venv/bin/python /app/manage.py compress
 RUN /venv/bin/python /app/manage.py compile_pyc
 
 RUN addgroup --system --gid 900 app \
