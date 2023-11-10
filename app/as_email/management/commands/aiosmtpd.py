@@ -34,6 +34,7 @@ from aiosmtpd.smtp import (
     Envelope as SMTPEnvelope,
     LoginPassword,
     Session as SMTPSession,
+    TLSSetupException,
     _TriStateType,
 )
 from asgiref.sync import sync_to_async
@@ -102,6 +103,39 @@ class AsyncioAuthSMTP(SMTP):
                 )
             else:
                 return AuthResult(success=False, handled=False)
+
+    ####################################################################
+    #
+    # On the internet at large a number of people connect to our service and
+    # try to find stuff out.. a frequent one is "ssl.SSLError: [SSL:
+    # NO_SHARED_CIPHER] no shared cipher (_ssl.c:1006)" which causes a stack
+    # trace to be logged by this function. When we get this kind of failure,
+    # just recording that it happened is enough. Do not need to go into detail.
+    #
+    async def handle_exception(self, error: Exception) -> str:
+        if hasattr(self.event_handler, "handle_exception"):
+            status = await self.event_handler.handle_exception(error)
+            return status
+        else:
+            # Log an error instead of an exception if this was caused by ssl
+            #
+            if (
+                isinstance(error, TLSSetupException)
+                and hasattr(error, "__cause__")
+                and isinstance(error.__cause__, ssl.SSLError)
+            ):
+                logger.error(
+                    "%r SMTP session exception: %s",
+                    self.session.peer,
+                    error.__cause__,
+                )
+            else:
+                logger.exception("%r SMTP session exception", self.session.peer)
+            status = "500 Error: ({}) {}".format(
+                error.__class__.__name__,
+                str(error),
+            )
+            return status
 
     ####################################################################
     #
@@ -385,7 +419,7 @@ class Authenticator:
                 auth_data,
                 session.peer[0],
             )
-            fail_nothandled.message = "Auth data not LoginPassword"
+            fail_nothandled.message = "Authentication failed"
             return fail_nothandled
 
         username = str(auth_data.login, "utf-8")
@@ -403,7 +437,7 @@ class Authenticator:
                 username,
                 session.peer[0],
             )
-            fail_nothandled.message = "Invalid account"
+            fail_nothandled.message = "Authentication failed"
             return fail_nothandled
 
         # If the account is deactivated it is not allowed to relay email.
