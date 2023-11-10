@@ -73,7 +73,7 @@ services:
     restart: unless-stopped
     env_file: .env
     volumes:
-      # - ./app:/app:z
+      - ./app:/app:z
       - "${HOST_DB_DIR}:/mnt/db:z"
       - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
       - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
