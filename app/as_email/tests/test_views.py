@@ -17,6 +17,7 @@ from django.urls import resolve, reverse
 # Project imports
 #
 from ..models import EmailAccount, MessageFilterRule
+from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db
 
@@ -103,6 +104,145 @@ def test_index(api_client, user_factory, email_account_factory, faker):
     assert resp
     resp = client.get(url)
     assert resp.status_code == 200
+
+
+####################################################################
+#
+def test_incoming_webhook(
+    email_account_factory, email_factory, api_client, faker
+):
+    ea = email_account_factory()
+    ea.save()
+    server = ea.server
+
+    # We only care about a few fields
+    #
+    msg = email_factory(to=ea.email_address)
+    incoming_message = {
+        "OriginalRecipient": ea.email_address,
+        "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
+        "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
+        "RawEmail": msg.as_string(),
+    }
+
+    url = (
+        reverse(
+            "as_email:hook_postmark_incoming",
+            kwargs={"domain_name": server.domain_name},
+        )
+        + "?"
+        + urlencode({"api_key": server.api_key})
+    )
+
+    client = api_client()
+    r = client.post(
+        url, json.dumps(incoming_message), content_type="application/json"
+    )
+    assert r.status_code == 200
+    resp_data = r.json()
+    assert resp_data["status"] == "all good"
+
+    # The message should have been delivered to the ea' inbox since there are
+    # no mail filter rules. And it should be the only message in the mailbox.
+    #
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert_email_equal(msg, stored_msg)
+
+
+####################################################################
+#
+def test_incoming_webhook_bad_json(
+    server_factory,
+    api_client,
+):
+    server = server_factory()
+    server.save()
+
+    url = (
+        reverse(
+            "as_email:hook_postmark_incoming",
+            kwargs={"domain_name": server.domain_name},
+        )
+        + "?"
+        + urlencode({"api_key": server.api_key})
+    )
+
+    client = api_client()
+    r = client.post(url, "this is bad json'", content_type="application/json")
+    assert r.status_code == 400
+
+
+####################################################################
+#
+def test_incoming_webhook_no_such_emailaccount(
+    email_factory,
+    server_factory,
+    api_client,
+    faker,
+):
+    server = server_factory()
+    server.save()
+    addr = faker.email()
+
+    msg = email_factory(to=addr)
+    incoming_message = {
+        "OriginalRecipient": addr,
+        "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
+        "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
+        "RawEmail": msg.as_string(),
+    }
+
+    url = (
+        reverse(
+            "as_email:hook_postmark_incoming",
+            kwargs={"domain_name": server.domain_name},
+        )
+        + "?"
+        + urlencode({"api_key": server.api_key})
+    )
+
+    client = api_client()
+    r = client.post(
+        url, json.dumps(incoming_message), content_type="application/json"
+    )
+    assert r.status_code == 200
+    resp_data = r.json()
+    assert "status" in resp_data
+    assert resp_data["status"] == "all good"
+    assert resp_data["message"] == f"no such email account '{addr}'"
+
+
+####################################################################
+#
+def test_incoming_webhook_no_such_server(
+    api_client,
+    faker,
+):
+    domain_name = faker.domain_name()
+    api_key = faker.pystr()
+    addr = faker.email()
+    incoming_message = {
+        "OriginalRecipient": addr,
+        "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
+        "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
+    }
+
+    url = (
+        reverse(
+            "as_email:hook_postmark_incoming",
+            kwargs={"domain_name": domain_name},
+        )
+        + "?"
+        + urlencode({"api_key": api_key})
+    )
+
+    client = api_client()
+    r = client.post(
+        url, json.dumps(incoming_message), content_type="application/json"
+    )
+    assert r.status_code == 404
 
 
 ####################################################################

@@ -165,7 +165,12 @@ def hook_postmark_incoming(request, domain_name):
     specific POST is being made for.
     """
     server = _validate_server_api_key(request, domain_name)
-    email = json.loads(request.body)
+    try:
+        email = json.loads(request.body)
+    except json.JSONDecodeError as exc:
+        logger.warning("Incoming web hook for %s: %s", server.domain_name, exc)
+        return HttpResponseBadRequest(f"invalid json: {exc}")
+
     message_id = email["MessageID"] if "MessageID" in email else None
 
     if "OriginalRecipient" not in email:
@@ -191,7 +196,7 @@ def hook_postmark_incoming(request, domain_name):
     # that is probably still better than all the work to write the email to the
     # spool dir and invoke the huey task only for it to do nothing.
     #
-    addr = split_email_mailbox_hash(email["OriginalRecipient"])
+    addr, _ = split_email_mailbox_hash(email["OriginalRecipient"])
     try:
         email_account = EmailAccount.objects.get(email_address=addr)
     except EmailAccount.DoesNotExist:
@@ -201,7 +206,12 @@ def hook_postmark_incoming(request, domain_name):
         # XXX here we would log metrics for getting email that no one is going
         #     to receive.
         #
-        return JsonResponse({"status": "all good"})
+        return JsonResponse(
+            {
+                "status": "all good",
+                "message": f"no such email account '{addr}'",
+            },
+        )
 
     spooled_msg_path = write_spooled_email(
         email["OriginalRecipient"],
