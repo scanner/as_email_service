@@ -346,6 +346,9 @@ def hook_postmark_spam(request, domain_name):
             )
         ]
     ):
+        logger.warning(
+            "submitted json missing expected keys, message: %r", spam
+        )
         return HttpResponseBadRequest("submitted json missing expected keys")
 
     # Just to be safe, try to make sure that the TypeCode is an integer.
