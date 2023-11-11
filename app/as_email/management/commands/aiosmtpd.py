@@ -467,7 +467,11 @@ class Authenticator:
         # and will let the RelayHandler know which account was used so
         # it will know which Server to send the email through.
         #
-        logger.info("Authenticator: Success for '%s'", account)
+        logger.info(
+            "Authenticator: Success for '%s' from %s",
+            account,
+            session.peer[0],
+        )
         return AuthResult(success=True, auth_data=account)
 
 
