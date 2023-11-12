@@ -268,7 +268,10 @@ def test_forwarding(email_account_factory, email_factory, smtp):
     assert sent_message["Resent-To"] == ea_1.forward_to
     assert sent_message["From"] == ea_1.email_address
     assert sent_message["To"] == ea_1.forward_to
-    assert sent_message["Subject"] == f"Fwd: {original_subj}"
+    assert (
+        sent_message["Subject"]
+        == f"Fwd: forwarded from {original_from}: {original_subj}"
+    )
 
 
 ####################################################################
@@ -347,7 +350,7 @@ def test_generate_dsn(email_account_factory, email_factory):
 
 ####################################################################
 #
-def test_generate_forwarded_message(
+def test_generate_forwarded_spam_message(
     email_account_factory,
     email_factory,
     faker,
@@ -361,6 +364,7 @@ def test_generate_forwarded_message(
     )
     ea.save()
     msg = email_factory(msg_from=ea.email_address)
+    msg["X-Spam-Score"] = str(ea.spam_score_threshold + 1)
 
     forwarded_msg = make_encapsulated_fwd_msg(ea, msg)
 

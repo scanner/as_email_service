@@ -201,6 +201,42 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
 
 ####################################################################
 #
+def modify_message_for_forwarding(
+    email_account: EmailAccount, orig_msg: EmailMessage
+):
+    """
+    Basically we modify the headers of the message so that we can re-send
+    it on to the recipient leaving the message otherwise intact.
+    """
+    original_from = orig_msg["From"]
+    if "Subject" in orig_msg:
+        subj = orig_msg["Subject"]
+        del orig_msg["Subject"]
+        orig_msg["Subject"] = f"Fwd: forwarded from {original_from}: {subj}"
+    else:
+        orig_msg["Subject"] = f"Fwd: forwarded from {original_from}"
+
+    if "Message-ID" in orig_msg:
+        orig_msg["References"] = orig_msg["Message-ID"]
+        orig_msg["Original-Message-ID"] = orig_msg["Message-ID"]
+        orig_msg["Resent-Message-ID"] = orig_msg["Message-ID"]
+
+    del orig_msg["To"]
+    orig_msg["To"] = email_account.forward_to
+    del orig_msg["From"]
+    orig_msg["From"] = email_account.email_address
+    if "Reply-To" not in orig_msg:
+        orig_msg["Reply-To"] = original_from
+    orig_msg["Original-From"] = original_from
+    orig_msg["Original-Recipient"] = email_account.email_address
+    orig_msg["Resent-From"] = email_account.email_address
+    orig_msg["Resent-To"] = email_account.forward_to
+
+    return orig_msg
+
+
+####################################################################
+#
 def make_encapsulated_fwd_msg(
     email_account: EmailAccount, orig_msg: EmailMessage
 ):
@@ -210,14 +246,30 @@ def make_encapsulated_fwd_msg(
 
     Setup the headers and some text in the message indicating that it is
     forwarded and where/who it was forwarded from.
+
+    This is used mainly when we are being asked to forward potential spam. This
+    encapsulates the spam email and lets the receiver deal with it.
     """
     original_from = orig_msg["From"]
 
+    try:
+        spam_score = int(float(orig_msg.get("X-Spam-Score", 0)))
+    except ValueError:
+        spam_score == 0
+
+    subj_spam = (
+        "Potential spam "
+        if spam_score > email_account.spam_score_threshold
+        else ""
+    )
+
     msg = EmailMessage()
     if "Subject" in orig_msg:
-        msg["Subject"] = f"Fwd: {orig_msg['Subject']}"
+        msg[
+            "Subject"
+        ] = f"Fwd: {subj_spam}forwarded from {original_from}: {orig_msg['Subject']}"
     else:
-        msg["Subject"] = f"Fwd: from {orig_msg['From']}"
+        msg["Subject"] = f"Fwd: {subj_spam}forwarded from {orig_msg['From']}"
 
     if "Message-ID" in orig_msg:
         msg["References"] = orig_msg["Message-ID"]
@@ -233,19 +285,22 @@ def make_encapsulated_fwd_msg(
     msg["Resent-From"] = email_account.email_address
     msg["Resent-To"] = email_account.forward_to
 
-    msg.set_content(
+    # Extract all the spam headers and include them in the main content section
+    #
+    spam_info = []
+    for k, v in orig_msg.items():
+        if k.lower().startswith("x-spam"):
+            msg[k] = v
+            spam_info.append(f"{k}: {v}")
+
+    content = (
         f"Email originally from {original_from} - forwarded from "
         f"{email_account.email_address} to {email_account.forward_to}."
         "\n-------------------\n"
-    )
+    ) + "\n".join(spam_info)
+
+    msg.set_content(content)
     msg.add_attachment(orig_msg)
-
-    # Make sure our attached message appears 'inline' because this is what most
-    # people and mailer expect for forwarded messages.
-    #
-    parts = list(msg.iter_attachments())
-    parts[-1].replace_header("Content-Disposition", "inline")
-
     return msg
 
 
@@ -273,8 +328,19 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
         deliver_message_locally(email_account, msg)
         return
 
-    forward_msg = make_encapsulated_fwd_msg(email_account, msg)
-
+    # Depending on whether this message was marked as spam or not determine how
+    # we forard it. If it is spam we basically encapsulate it as a
+    # message/rfc822 attachemnt. Otherwise we just re-write the headers so that
+    # we can send it on.
+    #
+    try:
+        spam_score = int(float(msg.get("X-Spam-Score", 0)))
+    except ValueError:
+        spam_score = 0
+    if int(spam_score) > email_account.spam_score_threshold:
+        forward_msg = make_encapsulated_fwd_msg(email_account, msg)
+    else:
+        forward_msg = modify_message_for_forwarding(email_account, msg)
     email_account.send_email_via_smtp([email_account.forward_to], forward_msg)
 
 
