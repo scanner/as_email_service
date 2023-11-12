@@ -215,18 +215,13 @@ class Server(models.Model):
 
         This lets the default creation automatically set where these
         directories are without requiring input if they are not set on create.
-
-        After we have called the parent save method we make sure that the
-        directory specified exists.
         """
         self._set_initial_values()
-        super().save(*args, **kwargs)
-
-        # Make sure that the directories for the file fields exist.
-        #
         Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
+
+        super().save(*args, **kwargs)
 
     ####################################################################
     #
@@ -243,8 +238,6 @@ class Server(models.Model):
         directory specified exists.
         """
         self._set_initial_values()
-        await super().asave(*args, **kwargs)
-
         # Make sure that the directories for the file fields exist.
         #
         if not await aiofiles.os.path.exists(self.incoming_spool_dir):
@@ -253,6 +246,8 @@ class Server(models.Model):
             await aiofiles.os.mkdirs(self.outgoing_spool_dir)
         if not await aiofiles.os.path.exists(self.mail_dir_parent):
             await aiofiles.os.mkdirs(self.mail_dir_parent)
+
+        await super().asave(*args, **kwargs)
 
     ####################################################################
     #

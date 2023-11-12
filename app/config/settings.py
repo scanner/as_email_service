@@ -50,21 +50,46 @@ env = environ.FileAwareEnv(
     SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
     COMPRESS_ENABLED=(bool, True),
     COMPRESS_OFFLINE=(bool, True),
+    # Email service accounts are email addresses that are widely expected to
+    # exist for any domain that accepts email. This will be created, linked
+    # together via alises, and owned by the earliest admin account on the
+    # system.
+    #
+    EMAIL_SERVICE_ACCOUNTS=(
+        list,
+        [
+            "admin",
+            "abuse",
+            "postmaster",
+            "security",
+            "hostmaster",
+            "webmaster",
+            "support",
+            "www",
+            "noc",
+        ],
+    ),
+    EMAIL_SERVICE_ACCOUNTS_OWNER=(str, "admin"),
 )
+
+# If we are running through a reverse proxy (like caddy) we need to make sure
+# that even though we are being access at `http` we make sure we resolve all
+# services at `https`
+#
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # NOTE: We should try moving secrets to compose secrets.
 #
 DEBUG = env("DEBUG")
+VERSION = env("VERSION")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 SITE_NAME = env("SITE_NAME")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 if ALLOWED_HOSTS:
     CSRF_TRUSTED_ORIGINS = [f"https://{x}" for x in ALLOWED_HOSTS]
 REDIS_SERVER = env("REDIS_SERVER")
-VERSION = env("VERSION")
-
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
+EMAIL_SERVICE_ACCOUNTS = env("EMAIL_SERVICE_ACCOUNTS")
+EMAIL_SERVICE_ACCOUNTS_OWNER = env("EMAIL_SERVICE_ACCOUNTS_OWNER")
 SENTRY_TRACES_SAMPLE_RATE = env("SENTRY_TRACES_SAMPLE_RATE")
 SENTRY_DSN = env("SENTRY_DSN")
 if SENTRY_DSN is not None:

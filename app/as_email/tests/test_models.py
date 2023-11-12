@@ -7,6 +7,7 @@ from pathlib import Path
 # 3rd party imports
 #
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -41,6 +42,31 @@ def test_server(server_factory):
     assert Path(server.mail_dir_parent).is_dir()
 
     assert server.api_key
+
+
+####################################################################
+#
+def test_server_creates_admin_emailaccounts(user_factory, server_factory):
+    """
+    With the defaults from django settings, if a user account with the
+    username 'admin' exists, then EmailAccounts defined by the list
+    settings.EMAIL_SERVICE_ACCOUNTS will be created and aliased together.
+
+    This will happen when the server account is saved for the first time.
+    """
+    admin = user_factory(username="admin")
+    admin.save()
+    server = server_factory()
+    server.save()
+
+    eas = []
+    email_addrs = [
+        f"{x}@{server.domain_name}" for x in settings.EMAIL_SERVICE_ACCOUNTS
+    ]
+    eas = [EmailAccount.objects.get(email_address=x) for x in email_addrs]
+    first = eas[0]
+    for ea in eas[1:]:
+        assert ea.alias_for.all()[0] == first
 
 
 ####################################################################
