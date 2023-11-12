@@ -15,6 +15,20 @@ SITE_NAME=your_email_server.your.domain
 DEFAULT_FROM_EMAIL = "as-email@example.com"
 SERVER_EMAIL = "your-server@example.com"
 
+# When a `Server` is created, we have the option of automatically creating a
+# bunch of expected email service accounts for that server. This does not need
+# to be specified unless you want to change the list of accounts being
+# created. What is listed below is the default set.
+#
+EMAIL_SERVICE_ACCOUNTS="admin,abuse,postmaster,security,hostmaster,webmaster,support,www,noc"
+
+# If you want the above service accounts to be created they need to be owned by
+# a user. If this user is not specified then they are not created. Also if this
+# user does not exist when the Server instance is created, they are not
+# created. The default does not need to be set, we use `admin` for the default.
+#
+EMAIL_SERVICE_ACCOUNTS_OWNER=admin
+
 # Key/value pairs for your configured servers at postmark. The key is the name
 # of the server, they key is the API key for that server.
 #
@@ -40,6 +54,7 @@ RELEASE_VERSION=latest
 # its hostname is "redis"
 #
 REDIS_SERVER=redis
+CACHE_URL=redis://redis:6379
 
 # If you have a sentry project setup
 #
