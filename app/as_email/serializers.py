@@ -96,12 +96,22 @@ class EmailAccountRelatedField(serializers.SlugRelatedField):
         # `for_alias` are EmailAccounts that have the same owner _except_ for
         # the EmailAccount being serialized (you can not alias to yourself.)
         #
+        # NOTE: Unless the owner has the permission
+        #       `as_email.can_have_foreign_aliases` in which case they can
+        #       alias to any email account.
+        #
         if self.parent.parent.instance is None:
             queryset = EmailAccount.objects.none()
         else:
-            queryset = EmailAccount.objects.filter(
-                owner=self.parent.parent.instance.owner
-            ).exclude(pk=self.parent.parent.instance.pk)
+            owner = self.parent.parent.instance.owner
+            if not owner.has_perms(["as_email.can_have_foreign_aliases"]):
+                queryset = EmailAccount.objects.filter(owner=owner).exclude(
+                    pk=self.parent.parent.instance.pk
+                )
+            else:
+                queryset = EmailAccount.objects.exclude(
+                    pk=self.parent.parent.instance.pk
+                )
         return queryset
 
 

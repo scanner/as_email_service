@@ -769,8 +769,8 @@ class EmailAccount(models.Model):
     def _pre_save_logic(self):
         """
         Common function for doing any pre-save processing of the email
-        account such as automatic deactivation due to excessive bounces,
-        setting the mail_dir attribute and creating the assocaited mailbox.MH.
+        account setting the mail_dir attribute and creating the associated
+        mailbox.MH.
         """
         # If the object has not been created yet and if the mail_dir
         # is not set set it based on the associated Server's parent

@@ -750,7 +750,7 @@ class TestEmailAccountEndpoints:
         resp = client.put(url, data=ea_new)
         assert resp.status_code == 403
 
-        # DItto for `aliases``
+        # Ditto for `aliases``
         ea_new = {
             "aliases": [ea_dest.email_address],
             "autofile_spam": False,
@@ -778,12 +778,21 @@ class TestEmailAccountEndpoints:
             "spam_score_threshold": 10,
         }
         resp = client.put(url, data=ea_new)
-        print(f"response: {resp}")
-        print(f"status code: {resp.status_code}")
-        from pprint import pp
-
-        pp(resp.data)
         assert resp.status_code == 200
+        assert ea.alias_for.filter(email_address=ea_dest.email_address).exists()
+
+        # Ditto for `aliases``
+        ea_new = {
+            "aliases": [ea_dest.email_address],
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 200
+        assert ea.aliases.filter(email_address=ea_dest.email_address).exists()
 
     ####################################################################
     #
