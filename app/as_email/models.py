@@ -507,27 +507,32 @@ class EmailAccount(models.Model):
         help_text=_(
             "When incoming mail exceeds the threshold set in "
             "`spam_score_threshold` then this email will "
-            "automatically files in the `spam_delivery_folder` mailbox. "
-            "NOTE: This only apply if local or IMAP delivery is selected "
-            "in `delivery_method`."
+            "automatically be filed in the `spam_delivery_folder` mailbox "
+            "if delivery method is `Local Delivery` or `IMAP`. This option has no effect "
+            "if the delivery method is `Alias` or `Forwarding`."
         ),
     )
     spam_delivery_folder = models.CharField(
         default="Junk",
         max_length=1024,
         help_text=_(
-            "If `blocked_messages` is set to `Deliver` then this is the mail "
-            "folder that they are delivered to."
+            "For delivery methods of `Local Delivery` and `IMAP`, if this "
+            "message is considered spam it and `Autofile Spam` is set then "
+            "this message will be delivered to this folder, overriding and "
+            "message filter rules."
         ),
     )
     spam_score_threshold = models.IntegerField(
         default=15,
         help_text=_(
-            "If you select automatic spam filing for delivered email this is"
-            "the SpamAssassin X-Spam-Score value used. If the X-Spam-Score is "
-            "over this value then the email will be delivered to the blocked "
-            "message delivery folder (instead of the default `inbox`). Set "
-            "this to 0 if you basically want no automatic spam filtering."
+            "This is the value at which an incoming message is considered "
+            "spam or not. The higher the value the more tolerant the rules. "
+            "15 is a good default. Lower may cause more false positives. If "
+            "the delivery method is `Local delivery` or `IMAP` then incoming "
+            "spam will be filed in the `spam delivery folder`. If the delivery "
+            "method is `Forwrding` then instead of just re-sending the email "
+            "to the forwarding address the message will be encapsulated and "
+            "attached as a `message/rfc822` when being forwarded."
         ),
     )
 
@@ -652,6 +657,12 @@ class EmailAccount(models.Model):
     modified_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        # If an EmailAccount has the permission "can_have_foreign_aliases" then
+        # when the EmailAccount is being modified via a view we will allow it
+        # to have `alais_for` and `aliases` that are owned by a different
+        # acount.
+        #
+        permissions = [("can_have_foreign_aliases", "Can have foreign aliases")]
         indexes = [
             models.Index(fields=["forward_to"]),
             models.Index(fields=["email_address"]),
@@ -758,8 +769,8 @@ class EmailAccount(models.Model):
     def _pre_save_logic(self):
         """
         Common function for doing any pre-save processing of the email
-        account such as automatic deactivation due to excessive bounces,
-        setting the mail_dir attribute and creating the assocaited mailbox.MH.
+        account setting the mail_dir attribute and creating the associated
+        mailbox.MH.
         """
         # If the object has not been created yet and if the mail_dir
         # is not set set it based on the associated Server's parent

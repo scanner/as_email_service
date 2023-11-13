@@ -50,10 +50,14 @@ def check_create_maintenance_email_accounts(
     # We only attempt to create these EmailAccounts on the initial save of the
     # Server object.
     #
-    if not created:
-        return
-
-    if not settings.EMAIL_SERVICE_ACCOUNTS:
+    # We also skip it if the list of EMAIL_SERVICE_ACCOUNTS is empty or if
+    # EMAIL_SERVICE_ACCOUNTS_OWNER is not truthy.
+    #
+    if (
+        not created
+        or not settings.EMAIL_SERVICE_ACCOUNTS
+        or not settings.EMAIL_SERVICE_ACCOUNTS_OWNER
+    ):
         return
 
     # If EMAIL_SERVICE_ACCOUNTS_OWNER does not exist then the EmailAccounts

@@ -542,33 +542,32 @@ class EmailAccountViewSet(
         # Make sure all the EmailAccounts aliases and alias_fors listed are
         # ones owned by the same owner as this EmailAccount object.
         #
-        # NOTE: If you need to work around this you can do it from the
-        #       django-admin console. Maybe we will add a check for "admin"
-        #       that lets you get around this here but for now the REST
-        #       endpoint only lets you alias to email accounts that have the
-        #       same owner.
+        # NOTE: if the owner of the EmailAccount instance has the perm
+        #       "can_have_foreign_aliases" this this EmailAccount is allowed to
+        #       have aliases to EmailAccounts that do not have the same owner.
         #
         instance = self.get_object()
-        bad_fields = defaultdict(list)
-        for field in ["alias_for", "aliases"]:
-            if field in request.data:
-                if isinstance(request.data, QueryDict):
-                    addrs = request.data.getlist(field)
-                else:
-                    addrs = request.data[field]
-                eas = EmailAccount.objects.filter(email_address__in=addrs)
-                for ea in eas:
-                    if ea.owner != instance.owner:
-                        bad_fields[field].append(
-                            ErrorDetail(
-                                f"{ea.email_address}: can only alias email "
-                                "accounts owned by the same user: "
-                                f"{instance.owner}",
-                                code="permission_denied",
+        if not instance.owner.has_perms(["as_email.can_have_foreign_aliases"]):
+            bad_fields = defaultdict(list)
+            for field in ["alias_for", "aliases"]:
+                if field in request.data:
+                    if isinstance(request.data, QueryDict):
+                        addrs = request.data.getlist(field)
+                    else:
+                        addrs = request.data[field]
+                    eas = EmailAccount.objects.filter(email_address__in=addrs)
+                    for ea in eas:
+                        if ea.owner != instance.owner:
+                            bad_fields[field].append(
+                                ErrorDetail(
+                                    f"{ea.email_address}: can only alias email "
+                                    "accounts owned by the same user: "
+                                    f"{instance.owner}",
+                                    code="permission_denied",
+                                )
                             )
-                        )
-        if bad_fields:
-            return Response(bad_fields, status.HTTP_403_FORBIDDEN)
+            if bad_fields:
+                return Response(bad_fields, status.HTTP_403_FORBIDDEN)
 
         return super().update(request, *args, **kwargs)
 

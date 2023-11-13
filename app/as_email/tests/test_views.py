@@ -12,6 +12,8 @@ from urllib.parse import urlencode, urlparse
 #
 import pytest
 from dirty_equals import IsPartialDict
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.urls import resolve, reverse
 
 # Project imports
@@ -706,6 +708,91 @@ class TestEmailAccountEndpoints:
         ea.refresh_from_db()
         assert resp.data != IsPartialDict(ea_new)
         assert _expected_for_email_account(ea) == orig_ea_data
+
+    ####################################################################
+    #
+    def test_update_foreign_alias_permission(
+        self,
+        faker,
+        email_account_factory,
+        setup,
+        message_filter_rule_factory,
+    ):
+        """
+        Test to make sure an EmailAccount can not alias or alias_for
+        another EmailAccount that has a different owner. Unless the
+        EmailAccount doing the aliasing has the
+        `as_email.can_have_foreign_aliases` permission.
+        """
+        client = setup["client"]
+        ea = setup["email_account"]
+        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
+
+        # Make an EmailAccount that is NOT owned by this user.  (by not
+        # specifying `owner` in the creation)
+        #
+        ea_dest = email_account_factory()
+        ea_dest.save()
+
+        # Try setting the account to be an alias for `ea_dest`. This should
+        # fail with a 403, not permitted (because you are not permitted to add
+        # as an alias an EmailAccount that is not owned by the same owner as
+        # the EmailAccount you are adding the alias to.
+        #
+        ea_new = {
+            "alias_for": [ea_dest.email_address],
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 403
+
+        # Ditto for `aliases``
+        ea_new = {
+            "aliases": [ea_dest.email_address],
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 403
+
+        # Now grant `ea` the permission to have foreign aliases
+        #
+        ct = ContentType.objects.get_for_model(EmailAccount)
+        foreign_alias_perm = Permission.objects.get(
+            codename="can_have_foreign_aliases", content_type=ct
+        )
+        ea.owner.user_permissions.add(foreign_alias_perm)
+        ea_new = {
+            "alias_for": [ea_dest.email_address],
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 200
+        assert ea.alias_for.filter(email_address=ea_dest.email_address).exists()
+
+        # Ditto for `aliases``
+        ea_new = {
+            "aliases": [ea_dest.email_address],
+            "autofile_spam": False,
+            "delivery_method": EmailAccount.ALIAS,
+            "forward_to": faker.email(),
+            "spam_delivery_folder": "Spam",
+            "spam_score_threshold": 10,
+        }
+        resp = client.put(url, data=ea_new)
+        assert resp.status_code == 200
+        assert ea.aliases.filter(email_address=ea_dest.email_address).exists()
 
     ####################################################################
     #

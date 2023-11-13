@@ -69,7 +69,7 @@ env = environ.FileAwareEnv(
             "noc",
         ],
     ),
-    EMAIL_SERVICE_ACCOUNTS_OWNER=(str, "admin"),
+    EMAIL_SERVICE_ACCOUNTS_OWNER=(str, None),
 )
 
 # If we are running through a reverse proxy (like caddy) we need to make sure
