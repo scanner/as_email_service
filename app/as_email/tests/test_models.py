@@ -7,7 +7,6 @@ from pathlib import Path
 # 3rd party imports
 #
 import pytest
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -46,7 +45,9 @@ def test_server(server_factory):
 
 ####################################################################
 #
-def test_server_creates_admin_emailaccounts(user_factory, server_factory):
+def test_server_creates_admin_emailaccounts(
+    user_factory, server_factory, settings
+):
     """
     With the defaults from django settings, if a user account with the
     username 'admin' exists, then EmailAccounts defined by the list
@@ -54,6 +55,7 @@ def test_server_creates_admin_emailaccounts(user_factory, server_factory):
 
     This will happen when the server account is saved for the first time.
     """
+    settings.EMAIL_SERVICE_ACCOUNTS_OWNER = "admin"
     admin = user_factory(username="admin")
     admin.save()
     server = server_factory()
