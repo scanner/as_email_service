@@ -122,7 +122,10 @@ class AsyncioAuthSMTP(SMTP):
             if (
                 isinstance(error, TLSSetupException)
                 and hasattr(error, "__cause__")
-                and isinstance(error.__cause__, ssl.SSLError)
+                and (
+                    isinstance(error.__cause__, ssl.SSLError)
+                    or isinstance(error.__cause__, ConnectionResetError)
+                )
             ):
                 logger.error(
                     "%r SMTP session exception: %s",
@@ -523,7 +526,7 @@ class RelayHandler:
             # If we deny this connection we also sleep for a short bit before
             # returning the error to the client. This makes a mini-tarpit that
             # will hopefully slow down connection attempts a little bit.
-            await asyncio.sleep(5)
+            await asyncio.sleep(30)
             responses.append("550 Too many failed attempts")
         return responses
 
