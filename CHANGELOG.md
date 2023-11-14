@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.1] - 2023-11-3
+## [0.1.2] - 2023-11-14
+
+### Fixed
+
+- Added 'forgot password' link to the reset pw page.
+
+## [0.1.1] - 2023-11-13
 
 ### Added
 
