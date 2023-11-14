@@ -11,9 +11,11 @@
     {% csrf_token %}
     {{ form|crispy }}
     <div class="field">
-      <button type="submit" class="button is-primary">{% trans 'Log in' %}</button>
+      <div class="control">
+        <button type="submit" class="button is-primary">{% trans 'Log in' %}</button>
+        <a class="button is-link" href="{% url 'password_reset' %}">Forgot Password</a>
+      </div>
     </div>
     <input type="hidden" name="next" value="{{ next }}"/>
   </form>
-
 {% endblock %}
