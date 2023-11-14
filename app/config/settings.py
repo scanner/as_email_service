@@ -13,11 +13,10 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 #
 from pathlib import Path
 
-import environ
-import redis
-
 # 3rd party imports
 #
+import environ
+import redis
 import sentry_sdk
 from django.utils.crypto import get_random_string
 
@@ -325,6 +324,11 @@ LOGGING = {
             "propagate": True,
         },
         "mail": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "WARNING",
+            "propagate": True,
+        },
+        "huey": {
             "handlers": ["console"],
             "level": "DEBUG" if DEBUG else "WARNING",
             "propagate": True,
