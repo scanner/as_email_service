@@ -160,17 +160,14 @@ def _add_msg_to_folder(folder: MH, msg: EmailMessage):
     Adding a message to a MH folder requires several simple steps. This
     wraps those steps.
     """
-    try:
-        folder.lock()
-        msg_id = folder.add(msg)
+    with lock_folder(folder):
+        msg_id = int(folder.add(msg))
         sequences = folder.get_sequences()
         if "unseen" in sequences:
             sequences["unseen"].append(msg_id)
         else:
             sequences["unseen"] = [msg_id]
         folder.set_sequences(sequences)
-    finally:
-        folder.unlock()
 
 
 ####################################################################
