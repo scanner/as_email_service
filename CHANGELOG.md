@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4 - 2023-11-26]
+
+### Fixed
+
+- GH-109 - actually use the folder locking context manager on local delivery
+
 ## [0.1.3] - 2023-11-26
 
 ### Fixed
