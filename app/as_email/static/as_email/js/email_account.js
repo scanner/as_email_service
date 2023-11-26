@@ -364,9 +364,8 @@ export default {
           console.log(
             `Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`,
           );
-          labelErrorMessages[
-            "detail"
-          ] = `HTTP: ${res.status}: ${res.statusText}`;
+          labelErrorMessages["detail"] =
+            `HTTP: ${res.status}: ${res.statusText}`;
         }
 
         // sleep for a bit so our button goes inactive for a

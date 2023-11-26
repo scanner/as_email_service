@@ -29,9 +29,11 @@ There are three main entry points:
 #
 import email.utils
 import logging
+import time
+from contextlib import contextmanager
 from email.message import EmailMessage
 from email.mime.text import MIMEText
-from mailbox import MH, NoSuchMailboxError
+from mailbox import MH, ExternalClashError, NoSuchMailboxError
 from typing import List, Union, cast
 
 # Project imports
@@ -120,6 +122,35 @@ def apply_message_filter_rules(
             #
             return deliver_to
     return deliver_to
+
+
+####################################################################
+#
+@contextmanager
+def lock_folder(
+    folder: MH, timeout: Union[int | float] = 20, fail: bool = False
+):
+    """
+    Try to get an advisory lock on the MH folder in question.
+    We will loop until we manage to get the lock, or we hit our timeout.
+
+    If `fail` is True then if we are unable to get the lock, we re-raise the
+    ExternalClashError. If `fail` is False (the default) we proceed as if we
+    got the lock.
+    """
+    while timeout > 0:
+        try:
+            folder.lock()
+            break
+        except ExternalClashError:
+            if fail:
+                raise
+            timeout -= 0.1
+            time.sleep(0.1)
+    try:
+        yield
+    finally:
+        folder.unlock()
 
 
 ####################################################################

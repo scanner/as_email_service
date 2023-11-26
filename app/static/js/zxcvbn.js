@@ -378,21 +378,21 @@
                           ? "This is similar to a commonly used password"
                           : void 0
                         : e.rank <= 10
-                        ? "This is a top-10 common password"
-                        : e.rank <= 100
-                        ? "This is a top-100 common password"
-                        : "This is a very common password"
+                          ? "This is a top-10 common password"
+                          : e.rank <= 100
+                            ? "This is a top-100 common password"
+                            : "This is a very common password"
                       : "english_wikipedia" === e.dictionary_name
-                      ? s
-                        ? "A word by itself is easy to guess"
-                        : void 0
-                      : "surnames" === (a = e.dictionary_name) ||
-                        "male_names" === a ||
-                        "female_names" === a
-                      ? s
-                        ? "Names and surnames by themselves are easy to guess"
-                        : "Common names and surnames are easy to guess"
-                      : ""),
+                        ? s
+                          ? "A word by itself is easy to guess"
+                          : void 0
+                        : "surnames" === (a = e.dictionary_name) ||
+                            "male_names" === a ||
+                            "female_names" === a
+                          ? s
+                            ? "Names and surnames by themselves are easy to guess"
+                            : "Common names and surnames are easy to guess"
+                          : ""),
                   (r = []),
                   (o = e.token),
                   o.match(scoring.START_UPPER)
@@ -931,10 +931,10 @@
                           /^[a-z]+$/.test(u)
                             ? ((s = "lower"), (o = 26))
                             : /^[A-Z]+$/.test(u)
-                            ? ((s = "upper"), (o = 26))
-                            : /^\d+$/.test(u)
-                            ? ((s = "digits"), (o = 10))
-                            : ((s = "unicode"), (o = 26)),
+                              ? ((s = "upper"), (o = 26))
+                              : /^\d+$/.test(u)
+                                ? ((s = "digits"), (o = 10))
+                                : ((s = "unicode"), (o = 26)),
                           h.push({
                             pattern: "sequence",
                             i: n,
@@ -1471,8 +1471,8 @@
                     "9" === r
                       ? 4
                       : r.match(/\d/)
-                      ? 10
-                      : 26),
+                        ? 10
+                        : 26),
                   e.ascending || (t *= 2),
                   t * e.token.length
                 );
@@ -1701,12 +1701,12 @@
                 e < 1e3 + t
                   ? 0
                   : e < 1e6 + t
-                  ? 1
-                  : e < 1e8 + t
-                  ? 2
-                  : e < 1e10 + t
-                  ? 3
-                  : 4
+                    ? 1
+                    : e < 1e8 + t
+                      ? 2
+                      : e < 1e10 + t
+                        ? 3
+                        : 4
               );
             },
             display_time: function (e) {
@@ -1722,18 +1722,18 @@
                   e < 1
                     ? [null, "less than a second"]
                     : e < i
-                    ? ((t = Math.round(e)), [t, t + " second"])
-                    : e < r
-                    ? ((t = Math.round(e / i)), [t, t + " minute"])
-                    : e < s
-                    ? ((t = Math.round(e / r)), [t, t + " hour"])
-                    : e < a
-                    ? ((t = Math.round(e / s)), [t, t + " day"])
-                    : e < c
-                    ? ((t = Math.round(e / a)), [t, t + " month"])
-                    : e < n
-                    ? ((t = Math.round(e / c)), [t, t + " year"])
-                    : [null, "centuries"]),
+                      ? ((t = Math.round(e)), [t, t + " second"])
+                      : e < r
+                        ? ((t = Math.round(e / i)), [t, t + " minute"])
+                        : e < s
+                          ? ((t = Math.round(e / r)), [t, t + " hour"])
+                          : e < a
+                            ? ((t = Math.round(e / s)), [t, t + " day"])
+                            : e < c
+                              ? ((t = Math.round(e / a)), [t, t + " month"])
+                              : e < n
+                                ? ((t = Math.round(e / c)), [t, t + " year"])
+                                : [null, "centuries"]),
                 (o = u[0]),
                 (_ = u[1]),
                 null != o && 1 !== o && (_ += "s"),

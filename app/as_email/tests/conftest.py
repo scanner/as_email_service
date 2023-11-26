@@ -3,10 +3,9 @@
 """
 pytest fixtures for our tests
 """
-import email.policy
-
 # system imports
 #
+import email.policy
 import json
 from datetime import datetime
 from email.headerregistry import Address
