@@ -14,7 +14,7 @@ import factory.fuzzy
 from django.contrib.auth import get_user_model
 from factory import post_generation
 from factory.django import DjangoModelFactory
-from faker import Faker  # XXX should we move to `factory.Faker()`?
+from faker import Faker
 
 # Project imports
 #

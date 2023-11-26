@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2023-11-26
+
+### Fixed
+
+- in `deliver.py` create contextmanger for locking a mail folder so that if
+  another process has it locked it will block and try for some time instead of
+  failing immediately
+
+### Updated
+
+- Update to `prettier` v3.1.0
+
 ## [0.1.2] - 2023-11-14
 
 ### Fixed

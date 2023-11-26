@@ -22,10 +22,9 @@ from email.message import EmailMessage
 from email.utils import parseaddr
 from typing import Any, List, Optional
 
-import sentry_sdk
-
 # 3rd party imports
 #
+import sentry_sdk
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import (
     MISSING,
