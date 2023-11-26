@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Updated
 
 - Update to `prettier` v3.1.0
+- Update `ruff` to 0.1.6
+- Update `black` to 23.11.0
+- Lot of other updated requirements
 
 ## [0.1.2] - 2023-11-14
 
