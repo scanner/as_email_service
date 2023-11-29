@@ -47,6 +47,7 @@ env = environ.FileAwareEnv(
     CACHE_URL=(str, "dummycache://"),
     SENTRY_DSN=(str, None),
     SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
+    SENTRY_PROFILES_SAMPLE_RATE=(float, 0.0),
     COMPRESS_ENABLED=(bool, True),
     COMPRESS_OFFLINE=(bool, True),
     # Email service accounts are email addresses that are widely expected to
@@ -90,6 +91,7 @@ REDIS_SERVER = env("REDIS_SERVER")
 EMAIL_SERVICE_ACCOUNTS = env("EMAIL_SERVICE_ACCOUNTS")
 EMAIL_SERVICE_ACCOUNTS_OWNER = env("EMAIL_SERVICE_ACCOUNTS_OWNER")
 SENTRY_TRACES_SAMPLE_RATE = env("SENTRY_TRACES_SAMPLE_RATE")
+SENTRY_PROFILES_SAMPLE_RATE = env("SENTRY_PROFILES_SAMPLE_RATE")
 SENTRY_DSN = env("SENTRY_DSN")
 if SENTRY_DSN is not None:
     sentry_sdk.init(
@@ -100,7 +102,7 @@ if SENTRY_DSN is not None:
         # Set profiles_sample_rate to 1.0 to profile 100%
         # of sampled transactions.
         # We recommend adjusting this value in production.
-        profiles_sample_rate=1.0,
+        profiles_sample_rate=SENTRY_PROFILES_SAMPLE_RATE,
         environment="devel" if DEBUG else "production",
         release=f"as_email_service@{VERSION}",
     )
