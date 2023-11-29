@@ -232,7 +232,7 @@ class AsyncioAuthController(Controller):
                 # Set traces_sample_rate to 1.0 to capture 100%
                 # of transactions for performance monitoring.
                 traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
-                profiles_sample_rate=1.0,
+                profiles_sample_rate=settings.SENTRY_PROFILES_SAMPLE_RATE,
                 integrations=[
                     AsyncioIntegration(),
                 ],
