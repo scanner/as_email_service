@@ -327,7 +327,7 @@ LOGGING = {
         },
         "mail": {
             "handlers": ["console"],
-            "level": "DEBUG" if DEBUG else "WARNING",
+            "level": "DEBUG" if DEBUG else "ERROR",
             "propagate": True,
         },
         "huey": {
