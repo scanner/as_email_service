@@ -14,6 +14,7 @@ from django.db import IntegrityError
 # Project imports
 #
 from ..models import EmailAccount, InactiveEmail, MessageFilterRule
+from ..utils import read_emailaccount_pwfile
 
 User = get_user_model()
 
@@ -73,13 +74,21 @@ def test_server_creates_admin_emailaccounts(
 
 ####################################################################
 #
-def test_email_account_set_check_password(faker, email_account_factory):
+def test_email_account_set_check_password(
+    faker, settings, email_account_factory
+):
     ea = email_account_factory()
     ea.save()
     password = faker.pystr(min_chars=8, max_chars=32)
     assert ea.check_password(password) is False
     ea.set_password(password)
     assert ea.check_password(password)
+
+    # make sure that the password hash in the external pw file is updated
+    #
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    assert ea.email_address in accounts
+    assert accounts[ea.email_address].pw_hash == ea.password
 
 
 ####################################################################
@@ -108,7 +117,7 @@ def test_email_account_valid_email_address(email_account_factory):
 
 ####################################################################
 #
-def test_email_account_mail_dir(email_account_factory):
+def test_email_account_mail_dir(settings, email_account_factory):
     """
     make sure the mailbox.MH directory for the email account exists
     """
@@ -125,6 +134,15 @@ def test_email_account_mail_dir(email_account_factory):
         assert mh._path == ea.mail_dir
     except mailbox.NoSuchMailboxError as exc:
         assert False, exc
+
+    # make sure that the mail dir in the external pw file is set properly
+    # (relative to settings.MAIL_DIRS)
+    #
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    assert ea.email_address in accounts
+    assert settings.MAIL_DIRS / accounts[ea.email_address].maildir == Path(
+        ea.mail_dir
+    )
 
 
 ####################################################################

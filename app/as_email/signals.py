@@ -43,13 +43,13 @@ def fire_off_async_task_update_emailaccount_pwfile(
 #
 @receiver(post_delete, sender=EmailAccount)
 def fire_off_async_task_delete_emailaccount_pwfile(
-    sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
+    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
 ):
     """
     When an email account is deleted from the system make sure its entry in
     the generated pwfile is also removed.
     """
-    delete_emailaccount_from_pwfile(instance.pk)
+    delete_emailaccount_from_pwfile(instance.email_address)
 
 
 ####################################################################

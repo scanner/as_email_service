@@ -568,12 +568,9 @@ def check_update_pwfile_for_emailaccount(ea_pk: int):
 ####################################################################
 #
 @db_task()
-def delete_emailaccount_from_pwfile(ea_pk: int):
-    ea = EmailAccount.objects.get(pk=ea_pk)
+def delete_emailaccount_from_pwfile(email_address: str):
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    if ea.email_address in accounts:
-        logger.info(
-            "Deleting '%s' from external password file", ea.email_address
-        )
-        del accounts[ea.email_address]
+    if email_address in accounts:
+        logger.info("Deleting '%s' from external password file", email_address)
+        del accounts[email_address]
         write_emailaccount_pwfile(settings.EXT_PW_FILE, accounts)

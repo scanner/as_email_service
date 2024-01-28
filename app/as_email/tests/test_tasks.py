@@ -21,7 +21,7 @@ from ..tasks import (
     process_email_bounce,
     process_email_spam,
 )
-from ..utils import write_spooled_email
+from ..utils import read_emailaccount_pwfile, write_spooled_email
 from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -617,3 +617,28 @@ def test_process_spam_invalid_typecode(
     ea.refresh_from_db()
     assert ea.num_bounces == 1
     assert not ea.deactivated
+
+
+####################################################################
+#
+def test_delete_email_account_removes_pwfile_entry(
+    settings, email_account_factory
+):
+    """
+    Make sure that the entry for an email account in the external pw file
+    is deleted when the email account object is deleted.
+    """
+    ea = email_account_factory()
+    ea.save()
+
+    # It should exist in the pwfile after we save it.
+    #
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    assert ea.email_address in accounts
+
+    # And now if we delete the email address, it should be deleted from the
+    # external pw file.
+    #
+    ea.delete()
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    assert ea.email_address not in accounts
