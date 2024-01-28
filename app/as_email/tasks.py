@@ -530,16 +530,21 @@ def check_update_pwfile_for_emailaccount(ea_pk: int):
     #
     write = False
     ea = EmailAccount.objects.get(pk=ea_pk)
+
+    # NOTE: The path to the mail dir is relative to the directory that the
+    #       password file is in. In settings the password file is always in
+    #       MAIL_DIRS directory.
+    #
+    ea_mail_dir = Path(ea.mail_dir).relative_to(settings.EXT_PW_FILE.parent)
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     if ea.email_address not in accounts:
         accounts[ea.email_address] = PWUser(
-            ea.email_address, ea.mail_dir, ea.password
+            ea.email_address, ea_mail_dir, ea.password
         )
         write = True
         logger.info("Adding '%s' to external password file", ea.email_address)
     else:
         account = accounts[ea.email_address]
-        ea_mail_dir = Path(ea.mail_dir)
         if account.maildir != ea_mail_dir:
             account.maildir = ea_mail_dir
             logger.info(
