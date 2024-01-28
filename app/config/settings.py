@@ -280,12 +280,14 @@ EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
 #
 EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
 
-# This is the parent directory where all the MH mail dirs are for all the
-# email accounts. There will be a subdir for each server, and a dir with the
-# username under that subdir. That username dir will be the mh mail dir for
-# each email account.
+# This is the parent directory where all the MH mail dirs are for all the email
+# accounts. There will be a subdir for each server, and a dir with the username
+# under that subdir. That username dir will be the mh mail dir for each email
+# account. This is also the location of the external password file used by
+# other services (asimapd)
 #
 MAIL_DIRS = Path(env("MAIL_DIRS"))
+EXT_PW_FILE = MAIL_DIRS / "asimapd_passwords.txt"
 
 # The external auth db is a sqlite db that we maintain one table in: "users"
 # The "user" table will at least have two columns: "password" and

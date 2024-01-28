@@ -217,6 +217,7 @@ def mailbox_dir(settings, tmp_path):
     mail_base_dir = tmp_path / "mail_base_dir"
     mail_base_dir.mkdir(parents=True, exist_ok=True)
     settings.MAIL_DIRS = mail_base_dir
+    settings.EXT_PW_FILE = mail_base_dir / "asimapd_passwords.txt"
     yield mail_base_dir
 
 

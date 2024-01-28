@@ -25,7 +25,12 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 #
 from .deliver import deliver_message, report_failed_message
 from .models import EmailAccount, InactiveEmail, Server
-from .utils import BOUNCE_TYPES_BY_TYPE_CODE
+from .utils import (
+    BOUNCE_TYPES_BY_TYPE_CODE,
+    PWUser,
+    read_emailaccount_pwfile,
+    write_emailaccount_pwfile,
+)
 
 TZ = pytz.timezone(settings.TIME_ZONE)
 EST = pytz.timezone("EST")  # Postmark API is in EST! Really!
@@ -515,3 +520,57 @@ def process_email_spam(email_account_pk: int, spam: dict):
         status="5.1.1",
         diagnostic=f"smtp; {spam['Details']}",
     )
+
+
+####################################################################
+#
+@db_task()
+def check_update_pwfile_for_emailaccount(ea_pk: int):
+    # The password file is at the root of the maildir directory
+    #
+    write = False
+    ea = EmailAccount.objects.get(pk=ea_pk)
+
+    # NOTE: The path to the mail dir is relative to the directory that the
+    #       password file is in. In settings the password file is always in
+    #       MAIL_DIRS directory.
+    #
+    ea_mail_dir = Path(ea.mail_dir).relative_to(settings.EXT_PW_FILE.parent)
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    if ea.email_address not in accounts:
+        accounts[ea.email_address] = PWUser(
+            ea.email_address, ea_mail_dir, ea.password
+        )
+        write = True
+        logger.info("Adding '%s' to external password file", ea.email_address)
+    else:
+        account = accounts[ea.email_address]
+        if account.maildir != ea_mail_dir:
+            account.maildir = ea_mail_dir
+            logger.info(
+                "Updating '%s''s mail dir to: '%s' in external password file",
+                ea.email_address,
+                ea.mail_dir,
+            )
+            write = True
+        if account.pw_hash != ea.password:
+            account.pw_hash = ea.password
+            logger.info(
+                "Updating '%s''s password hash external password file",
+                ea.email_address,
+            )
+            write = True
+
+    if write:
+        write_emailaccount_pwfile(settings.EXT_PW_FILE, accounts)
+
+
+####################################################################
+#
+@db_task()
+def delete_emailaccount_from_pwfile(email_address: str):
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    if email_address in accounts:
+        logger.info("Deleting '%s' from external password file", email_address)
+        del accounts[email_address]
+        write_emailaccount_pwfile(settings.EXT_PW_FILE, accounts)
