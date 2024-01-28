@@ -10,15 +10,46 @@ from typing import Type
 #
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 # Project imports
 #
 from .models import EmailAccount, Server
+from .tasks import (
+    check_update_pwfile_for_emailaccount,
+    delete_emailaccount_from_pwfile,
+)
 
 User = get_user_model()
 logger = logging.getLogger("as_email.models")
+
+
+####################################################################
+#
+@receiver(post_save, sender=EmailAccount)
+def fire_off_async_task_update_emailaccount_pwfile(
+    sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
+):
+    """
+    Fire off an async task that will compare the email account entry in the
+    password file with the email account object. If they are different, it will
+    re-write the password file with the update info.
+    """
+    check_update_pwfile_for_emailaccount(instance.pk)
+
+
+####################################################################
+#
+@receiver(post_delete, sender=EmailAccount)
+def fire_off_async_task_delete_emailaccount_pwfile(
+    sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
+):
+    """
+    When an email account is deleted from the system make sure its entry in
+    the generated pwfile is also removed.
+    """
+    delete_emailaccount_from_pwfile(instance.pk)
 
 
 ####################################################################
