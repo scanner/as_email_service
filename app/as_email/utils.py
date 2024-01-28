@@ -250,6 +250,9 @@ def read_emailaccount_pwfile(pwfile: Path) -> Dict[str, PWUser]:
     the email account and the values are the password has and mail directory.
     """
     accounts: Dict[str, PWUser] = {}
+    if not pwfile.exists():
+        return accounts
+
     with pwfile.open() as f:
         for line in f:
             line = line.strip()
@@ -289,6 +292,6 @@ def write_emailaccount_pwfile(pwfile: Path, accounts: Dict[str, PWUser]):
             # when other services read them so we them relative to the pwfile.
             #
             account = accounts[email_addr]
-            maildir = account.maildir.relative_to(pwfile.parent)
+            maildir = account.maildir
             f.write(f"{email_addr}:{account.pw_hash}:{maildir}\n")
     new_pwfile.rename(pwfile)
