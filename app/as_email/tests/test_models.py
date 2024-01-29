@@ -132,6 +132,8 @@ def test_email_account_mail_dir(settings, email_account_factory):
     try:
         mh = ea.MH(create=False)
         assert mh._path == ea.mail_dir
+        for folder in settings.DEFAULT_FOLDERS:
+            mh.get_folder(folder)
     except mailbox.NoSuchMailboxError as exc:
         assert False, exc
 

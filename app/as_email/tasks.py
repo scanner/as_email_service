@@ -19,7 +19,7 @@ import pytz
 from django.conf import settings
 from django.core.mail import send_mail
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task, db_task
+from huey.contrib.djhuey import db_periodic_task, db_task, lock_task, task
 
 # Project imports
 #
@@ -524,19 +524,20 @@ def process_email_spam(email_account_pk: int, spam: dict):
 
 ####################################################################
 #
-@db_task()
+@db_task(retries=10, retry_delay=2)
+@lock_task("pwfile")
 def check_update_pwfile_for_emailaccount(ea_pk: int):
+    """
+    We are doing a manual retry because normal retries still log exceptions
+    and there seem to be a problem with huey and the version of redis we are
+    using getting a ZADD error like we are using a priority queue or
+    something.. so just do our own retries on failures to look up the email
+    account.
+    """
     # The password file is at the root of the maildir directory
     #
     write = False
-    try:
-        ea = EmailAccount.objects.get(pk=ea_pk)
-    except EmailAccount.DoesNotExist:
-        logger.warning(
-            "Unable to find EmailAccount for pk %d. Skipping pw entry creation",
-            ea_pk,
-        )
-        return
+    ea = EmailAccount.objects.get(pk=ea_pk)
 
     # NOTE: The path to the mail dir is relative to the directory that the
     #       password file is in. In settings the password file is always in
@@ -574,7 +575,8 @@ def check_update_pwfile_for_emailaccount(ea_pk: int):
 
 ####################################################################
 #
-@db_task()
+@task(retries=5, retry_delay=5)
+@lock_task("pwfile")
 def delete_emailaccount_from_pwfile(email_address: str):
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     if email_address in accounts:
