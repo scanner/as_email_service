@@ -288,6 +288,14 @@ EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
 #
 MAIL_DIRS = Path(env("MAIL_DIRS"))
 EXT_PW_FILE = MAIL_DIRS / "asimapd_passwords.txt"
+DEFAULT_FOLDERS = (
+    "inbox",
+    "Junk",
+    "Archive",
+    "Sent Messages",
+    "Drafts",
+    "Deleted Messages",
+)
 
 # The external auth db is a sqlite db that we maintain one table in: "users"
 # The "user" table will at least have two columns: "password" and

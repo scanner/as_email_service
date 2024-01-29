@@ -186,6 +186,8 @@ h11==0.14.0
     #   -r production.txt
     #   httpcore
     #   uvicorn
+hiredis==2.3.2
+    # via -r production.txt
 httpcore==1.0.2
     # via
     #   -r production.txt
@@ -370,7 +372,7 @@ reactivex==4.0.4
     # via
     #   -r production.txt
     #   influxdb-client
-redispy==3.0.0
+redis==5.0.1
     # via -r production.txt
 requests==2.31.0
     # via

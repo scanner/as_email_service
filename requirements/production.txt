@@ -110,6 +110,8 @@ h11==0.14.0
     # via
     #   httpcore
     #   uvicorn
+hiredis==2.3.2
+    # via redis
 httpcore==1.0.2
     # via httpx
 httpx==0.26.0
@@ -157,7 +159,7 @@ rcssmin==1.1.1
     # via django-compressor
 reactivex==4.0.4
     # via influxdb-client
-redispy==3.0.0
+redis==5.0.1
     # via -r production.in
 requests==2.31.0
     # via

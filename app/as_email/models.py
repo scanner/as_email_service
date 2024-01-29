@@ -785,7 +785,7 @@ class EmailAccount(models.Model):
         # even if self.id is set because the mail dir may have been
         # changed and we want this process to ensure that it exists.
         #
-        _ = self.MH()
+        self.MH()
 
     ####################################################################
     #
@@ -861,10 +861,8 @@ class EmailAccount(models.Model):
             ),
             create=create,
         )
-        try:
-            _ = mh.get_folder("inbox")
-        except mailbox.NoSuchMailboxError:
-            _ = mh.add_folder("inbox")
+        for folder in settings.DEFAULT_FOLDERS:
+            mh.add_folder(folder)
         return mh
 
     ####################################################################
