@@ -529,7 +529,14 @@ def check_update_pwfile_for_emailaccount(ea_pk: int):
     # The password file is at the root of the maildir directory
     #
     write = False
-    ea = EmailAccount.objects.get(pk=ea_pk)
+    try:
+        ea = EmailAccount.objects.get(pk=ea_pk)
+    except EmailAccount.DoesNotExist:
+        logger.warning(
+            "Unable to find EmailAccount for pk %d. Skipping pw entry creation",
+            ea_pk,
+        )
+        return
 
     # NOTE: The path to the mail dir is relative to the directory that the
     #       password file is in. In settings the password file is always in
