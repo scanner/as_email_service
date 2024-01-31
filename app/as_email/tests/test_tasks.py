@@ -10,6 +10,7 @@ from datetime import datetime
 # 3rd party imports
 #
 import pytest
+from dirty_equals import Contains
 
 # Project imports
 #
@@ -44,12 +45,12 @@ def test_dispatch_spool_outgoing_email(
     spool_message(server.outgoing_spool_dir, msg.as_bytes())
     res = dispatch_spooled_outgoing_email()
     res()
-    send_message = smtp.return_value.send_message
+    send_message = smtp.return_value.sendmail
     assert send_message.call_count == 1
-    assert send_message.call_args.kwargs == {
-        "from_addr": from_addr,
-        "to_addrs": rcpt_tos,
-    }
+    assert send_message.call_args.args == Contains(
+        from_addr,
+        rcpt_tos,
+    )
 
 
 ####################################################################

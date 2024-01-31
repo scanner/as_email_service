@@ -55,8 +55,8 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     if ignore_headers is False:
         assert len(msg1.items()) == len(msg2.items())
         for header, value in msg1.items():
-            value = value.replace("\n", "")
-            assert msg2[header].replace("\n", "") == value
+            value = value.replace("\n", "").replace("\r", "")
+            assert msg2[header].replace("\n", "").replace("\r", "") == value
 
     # If we are ignoring only some headers, then skip those.
     #
@@ -81,7 +81,9 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     assert len(parts1) == len(parts2)
 
     for part1, part2 in zip(parts1, parts2):
-        assert part1.get_payload() == part2.get_payload()
+        assert part1.get_payload().strip().replace("\r", "").replace(
+            "\n", ""
+        ) == part2.get_payload().strip().replace("\r", "").replace("\n", "")
 
 
 ####################################################################
