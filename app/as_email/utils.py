@@ -5,17 +5,19 @@ Utilitities used by our app. We want to separate them from views, models,
 and tasks so we can import them in all of those other modules without loops and
 weirdness.
 """
-import email.policy
-
 # system imports
 #
+import email.generator
+import email.policy
+import io
 import json
 import logging
+import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 from email.utils import make_msgid
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Tuple, Union
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -297,3 +299,64 @@ def write_emailaccount_pwfile(pwfile: Path, accounts: Dict[str, PWUser]):
             maildir = account.maildir
             f.write(f"{email_addr}:{account.pw_hash}:{maildir}\n")
     new_pwfile.rename(pwfile)
+
+
+########################################################################
+########################################################################
+#
+class Latin1BytesGenerator(email.generator.BytesGenerator):
+    """
+    Turns out some of the messages we get can NOT be encoded in to bytes
+    via the 'ascii' codec. B-/ So, we replace the method that does the encoding
+    and if 'ascii' does not work, it tries 'latin-1'
+    """
+
+    ####################################################################
+    #
+    def write(self, s):
+        try:
+            msg = s.encode("ascii", "surrogateescape")
+        except UnicodeEncodeError:
+            msg = s.encode("latin-1", "surrogateescape")
+        self._fp.write(msg)
+
+    def _encode(self, s):
+        try:
+            msg = s.encode("ascii")
+        except UnicodeEncodeError:
+            msg = s.encode("latin-1")
+        return msg
+
+
+####################################################################
+#
+def sendmail(
+    smtpclient: smtplib.SMTP,
+    msg: EmailMessage,
+    from_addr: str,
+    to_addrs: List[str],
+):
+    """
+    do our own sendmail wrapper because we need to be able to enocde
+    messages that have stuff like the `©` in them. We get it, we send it.
+    """
+    international = False
+    mail_options = ()
+    rcpt_options = ()
+    try:
+        "".join([from_addr, *to_addrs]).encode("ascii")
+    except UnicodeEncodeError:
+        international = True
+    with io.BytesIO() as bytesmsg:
+        if international:
+            g = email.generator.BytesGenerator(
+                bytesmsg, policy=msg.policy.clone(utf8=True)
+            )
+            mail_options = (*mail_options, "SMTPUTF8", "BODY=8BITMIME")
+        else:
+            g = Latin1BytesGenerator(bytesmsg)
+        g.flatten(msg, linesep="\r\n")
+        flatmsg = bytesmsg.getvalue()
+    return smtpclient.sendmail(
+        from_addr, to_addrs, flatmsg, mail_options, rcpt_options
+    )

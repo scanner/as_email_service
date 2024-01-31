@@ -7,6 +7,7 @@ from pathlib import Path
 # 3rd party imports
 #
 import pytest
+from dirty_equals import Contains
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -15,6 +16,7 @@ from django.db import IntegrityError
 #
 from ..models import EmailAccount, InactiveEmail, MessageFilterRule
 from ..utils import read_emailaccount_pwfile
+from .conftest import assert_email_equal
 
 User = get_user_model()
 
@@ -189,13 +191,18 @@ def test_email_account_email_via_smtp(
     #       the only thing we care about is that the `send_message` method was
     #       called with the appropriate values.
     #
-    send_message = smtp.return_value.send_message
+    send_message = smtp.return_value.sendmail
     assert send_message.call_count == 1
-    assert send_message.call_args.args == (msg,)
-    assert send_message.call_args.kwargs == {
-        "from_addr": from_addr,
-        "to_addrs": rcpt_tos,
-    }
+    assert send_message.call_args.args == Contains(
+        from_addr,
+        rcpt_tos,
+    )
+
+    sent_message_bytes = send_message.call_args.args[2]
+    sent_message = email.message_from_bytes(
+        sent_message_bytes, policy=email.policy.default
+    )
+    assert_email_equal(msg, sent_message)
 
 
 ####################################################################
