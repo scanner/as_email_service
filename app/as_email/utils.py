@@ -310,7 +310,6 @@ class Latin1BytesGenerator(email.generator.BytesGenerator):
     via the 'ascii' codec. B-/ So, we replace the method that does the encoding
     and if 'ascii' does not work, it tries 'latin-1'
     """
-
     ENCODINGS = ("ascii", "utf-8", "latin-1")
 
     ####################################################################
