@@ -311,30 +311,25 @@ class Latin1BytesGenerator(email.generator.BytesGenerator):
     and if 'ascii' does not work, it tries 'latin-1'
     """
 
-    # ENCODINGS = ("ascii", "utf-8", "latin-1")
     ENCODINGS = ("ascii", "utf-8", "latin-1")
 
     ####################################################################
     #
     def write(self, s):
-        # return s.encode("ascii", "surrogateescape")
         for encoding in self.ENCODINGS:
-            print(f"Trying encoding: {encoding}")
             try:
                 msg = s.encode(encoding, "surrogateescape")
-                return msg
+                break
             except UnicodeEncodeError:
                 if encoding == self.ENCODINGS[-1]:
                     raise
         self._fp.write(msg)
 
     def _encode(self, s):
-        # return s.encode("ascii", "surrogateescape")
         for encoding in self.ENCODINGS:
-            print(f"Trying encoding: {encoding}")
             try:
                 msg = s.encode(encoding, "surrogateescape")
-                return msg
+                break
             except UnicodeEncodeError:
                 if encoding == self.ENCODINGS[-1]:
                     raise
