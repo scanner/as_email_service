@@ -218,7 +218,8 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     #
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
-    bounce_details = client.bounces.get(int(bounce["ID"]))
+    # bounce_details = client.bounces.get(int(bounce["ID"]))
+    bounce_details = client.bounces.get(int(bounce["MessageID"]))
 
     # We generate the human readable 'report_text' by constructing a list of
     # messages that will concatenated into a single string and passed as the
