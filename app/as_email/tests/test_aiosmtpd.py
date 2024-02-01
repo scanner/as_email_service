@@ -311,6 +311,9 @@ async def test_relayhandler_handle_DATA(
     sent_message = email.message_from_bytes(
         sent_message_bytes, policy=email.policy.default
     )
+    print(f"msg is: {msg}")
+    print(f"sent message is: {sent_message}")
+    print(f"message text: {sent_message_bytes.decode('ascii')}")
 
     assert sent_message["From"] == ea.email_address
     assert sent_message["To"] == to
