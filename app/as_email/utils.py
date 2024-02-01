@@ -162,7 +162,8 @@ def split_email_mailbox_hash(email_address: str) -> Tuple[str, str | None]:
     mbox_hash = None
     if "+" in addr:
         addr, mbox_hash = addr.split("+", 1)
-    return (f"{addr}@{domain}", mbox_hash)
+    email_addr = f"{addr}@{domain}".lower()
+    return (email_addr, mbox_hash)
 
 
 ####################################################################
