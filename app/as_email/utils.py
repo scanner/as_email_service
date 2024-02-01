@@ -310,6 +310,7 @@ class Latin1BytesGenerator(email.generator.BytesGenerator):
     via the 'ascii' codec. B-/ So, we replace the method that does the encoding
     and if 'ascii' does not work, it tries 'latin-1'
     """
+
     ENCODINGS = ("ascii", "utf-8", "latin-1")
 
     ####################################################################
@@ -318,6 +319,7 @@ class Latin1BytesGenerator(email.generator.BytesGenerator):
         for encoding in self.ENCODINGS:
             try:
                 msg = s.encode(encoding, "surrogateescape")
+                break
             except UnicodeEncodeError:
                 if encoding == self.ENCODINGS[-1]:
                     raise
@@ -327,6 +329,7 @@ class Latin1BytesGenerator(email.generator.BytesGenerator):
         for encoding in self.ENCODINGS:
             try:
                 msg = s.encode(encoding, "surrogateescape")
+                break
             except UnicodeEncodeError:
                 if encoding == self.ENCODINGS[-1]:
                     raise
@@ -359,6 +362,7 @@ def sendmail(
             )
             mail_options = (*mail_options, "SMTPUTF8", "BODY=8BITMIME")
         else:
+            # g = email.generator.BytesGenerator(bytesmsg)
             g = Latin1BytesGenerator(bytesmsg)
         g.flatten(msg, linesep="\r\n")
         flatmsg = bytesmsg.getvalue()
