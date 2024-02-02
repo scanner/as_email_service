@@ -20,6 +20,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, db_task, lock_task, task
+from postmarker.exceptions import ClientError
 
 # Project imports
 #
@@ -192,7 +193,7 @@ def dispatch_incoming_email(email_account_pk, email_fname):
 
 ####################################################################
 #
-@db_task()
+@db_task(retries=3, retry_delay=15)
 def process_email_bounce(email_account_pk: int, bounce: dict):
     """
     We have received an incoming bounce notification from postmark. The web
@@ -201,6 +202,10 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     accounts bounce count. This task handles the rest of the associated work:
       - if the number of bounces has been exceeded deactivate the account
       - send a notification email of the bounce to the account.
+
+    NOTE: We have set huey task retries at 3, with a delay of 15s because we
+          have seen the request for the bounce failing with "no such bounce"
+          .. only to look for it by id later on and it to work fine.
     """
     # When an email account is deactivated we also send a message with just the
     # report text to the email address attached to the user account that is the
@@ -218,8 +223,13 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     #
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
-    # bounce_details = client.bounces.get(int(bounce["ID"]))
-    bounce_details = client.bounces.get(int(bounce["MessageID"]))
+    try:
+        bounce_details = client.bounces.get(int(bounce["ID"]))
+    except ClientError:
+        logger.warning(
+            "Unable to retrieve bounce info for bounce id: %d", bounce["ID"]
+        )
+        raise
 
     # We generate the human readable 'report_text' by constructing a list of
     # messages that will concatenated into a single string and passed as the
