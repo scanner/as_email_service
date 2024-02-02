@@ -16,6 +16,7 @@ from email.utils import parseaddr
 import pytest
 from aiosmtpd.smtp import SMTP, LoginPassword
 from asgiref.sync import sync_to_async
+from dirty_equals import Contains
 
 # Project imports
 #
@@ -294,18 +295,23 @@ async def test_relayhandler_handle_DATA(
     response = await handler.handle_DATA(aio_smtp, sess, envelope)
     assert response.startswith("250 ")
 
-    send_message = smtp.return_value.send_message
+    send_message = smtp.return_value.sendmail
     assert send_message.call_count == 1
-    assert send_message.call_args.kwargs == {
-        "from_addr": ea.email_address,
-        "to_addrs": [to],
-    }
+    assert send_message.call_args.args == Contains(
+        ea.email_address,
+        [to],
+    )
 
     msg = email.message_from_bytes(
         envelope.original_content,
         policy=email.policy.default,
     )
-    sent_message = send_message.call_args.args[0]
+
+    sent_message_bytes = send_message.call_args.args[2]
+    sent_message = email.message_from_bytes(
+        sent_message_bytes, policy=email.policy.default
+    )
+
     assert sent_message["From"] == ea.email_address
     assert sent_message["To"] == to
     assert sent_message["Subject"] == msg["Subject"]
@@ -371,7 +377,7 @@ async def test_relay_email_to_provider(
 
     # First, no email should have been sent to the provider.
     #
-    send_message = smtp.return_value.send_message
+    send_message = smtp.return_value.sendmail
     assert send_message.call_count == 0
 
     # Second, the email account will have a single message delivered to its
@@ -423,12 +429,16 @@ async def test_relay_email_to_provider(
     # And a message was sent..
     #
     assert send_message.call_count == 1
-    assert send_message.call_args.kwargs == {
-        "from_addr": ea.email_address,
-        "to_addrs": [to],
-    }
+    assert send_message.call_args.args == Contains(
+        ea.email_address,
+        [to],
+    )
 
-    sent_message = send_message.call_args.args[0]
+    sent_message_bytes = send_message.call_args.args[2]
+    sent_message = email.message_from_bytes(
+        sent_message_bytes, policy=email.policy.default
+    )
+
     assert sent_message["From"] == ea.email_address
     assert sent_message["To"] == to
     assert sent_message["Subject"] == msg["Subject"]

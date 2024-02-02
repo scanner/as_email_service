@@ -36,6 +36,10 @@ from postmarker.core import PostmarkClient
 from postmarker.exceptions import ClientError
 from requests import RequestException
 
+# project imports
+#
+from .utils import sendmail
+
 # Various models that belong to a specific user need the User object.
 #
 User = get_user_model()
@@ -316,9 +320,7 @@ class Server(models.Model):
         try:
             smtp_client.starttls()
             smtp_client.login(token, token)
-            smtp_client.send_message(
-                msg, from_addr=email_from, to_addrs=rcpt_tos
-            )
+            sendmail(smtp_client, msg, from_addr=email_from, to_addrs=rcpt_tos)
         except smtplib.SMTPException as exc:
             logger.error(
                 f"Mail from {email_from}, to: {rcpt_tos}, failed with "
@@ -785,7 +787,7 @@ class EmailAccount(models.Model):
         # even if self.id is set because the mail dir may have been
         # changed and we want this process to ensure that it exists.
         #
-        _ = self.MH()
+        self.MH()
 
     ####################################################################
     #
@@ -861,10 +863,8 @@ class EmailAccount(models.Model):
             ),
             create=create,
         )
-        try:
-            _ = mh.get_folder("inbox")
-        except mailbox.NoSuchMailboxError:
-            _ = mh.add_folder("inbox")
+        for folder in settings.DEFAULT_FOLDERS:
+            mh.add_folder(folder)
         return mh
 
     ####################################################################

@@ -47,6 +47,7 @@ env = environ.FileAwareEnv(
     CACHE_URL=(str, "dummycache://"),
     SENTRY_DSN=(str, None),
     SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
+    SENTRY_PROFILES_SAMPLE_RATE=(float, 0.0),
     COMPRESS_ENABLED=(bool, True),
     COMPRESS_OFFLINE=(bool, True),
     # Email service accounts are email addresses that are widely expected to
@@ -90,6 +91,7 @@ REDIS_SERVER = env("REDIS_SERVER")
 EMAIL_SERVICE_ACCOUNTS = env("EMAIL_SERVICE_ACCOUNTS")
 EMAIL_SERVICE_ACCOUNTS_OWNER = env("EMAIL_SERVICE_ACCOUNTS_OWNER")
 SENTRY_TRACES_SAMPLE_RATE = env("SENTRY_TRACES_SAMPLE_RATE")
+SENTRY_PROFILES_SAMPLE_RATE = env("SENTRY_PROFILES_SAMPLE_RATE")
 SENTRY_DSN = env("SENTRY_DSN")
 if SENTRY_DSN is not None:
     sentry_sdk.init(
@@ -100,7 +102,7 @@ if SENTRY_DSN is not None:
         # Set profiles_sample_rate to 1.0 to profile 100%
         # of sampled transactions.
         # We recommend adjusting this value in production.
-        profiles_sample_rate=1.0,
+        profiles_sample_rate=SENTRY_PROFILES_SAMPLE_RATE,
         environment="devel" if DEBUG else "production",
         release=f"as_email_service@{VERSION}",
     )
@@ -278,12 +280,22 @@ EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
 #
 EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
 
-# This is the parent directory where all the MH mail dirs are for all the
-# email accounts. There will be a subdir for each server, and a dir with the
-# username under that subdir. That username dir will be the mh mail dir for
-# each email account.
+# This is the parent directory where all the MH mail dirs are for all the email
+# accounts. There will be a subdir for each server, and a dir with the username
+# under that subdir. That username dir will be the mh mail dir for each email
+# account. This is also the location of the external password file used by
+# other services (asimapd)
 #
 MAIL_DIRS = Path(env("MAIL_DIRS"))
+EXT_PW_FILE = MAIL_DIRS / "asimapd_passwords.txt"
+DEFAULT_FOLDERS = (
+    "inbox",
+    "Junk",
+    "Archive",
+    "Sent Messages",
+    "Drafts",
+    "Deleted Messages",
+)
 
 # The external auth db is a sqlite db that we maintain one table in: "users"
 # The "user" table will at least have two columns: "password" and
@@ -325,7 +337,7 @@ LOGGING = {
         },
         "mail": {
             "handlers": ["console"],
-            "level": "DEBUG" if DEBUG else "WARNING",
+            "level": "DEBUG" if DEBUG else "ERROR",
             "propagate": True,
         },
         "huey": {

@@ -19,13 +19,19 @@ import pytz
 from django.conf import settings
 from django.core.mail import send_mail
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task, db_task
+from huey.contrib.djhuey import db_periodic_task, db_task, lock_task, task
+from postmarker.exceptions import ClientError
 
 # Project imports
 #
 from .deliver import deliver_message, report_failed_message
 from .models import EmailAccount, InactiveEmail, Server
-from .utils import BOUNCE_TYPES_BY_TYPE_CODE
+from .utils import (
+    BOUNCE_TYPES_BY_TYPE_CODE,
+    PWUser,
+    read_emailaccount_pwfile,
+    write_emailaccount_pwfile,
+)
 
 TZ = pytz.timezone(settings.TIME_ZONE)
 EST = pytz.timezone("EST")  # Postmark API is in EST! Really!
@@ -187,7 +193,7 @@ def dispatch_incoming_email(email_account_pk, email_fname):
 
 ####################################################################
 #
-@db_task()
+@db_task(retries=3, retry_delay=15)
 def process_email_bounce(email_account_pk: int, bounce: dict):
     """
     We have received an incoming bounce notification from postmark. The web
@@ -196,6 +202,10 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     accounts bounce count. This task handles the rest of the associated work:
       - if the number of bounces has been exceeded deactivate the account
       - send a notification email of the bounce to the account.
+
+    NOTE: We have set huey task retries at 3, with a delay of 15s because we
+          have seen the request for the bounce failing with "no such bounce"
+          .. only to look for it by id later on and it to work fine.
     """
     # When an email account is deactivated we also send a message with just the
     # report text to the email address attached to the user account that is the
@@ -213,7 +223,13 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     #
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
-    bounce_details = client.bounces.get(int(bounce["ID"]))
+    try:
+        bounce_details = client.bounces.get(int(bounce["ID"]))
+    except ClientError:
+        logger.warning(
+            "Unable to retrieve bounce info for bounce id: %d", bounce["ID"]
+        )
+        raise
 
     # We generate the human readable 'report_text' by constructing a list of
     # messages that will concatenated into a single string and passed as the
@@ -515,3 +531,66 @@ def process_email_spam(email_account_pk: int, spam: dict):
         status="5.1.1",
         diagnostic=f"smtp; {spam['Details']}",
     )
+
+
+####################################################################
+#
+@db_task(retries=10, retry_delay=2)
+@lock_task("pwfile")
+def check_update_pwfile_for_emailaccount(ea_pk: int):
+    """
+    We are doing a manual retry because normal retries still log exceptions
+    and there seem to be a problem with huey and the version of redis we are
+    using getting a ZADD error like we are using a priority queue or
+    something.. so just do our own retries on failures to look up the email
+    account.
+    """
+    # The password file is at the root of the maildir directory
+    #
+    write = False
+    ea = EmailAccount.objects.get(pk=ea_pk)
+
+    # NOTE: The path to the mail dir is relative to the directory that the
+    #       password file is in. In settings the password file is always in
+    #       MAIL_DIRS directory.
+    #
+    ea_mail_dir = Path(ea.mail_dir).relative_to(settings.EXT_PW_FILE.parent)
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    if ea.email_address not in accounts:
+        accounts[ea.email_address] = PWUser(
+            ea.email_address, ea_mail_dir, ea.password
+        )
+        write = True
+        logger.info("Adding '%s' to external password file", ea.email_address)
+    else:
+        account = accounts[ea.email_address]
+        if account.maildir != ea_mail_dir:
+            account.maildir = ea_mail_dir
+            logger.info(
+                "Updating '%s''s mail dir to: '%s' in external password file",
+                ea.email_address,
+                ea.mail_dir,
+            )
+            write = True
+        if account.pw_hash != ea.password:
+            account.pw_hash = ea.password
+            logger.info(
+                "Updating '%s''s password hash external password file",
+                ea.email_address,
+            )
+            write = True
+
+    if write:
+        write_emailaccount_pwfile(settings.EXT_PW_FILE, accounts)
+
+
+####################################################################
+#
+@task(retries=5, retry_delay=5)
+@lock_task("pwfile")
+def delete_emailaccount_from_pwfile(email_address: str):
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    if email_address in accounts:
+        logger.info("Deleting '%s' from external password file", email_address)
+        del accounts[email_address]
+        write_emailaccount_pwfile(settings.EXT_PW_FILE, accounts)

@@ -172,6 +172,7 @@ def hook_postmark_incoming(request, domain_name):
         return HttpResponseBadRequest(f"invalid json: {exc}")
 
     message_id = email["MessageID"] if "MessageID" in email else None
+    from_addr = email["From"] if "From" in email else "<unknown>"
 
     if "OriginalRecipient" not in email:
         logger.warning(
@@ -201,7 +202,9 @@ def hook_postmark_incoming(request, domain_name):
         email_account = EmailAccount.objects.get(email_address=addr)
     except EmailAccount.DoesNotExist:
         logger.info(
-            "Received email for email account that does not exist: %s", addr
+            "Received email for EmailAccount that does not exist: %s, from: %s",
+            addr,
+            from_addr,
         )
         # XXX here we would log metrics for getting email that no one is going
         #     to receive.
