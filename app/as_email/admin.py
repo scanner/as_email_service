@@ -85,7 +85,10 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "modified_at",
     )
     search_fields = (
-        "owner",
+        "owner__username",
+        "owner__email",
+        "owner__first_name",
+        "owner__last_name",
         "email_address",
     )
     inlines = [
