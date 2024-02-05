@@ -161,7 +161,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
-
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10_485_760  # 10mib
 REST_FRAMEWORK = {
     # All access to the as_email API requires authentication. Additional
     # permissions are defined on each of the models.
