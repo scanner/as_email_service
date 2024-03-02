@@ -224,7 +224,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
     try:
-        bounce_details = client.bounces.get(int(bounce["ID"]))
+        bounce_details = client.bounces.get(bounce["MessageID"])
     except ClientError:
         logger.warning(
             "Unable to retrieve bounce info for bounce id: %d", bounce["ID"]

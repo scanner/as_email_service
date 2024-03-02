@@ -2,7 +2,6 @@ autopep8
 black
 coverage
 django-stubs[compatible-mypy]
-flake8
 isort
 mypy
 pip-tools
@@ -14,4 +13,3 @@ types-requests
 types-setuptools
 types-aiofiles
 types-redis
-yapf
