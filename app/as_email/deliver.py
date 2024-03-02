@@ -293,9 +293,9 @@ def make_encapsulated_fwd_msg(
 
     msg = EmailMessage()
     if "Subject" in orig_msg:
-        msg[
-            "Subject"
-        ] = f"Fwd: {subj_spam}forwarded from {original_from}: {orig_msg['Subject']}"
+        msg["Subject"] = (
+            f"Fwd: {subj_spam}forwarded from {original_from}: {orig_msg['Subject']}"
+        )
     else:
         msg["Subject"] = f"Fwd: {subj_spam}forwarded from {orig_msg['From']}"
 
