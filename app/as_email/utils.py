@@ -28,7 +28,7 @@ logger = logging.getLogger("as_email.utils")
 # The transient ones do not increase the number of bounces an email account
 # has made (they are transient after all).
 #
-BOUNCE_TYPES_BY_TYPE: Dict[str, Dict[str, int | str | bool]] = {
+BOUNCE_TYPES_BY_TYPE: Dict[str, Dict] = {
     "HardBounce": {
         "code": 1,
         "description": "Hard bounce — The server was unable to deliver your message (ex: unknown user, mailbox not found).",

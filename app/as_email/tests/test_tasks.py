@@ -629,7 +629,7 @@ def test_delete_email_account_removes_pwfile_entry(
     Make sure that the entry for an email account in the external pw file
     is deleted when the email account object is deleted.
     """
-    ea = email_account_factory()
+    ea = email_account_factory(password="pbkdf2_sha256$600000$salt$hash")
     ea.save()
 
     # It should exist in the pwfile after we save it.
