@@ -344,7 +344,7 @@ def test_bounce_to_forwarded_to_deactivates_emailaccount(
     """
     forward_to = faker.email()
     ea = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
+        delivery_method=EmailAccount.DeliveryMethod.FORWARDING,
         forward_to=forward_to,
     )
     ea.save()
@@ -515,7 +515,7 @@ def test_process_email_spam_forward_to(
     """
     forward_to = faker.email()
     ea = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
+        delivery_method=EmailAccount.DeliveryMethod.FORWARDING,
         forward_to=forward_to,
     )
     ea.save()

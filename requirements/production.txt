@@ -76,7 +76,7 @@ django-crispy-forms==2.1
     # via
     #   -r production.in
     #   crispy-bulma
-django-cryptography==1.1
+django-cryptography @ git+https://github.com/saurav-codes/django-cryptography.git@ac210338dd2c84a410452e0b8e18ddee43f1920f
     # via -r production.in
 django-dry-rest-permissions==1.2.0
     # via -r production.in
@@ -125,7 +125,7 @@ idna==3.6
     #   anyio
     #   httpx
     #   requests
-influxdb-client==1.40.0
+influxdb-client==1.41.0
     # via -r production.in
 libsass==0.23.0
     # via django-simple-bulma
@@ -147,7 +147,7 @@ pygments==2.17.2
     # via rich
 pyopenssl==24.0.0
     # via -r production.in
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
     # via influxdb-client
 python-dotenv==1.0.1
     # via -r production.in
@@ -183,6 +183,7 @@ sqlparse==0.4.4
     # via django
 typing-extensions==4.10.0
     # via
+    #   django-cryptography
     #   pydantic
     #   pydantic-core
     #   reactivex

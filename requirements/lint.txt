@@ -96,7 +96,7 @@ types-redis==4.6.0.20240218
     # via -r lint.in
 types-requests==2.31.0.20240218
     # via -r lint.in
-types-setuptools==69.1.0.20240229
+types-setuptools==69.1.0.20240302
     # via -r lint.in
 typing-extensions==4.10.0
     # via

@@ -133,7 +133,7 @@ django-crispy-forms==2.1
     # via
     #   -r production.txt
     #   crispy-bulma
-django-cryptography==1.1
+django-cryptography @ git+https://github.com/saurav-codes/django-cryptography.git@ac210338dd2c84a410452e0b8e18ddee43f1920f
     # via -r production.txt
 django-dry-rest-permissions==1.2.0
     # via -r production.txt
@@ -211,7 +211,7 @@ idna==3.6
     #   trustme
 inflection==0.5.1
     # via pytest-factoryboy
-influxdb-client==1.40.0
+influxdb-client==1.41.0
     # via -r production.txt
 iniconfig==2.0.0
     # via pytest
@@ -311,7 +311,7 @@ pyproject-hooks==1.0.0
     #   -r lint.txt
     #   build
     #   pip-tools
-pytest==8.0.2
+pytest==8.1.0
     # via
     #   -r development.in
     #   pytest-asyncio
@@ -336,7 +336,7 @@ pytest-mock==3.12.0
     # via -r development.in
 pytest-sugar==1.0.0
     # via -r development.in
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
     # via
     #   -r production.txt
     #   faker
@@ -427,12 +427,13 @@ types-redis==4.6.0.20240218
     # via -r lint.txt
 types-requests==2.31.0.20240218
     # via -r lint.txt
-types-setuptools==69.1.0.20240229
+types-setuptools==69.1.0.20240302
     # via -r lint.txt
 typing-extensions==4.10.0
     # via
     #   -r lint.txt
     #   -r production.txt
+    #   django-cryptography
     #   django-stubs
     #   django-stubs-ext
     #   mypy
