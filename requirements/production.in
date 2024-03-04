@@ -7,7 +7,8 @@ csscompressor
 django
 django-anymail
 django-crispy-forms
-django-cryptography
+django-cryptography @ git+https://github.com/saurav-codes/django-cryptography.git@ac210338dd2c84a410452e0b8e18ddee43f1920f
+# django-cryptography  # django-cryptography needs to merge PR for django 5
 django-dry-rest-permissions
 django-environ
 django-extensions

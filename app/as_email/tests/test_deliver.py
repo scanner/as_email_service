@@ -135,7 +135,9 @@ def test_deliver_spam_locally(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_alias(email_account_factory, email_factory):
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(
+        delivery_method=EmailAccount.DeliveryMethod.ALIAS
+    )
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
@@ -157,7 +159,7 @@ def test_deliver_alias(email_account_factory, email_factory):
     ea_3 = email_account_factory()
     ea_3.save()
     ea_2.alias_for.add(ea_3)
-    ea_2.delivery_method = EmailAccount.ALIAS
+    ea_2.delivery_method = EmailAccount.DeliveryMethod.ALIAS
     ea_2.save()
 
     # message sent to ea_1 will be delivered to ea_3
@@ -173,7 +175,9 @@ def test_deliver_alias(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(
+        delivery_method=EmailAccount.DeliveryMethod.ALIAS
+    )
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
@@ -210,7 +214,9 @@ def test_email_account_alias_depth(
     email_accounts = []
     prev_ea = None
     for i in range(EmailAccount.MAX_ALIAS_DEPTH + 2):
-        ea = email_account_factory(delivery_method=EmailAccount.ALIAS)
+        ea = email_account_factory(
+            delivery_method=EmailAccount.DeliveryMethod.ALIAS
+        )
         ea.save()
         email_accounts.append(ea)
 
@@ -242,7 +248,7 @@ def test_forwarding(email_account_factory, email_factory, smtp):
     message.
     """
     ea_1 = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
+        delivery_method=EmailAccount.DeliveryMethod.FORWARDING,
         forward_to=factory.Faker("email"),
     )
     ea_1.save()
@@ -290,7 +296,7 @@ def test_deactivated_forward(email_account_factory, email_factory):
     delivered locally.
     """
     ea_1 = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
+        delivery_method=EmailAccount.DeliveryMethod.FORWARDING,
         forward_to=factory.Faker("email"),
         deactivated=True,
     )
@@ -367,7 +373,8 @@ def test_generate_forwarded_spam_message(
     """
     forward_to = faker.email()
     ea = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING, forward_to=forward_to
+        delivery_method=EmailAccount.DeliveryMethod.FORWARDING,
+        forward_to=forward_to,
     )
     ea.save()
     msg = email_factory(msg_from=ea.email_address)

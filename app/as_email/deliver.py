@@ -65,14 +65,14 @@ def deliver_message(
         )
 
     match email_account.delivery_method:
-        case EmailAccount.LOCAL_DELIVERY:
+        case EmailAccount.DeliveryMethod.LOCAL:
             deliver_message_locally(email_account, msg)
-        case EmailAccount.IMAP_DELIVERY:
+        case EmailAccount.DeliveryMethod.IMAP:
             pass  # XXX implementation forthcoming
-        case EmailAccount.ALIAS:
+        case EmailAccount.DeliveryMethod.ALIAS:
             for alias_for in email_account.alias_for.all():
                 deliver_message(alias_for, msg, depth + 1)
-        case EmailAccount.FORWARDING:
+        case EmailAccount.DeliveryMethod.FORWARDING:
             forward_message(email_account, msg)
 
 

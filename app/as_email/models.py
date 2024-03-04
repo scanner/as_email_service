@@ -31,6 +31,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
+from django_cryptography.fields import encrypt
 from dry_rest_permissions.generics import authenticated_users
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
@@ -433,18 +434,14 @@ class EmailAccount(models.Model):
     DEACTIVATED_DUE_TO_BAD_FORWARD_TO = (
         "Deactivated due to bounce when sending email to `forward_to` address"
     )
+
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
-    LOCAL_DELIVERY = "LD"
-    IMAP_DELIVERY = "IM"
-    ALIAS = "AL"
-    FORWARDING = "FW"
-    DELIVERY_METHOD_CHOICES = [
-        (LOCAL_DELIVERY, "Local Delivery"),
-        # (IMAP_DELIVERY), "IMAP",   # XXX coming soon
-        (ALIAS, "Alias"),
-        (FORWARDING, "Forwarding"),
-    ]
+    class DeliveryMethod(models.TextChoices):
+        LOCAL = "LD", _("Local")
+        IMAP = "IM", _("IMAP")
+        ALIAS = "AL", _("Alias")
+        FORWARDING = "FW", _("Forwarding")
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
@@ -469,8 +466,8 @@ class EmailAccount(models.Model):
     )
     delivery_method = models.CharField(
         max_length=2,
-        choices=DELIVERY_METHOD_CHOICES,
-        default=LOCAL_DELIVERY,
+        choices=DeliveryMethod,
+        default=DeliveryMethod.LOCAL,
         help_text=_(
             "Delivery method indicates how email for this account is "
             "delivered. This is either delivery to a local mailbox, delivery "
@@ -605,6 +602,38 @@ class EmailAccount(models.Model):
             "`forward_to` is only relevant when the delivery method is "
             "`Forwarding`. The field is otherwise ignored."
         ),
+    )
+
+    # For IMAP delivery we need to know the IMAP server and port, IMAP user,
+    # and IMAP auth.
+    #
+    imap_server = models.CharField(
+        help_text=_(
+            "The <domain name>:<port> of the IMAP server to deliver email to"
+        ),
+        max_length=1024,
+        null=True,
+        blank=True,
+    )
+    imap_account = models.CharField(
+        help_text=_(
+            "The account to authenticate for on the specified IMAP Server"
+        ),
+        max_length=256,
+        null=True,
+        blank=True,
+    )
+    imap_auth = encrypt(
+        models.CharField(
+            help_text=_(
+                "The authentication token to use for for authenticating the "
+                "IMAP account. Typically a password but might be some other "
+                "kind of token."
+            ),
+            max_length=1024,
+            null=True,
+            blank=True,
+        )
     )
 
     # If an account is deactivated it can still receive email. However it is no

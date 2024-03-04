@@ -526,7 +526,7 @@ class TestEmailAccountEndpoints:
         #
         ea_dest = email_account_factory(owner=user)
         ea_dest.save()
-        ea.delivery_method = EmailAccount.ALIAS
+        ea.delivery_method = EmailAccount.DeliveryMethod.ALIAS
         ea.alias_for.add(ea_dest)
         ea.save()
 
@@ -555,7 +555,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -571,7 +571,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [],
             "autofile_spam": True,
-            "delivery_method": EmailAccount.LOCAL_DELIVERY,
+            "delivery_method": EmailAccount.DeliveryMethod.LOCAL,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -593,7 +593,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_alias1.email_address, ea_alias2.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -637,7 +637,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -692,7 +692,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -742,7 +742,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -754,7 +754,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -772,7 +772,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -785,7 +785,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -814,7 +814,7 @@ class TestEmailAccountEndpoints:
             "owner": "john@example.com",
             "server": "blackhole.example.com",
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethod.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
