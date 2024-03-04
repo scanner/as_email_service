@@ -125,6 +125,8 @@ idna==3.6
     #   anyio
     #   httpx
     #   requests
+imapclient==3.0.1
+    # via -r production.in
 influxdb-client==1.41.0
     # via -r production.in
 libsass==0.23.0
