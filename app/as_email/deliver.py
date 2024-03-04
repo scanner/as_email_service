@@ -27,6 +27,7 @@ There are three main entry points:
 """
 # system imports
 #
+import email.policy
 import email.utils
 import logging
 import time
@@ -35,6 +36,10 @@ from email.message import EmailMessage
 from email.mime.text import MIMEText
 from mailbox import MH, ExternalClashError, NoSuchMailboxError
 from typing import List, Union, cast
+
+# 3rd party imports
+#
+from imapclient import IMAPClient
 
 # Project imports
 #
@@ -68,7 +73,7 @@ def deliver_message(
         case EmailAccount.DeliveryMethod.LOCAL:
             deliver_message_locally(email_account, msg)
         case EmailAccount.DeliveryMethod.IMAP:
-            pass  # XXX implementation forthcoming
+            deliver_message_via_imap(email_account, msg)
         case EmailAccount.DeliveryMethod.ALIAS:
             for alias_for in email_account.alias_for.all():
                 deliver_message(alias_for, msg, depth + 1)
@@ -375,6 +380,86 @@ def forward_message(email_account: EmailAccount, msg: EmailMessage):
     else:
         forward_msg = modify_message_for_forwarding(email_account, msg)
     email_account.send_email_via_smtp([email_account.forward_to], forward_msg)
+
+
+####################################################################
+#
+def deliver_message_via_imap(ea: EmailAccount, msg: EmailMessage):
+    """
+    Attempt to use the IMAP information on the email_acocunt to deliver
+    this message to a mailbox for that IMAP account.
+
+    Message filter rules will be applied. If the mailbox that the message
+    should be delivered to based on the filter rules does not exist, deliver
+    the message to the INBOX.
+
+    If we are unable to deliver the message construct a delivery status
+    notification and send it to the email account owner's email address.
+    """
+    try:
+        msg_text = msg.as_string(policy=email.policy.default)
+        deliver_to = apply_message_filter_rules(ea, msg)
+        delivered_to = []
+        with IMAPClient(ea.imap_server, ssl=True) as imap:
+            # XXX We will likely need to add support to see if we should use
+            #     'login' or 'oauth2_login' (yahoo?) or
+            #     oauthbearer_login (gmail)
+            #
+            imap.login(ea.imap_account, ea.imap_auth)
+
+            for folder in deliver_to:
+                if imap.folder_exists(folder):
+                    resp = imap.append(folder, msg_text)
+                    # love (hate) docuemnts taht do not document the response
+                    # but expect you to just figure it out from the RFC..
+                    #
+                    if resp == "OK":
+                        delivered_to.append(folder)
+
+            # NOTE: This is the same logic used in `deliver_message_locally`.
+            #       May be a good place to apply DRY.
+            #
+            # If the message was not delivered to any folders in the above
+            # loop, deliver it to the inbox, unless auto filing for spam is
+            # turned on and it is spam.
+            #
+            if not delivered_to:
+                spam_score = 0
+                if "X-Spam-Score" in msg:
+                    try:
+                        spam_score = int(float(msg["X-Spam-Score"].strip()))
+                    except ValueError:
+                        spam_score = 0
+
+                if ea.autofile_spam and spam_score >= ea.spam_score_threshold:
+                    junk = ea.spam_delivery_folder
+                    if imap.folder_exists(junk):
+                        resp = imap.append(junk, msg_text)
+                        # IF we managed to file it in the Junk folder, then
+                        # return. Otherwise we will fall through and file it in
+                        # the `inbox` folder.
+                        #
+                        if resp == "OK":
+                            return
+            resp = imap.append("inbox", msg_text)
+            if resp != "OK":
+                raise RuntimeError(f"Unable to deliver to 'inbox': {resp}")
+
+    except Exception as exc:
+        logger.exception(
+            "Unable to deliver message via IMAP for email account '%s'",
+            ea.email_address,
+        )
+
+        report_failed_message(
+            ea.owner.email,
+            failed_message=msg,
+            report_text=str(exc),
+            subject=f"Unable to delivery message via IMAP: {exc}",
+            action="failed",
+            status="5.1.1",  # XXX Need a proper status here
+            diagnostic=f"imap; {exc}",
+        )
 
 
 ####################################################################

@@ -25,6 +25,7 @@ drf-nested-routers
 gunicorn
 httpx
 huey
+imapclient
 influxdb-client
 postmarker
 pyOpenSSL
