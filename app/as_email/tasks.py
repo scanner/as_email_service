@@ -17,6 +17,7 @@ from typing import cast
 #
 import pytz
 from django.conf import settings
+from django.contrib.auth.hashers import identify_hasher
 from django.core.mail import send_mail
 from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, db_task, lock_task, task
@@ -224,10 +225,12 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     to_addr = bounce["Email"]
     from_addr = bounce["From"]
     try:
-        bounce_details = client.bounces.get(bounce["MessageID"])
+        bounce_details = client.bounces.get(bounce["ID"])
     except ClientError:
         logger.warning(
-            "Unable to retrieve bounce info for bounce id: %d", bounce["ID"]
+            "Unable to retrieve bounce info for bounce id: %d, message id: %s",
+            bounce["ID"],
+            bounce["MessageID"],
         )
         raise
 
@@ -550,18 +553,35 @@ def check_update_pwfile_for_emailaccount(ea_pk: int):
     write = False
     ea = EmailAccount.objects.get(pk=ea_pk)
 
+    # We decide whether to add or remove an account fomr the pwfile based on
+    # whether or not it is using a valid password hasher. Thus email accounts
+    # without a valid hash will not be put in to the pwfile.
+    #
+    try:
+        identify_hasher(ea.password)
+        valid_hasher = True
+    except ValueError:
+        valid_hasher = False
+
     # NOTE: The path to the mail dir is relative to the directory that the
     #       password file is in. In settings the password file is always in
     #       MAIL_DIRS directory.
     #
     ea_mail_dir = Path(ea.mail_dir).relative_to(settings.EXT_PW_FILE.parent)
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    if ea.email_address not in accounts:
+
+    if ea.email_address not in accounts and valid_hasher:
         accounts[ea.email_address] = PWUser(
             ea.email_address, ea_mail_dir, ea.password
         )
         write = True
         logger.info("Adding '%s' to external password file", ea.email_address)
+    elif ea.email_address in accounts and not valid_hasher:
+        del accounts[ea.email_address]
+        logger.info(
+            "Removing '%s' from external password file", ea.email_address
+        )
+        write = True
     else:
         account = accounts[ea.email_address]
         if account.maildir != ea_mail_dir:
