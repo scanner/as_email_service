@@ -168,6 +168,9 @@ def split_email_mailbox_hash(email_address: str) -> Tuple[str, str | None]:
 
 ####################################################################
 #
+# XXX Should we make this an async function since it writes a file? Or at least
+#     make an async equivalent.
+#
 def write_spooled_email(
     recipient: str,
     spool_dir: Union[str | Path],

@@ -167,11 +167,6 @@ def dispatch_incoming_email(email_account_pk, email_fname):
 
     NOTE: Postmark will POST a message for every recipient of that email being
           handled by postmark. The only race conditions
-
-    NOTE: This function is likely to be fairly long and complex so we should
-          break it up (and maybe even make several chained async requests, like
-          actual delivery should be subsequent tasks.. this way delivery to
-          multiple addresses can be done in parallel.)
     """
     email_account = EmailAccount.objects.get(pk=email_account_pk)
     email_file = Path(email_fname)
