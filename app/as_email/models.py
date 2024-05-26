@@ -523,11 +523,11 @@ class EmailAccount(models.Model):
         ),
     )
     spam_score_threshold = models.IntegerField(
-        default=15,
+        default=2,
         help_text=_(
             "This is the value at which an incoming message is considered "
             "spam or not. The higher the value the more tolerant the rules. "
-            "15 is a good default. Lower may cause more false positives. If "
+            "2 is a good default because Spam Assassin is so weak. If "
             "the delivery method is `Local delivery` or `IMAP` then incoming "
             "spam will be filed in the `spam delivery folder`. If the delivery "
             "method is `Forwrding` then instead of just re-sending the email "

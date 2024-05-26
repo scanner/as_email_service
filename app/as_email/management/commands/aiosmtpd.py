@@ -85,13 +85,21 @@ class AsyncioAuthSMTP(SMTP):
     server that calls the authenticator via await.
     """
 
-    async def _authenticate(self, mechanism: str, auth_data: Any):
+    async def _aauthenticate(self, mechanism: str, auth_data: Any):
         if self._authenticator is not None:
             # self.envelope is likely still empty, but we'll pass it anyways to
             # make the invocation similar to the one in _call_handler_hook
-            auth_result = await self._authenticator(
-                self, self.session, self.envelope, mechanism, auth_data
-            )
+            #
+            assert self.session
+            assert self.envelope
+            if asyncio.iscoroutinefunction(self._authenticator):
+                auth_result = await self._authenticator(
+                    self, self.session, self.envelope, mechanism, auth_data
+                )
+            else:
+                auth_result = self._authenticator(
+                    self, self.session, self.envelope, mechanism, auth_data
+                )
             return auth_result
         else:
             assert self._auth_callback is not None
@@ -169,7 +177,7 @@ class AsyncioAuthSMTP(SMTP):
         # NOTE: The following `await` is the only difference from the original
         #       source.
         #
-        auth_result = await self._authenticate(
+        auth_result = await self._aauthenticate(
             "PLAIN", LoginPassword(login, password)
         )
         return auth_result
@@ -200,7 +208,7 @@ class AsyncioAuthSMTP(SMTP):
         # NOTE: The following `await` is the only difference from the original
         #       source.
         #
-        auth_result = await self._authenticate(
+        auth_result = await self._aauthenticate(
             "LOGIN", LoginPassword(login, password)
         )
         return auth_result
