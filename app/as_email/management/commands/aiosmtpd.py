@@ -49,7 +49,6 @@ from as_email.models import EmailAccount, InactiveEmail
 from as_email.tasks import dispatch_incoming_email
 from as_email.utils import write_spooled_email
 
-DEST_PORT = 587
 LISTEN_PORT = 19246
 
 logger = logging.getLogger("as_email.aiosmtpd")
