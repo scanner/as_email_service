@@ -1,6 +1,7 @@
 aiofiles
 aiologger
 aiosmtpd
+aiospamc
 crispy-bulma
 cryptography>=41.0.4
 csscompressor
@@ -28,6 +29,7 @@ influxdb-client
 postmarker
 pyOpenSSL
 pydantic
+pydnsbl
 python-dotenv
 pytz
 pyyaml

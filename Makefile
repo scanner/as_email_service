@@ -11,7 +11,7 @@ build: requirements/production.txt requirements/development.txt	## `docker compo
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile prod build
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile dev build
 
-dirs: dbs ssl spool	## Make the local directories for dbs, ssl, and spool.
+dirs: dbs ssl spool spama    ## Make the local directories for dbs, ssl, and spool.
 
 dbs:
 	@mkdir $(ROOT_DIR)/dbs
@@ -21,6 +21,12 @@ ssl:
 
 spool:
 	@mkdir $(ROOT_DIR)/spool
+
+spama:
+	@mkdir $(ROOT_DIR)/spama
+	@mkdir $(ROOT_DIR)/spama/logs
+	@mkdir $(ROOT_DIR)/spama/config
+	@mkdir $(ROOT_DIR)/spama/data
 
 # XXX Should we have an option to NOT use certs/mkcert (either just make
 #     self-signed ourself) in case a developer does not want to go through the

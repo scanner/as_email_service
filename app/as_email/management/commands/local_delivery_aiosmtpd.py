@@ -25,13 +25,14 @@ import email.policy
 import logging
 import ssl
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.utils import parseaddr
 from typing import Dict, List, Optional, cast
 
 # 3rd party imports
 #
+import pydnsbl
 import sentry_sdk
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import SMTP, Envelope as SMTPEnvelope, Session as SMTPSession
@@ -88,12 +89,175 @@ class DenyInfo(BaseModel):
     """
 
     num_fails: int
-    peer_addr: str
-    email_addr: str
-    domain_name: str
-    dnsbl: bool  # XXX if this was was blocked because it was on a dnsbl? Do
-    #     we care? It should be a domain block.
-    expiry: Optional[datetime]
+    peer_addr: Optional[str] = None
+    email_addr: Optional[str] = None
+    domain_name: Optional[str] = None
+    expiry: Optional[datetime] = None
+    # dnsbl: bool  # XXX if this was was blocked because it was on a dnsbl? Do
+    # #     we care? It should be a domain block.
+
+
+########################################################################
+########################################################################
+#
+class SpamBlocker:
+    """
+    A class that is used to handle dns black list checking, spam checking,
+    and repeated attempts.
+
+    It will use dnsbl's and spam assassin to check if we deny a message based
+    on its source domain, source ip address, or email content.
+
+    It will track addresses and source ip's for frequent abuses and provide a
+    check to deny them sooner if they are a repeater offender.
+    """
+
+    # Max number of allowed failures within the failure expiry time limit.
+    #
+    MAX_NUM_BLOCKS = 5
+    FAILURE_EXPIRY = timedelta(hours=1)
+
+    ####################################################################
+    #
+    def __init__(self):
+        self.blacklist = {}
+        self.ip_checker = pydnsbl.DNSBLIpChecker()
+        self.domain_checker = pydnsbl.DNSBLDomainChecker()
+
+    ####################################################################
+    #
+    def _check(self, what: str) -> bool:
+        """
+        Check to see if `what` is on the blacklist. `what` may be the peer
+        address (as a string), an email address, or a domain name.
+
+        This is used as a pre-emptive check for actors believed to be bad. This
+        saves us a round trip through the dnsbl or spam assassin giving a
+        pre-emptive block for a certain amount of time.
+
+        Check to see if the given peer has too many auth failures.  If a
+        DenyInfo exists and it is _before_ the expiry, and the number of fails
+        is above the limit then return True
+
+        If the number of fails is below the limit then return False
+
+        If the current time is beyond the expiry then return False. Also delete
+        their entry from the black list.
+
+        If there is no deny info at all, then this peer is allowed. Return
+        False.
+
+        Keyword Arguments:
+        what: str --
+        """
+        if what not in self.blacklist:
+            return False
+
+        now = datetime.utcnow()
+        deny = self.blacklist[what]
+        if now > deny.expiry:
+            # Note that one DenyInfo may be stored until multiple keys so we
+            # nee to delete it for all of those possible key.
+            #
+            del self.blacklist[what]
+            for x in (deny.peer_addr, deny.email_addr, deny.domain_name):
+                if x in self.blacklist:
+                    del self.blacklist[x]
+            return False
+
+        if deny.num_fails < self.MAX_NUM_BLOCKS:
+            return False
+        return True
+
+    ####################################################################
+    #
+    def _incr_fails(self, what: str, check_type: str):
+        """
+        Increment fails for an entry in the black list.
+        Every deny extends the expiry time.
+        """
+        expiry = datetime.utcnow() + self.FAILURE_EXPIRY
+
+        if what not in self.blacklist:
+            match check_type:
+                case "peer":
+                    deny = DenyInfo(num_fails=1, peer_addr=what, expiry=expiry)
+                case "domain_name":
+                    deny = DenyInfo(
+                        num_fails=1, domain_name=what, expiry=expiry
+                    )
+                case "email_address":
+                    deny = DenyInfo(num_fails=1, email_addr=what, expiry=expiry)
+
+            self.blacklist[what] = deny
+        else:
+            deny = self.blacklist[what]
+            deny.num_fails += 1
+            deny.expiry = expiry
+
+    ####################################################################
+    #
+    async def check_deny_peer(self, peer: str, mail_from: str) -> bool:
+        """
+        - Check to see if the peer or mail_from are on the internal black list
+          and count >= MAX_NUM_BLOCKS.
+          - If they are, and it is not yet expired, then increment the failure
+            count, and update the expiry time. Return True (deny)
+          - If they are, and it has expired, remove it from the black list.
+        - Check to see if the peer is on a DNSBL.
+          - If it is then add them to the blacklist by peer and mail_from.
+            Add the peer and  mail_from to the blacklist (but count is 1)
+            Return True (deny)
+        - Return False (allow)
+        """
+        try:
+            addr = email.utils.parseaddr(mail_from)[1]
+            domain = addr.split("@")[1]
+        except Exception:
+            logger.exception("Unable to parse email address '%s'", mail_from)
+            return True
+
+        if self._check(peer=peer, addr=addr, domain=domain):
+            # See if dnsbl recommends we block based on the peer or domain name
+            #
+            result = await self.ip_checker(peer)
+            if result.blacklisted:
+                logger.warn(
+                    "check_deny: Deny because peer %s is black listed: %s",
+                    peer,
+                    result.detected_by,
+                )
+                self._incr_fails(peer=peer, check_type="peer")
+                return True
+            result = await self.domain_checker()
+
+        now = datetime.utcnow()
+        deny = self.blacklist[peer]
+        if now > deny.expiry:
+            del self.blacklist[peer]
+            return False
+
+        if deny.num_fails < self.MAX_NUM_BLOCKS:
+            return False
+        return True
+
+    def check_deny_mail_from(self, peer, mail_from: str) -> bool:
+        """
+        - Check and see if the domain of the mail_from are on the internal
+          black list and count >= MAX_NUM_BLOCKS
+          - If they are, and it is not yet expired, then increment the failure
+            count, and update the expiry time. Return True (deny)
+          - If they are, and it has expired, remove it from the black list.
+        - Check to see if the domain is on a DNSBL
+          - If it is then add them to the blacklist by peer and mail_from.
+            Add the peer and  mail_from to the blacklist (but count is 1)
+            Return True (deny)
+        - Return False (allow)
+        """
+        return False
+
+    def check_deny_content(self, peer, mail_from: str, content: bytes) -> bool:
+        return False
 
 
 ########################################################################
