@@ -127,3 +127,18 @@ services:
       - "8025:8025"
     profiles:
       - dev
+
+  spamassassin:
+    image: tiredofit/spamassassin:2.0.12
+    container_name: spamassassin
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - "./spama/logs:/logs"
+      - "./spama/config:/config"
+      - "./spama/data:/data"
+    expose:
+      - 783
+    profiles:
+      - dev
+      - prod
