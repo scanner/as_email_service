@@ -226,7 +226,7 @@ def write_spooled_email(
 #
 class PWUser:
     """
-    The object for entities stored in our exteranl services pw file. The
+    The object for entities stored in our external services pw file. The
     email address, their password hash, and the path to their maildir.
     """
 
