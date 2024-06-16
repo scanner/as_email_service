@@ -13,7 +13,7 @@ import io
 import json
 import logging
 import smtplib
-from datetime import datetime
+from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.utils import make_msgid
 from pathlib import Path
@@ -190,7 +190,7 @@ def write_spooled_email(
     msg_date = (
         msg_date
         if msg_date is not None
-        else datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        else datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
     now = datetime.now().isoformat()
     email_file_name = f"{now}-{msg_id}.json"

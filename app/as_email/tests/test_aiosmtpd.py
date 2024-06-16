@@ -8,7 +8,7 @@ import email.policy
 
 # system imports
 #
-from datetime import datetime
+from datetime import UTC, datetime
 from email.utils import parseaddr
 
 # 3rd party imports
@@ -131,7 +131,7 @@ async def test_authenticator_blacklist(
 
     # A time before any failed attempts (so we can check expiry against this)
     #
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     # Before any authentications happen connections are not denied.
     #
