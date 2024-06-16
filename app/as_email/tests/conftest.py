@@ -7,7 +7,7 @@ pytest fixtures for our tests
 #
 import email.policy
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -391,7 +391,7 @@ def postmark_request_bounce(
         print(f"Response update: {response_update}")
 
         response = {
-            "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "CanActivate": True,
             "Content": email_message.as_string(policy=email.policy.default),
             "Description": "The server was unable to deliver your message (ex: unknown user, mailbox not found).",
