@@ -17,7 +17,7 @@ import logging
 import ssl
 import time
 from base64 import b64decode
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import parseaddr
 from typing import Any, List, Optional
@@ -332,7 +332,7 @@ class Authenticator:
 
         Every auth failure extends the expiry time.
         """
-        expiry = datetime.utcnow() + self.AUTH_FAILURE_EXPIRY
+        expiry = datetime.now(UTC) + self.AUTH_FAILURE_EXPIRY
         peer_addr = peer[0]
         if peer_addr not in self.blacklist:
             deny = DenyInfo(num_fails=1, peer_addr=peer[0], expiry=expiry)
@@ -364,7 +364,7 @@ class Authenticator:
         if peer_addr not in self.blacklist:
             return False
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         deny = self.blacklist[peer_addr]
         if now > deny.expiry:
             del self.blacklist[peer_addr]

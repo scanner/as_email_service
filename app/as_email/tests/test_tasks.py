@@ -5,7 +5,7 @@ Test the huey tasks
 """
 # system imports
 #
-from datetime import datetime
+from datetime import UTC, datetime
 
 # 3rd party imports
 #
@@ -183,7 +183,7 @@ def test_too_many_bounces(
         "Details": "Test bounce details",
         "Email": "john@example.com",
         "From": ea.email_address,
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "DumpAvailable": False,
         "Inactive": False,
         "CanActivate": True,
@@ -253,7 +253,7 @@ def test_bounce_inactive(
         "Details": "Test bounce details",
         "Email": bounce_address,
         "From": ea.email_address,
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "DumpAvailable": False,
         "Inactive": True,
         "CanActivate": can_activate,
@@ -309,7 +309,7 @@ def test_transient_bounce_notifications(
         "Details": "Test bounce details",
         "Email": "john@example.com",
         "From": ea.email_address,
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "DumpAvailable": False,
         "Inactive": False,
         "CanActivate": True,
@@ -355,7 +355,7 @@ def test_bounce_to_forwarded_to_deactivates_emailaccount(
     bounce_id = faker.pyint(1_000_000_000, 9_999_999_999)
 
     bounce_data = {
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "CanActivate": True,
         "Description": "Invalid email address — The address is not a valid email address.",
         "Details": "Invalid email address",

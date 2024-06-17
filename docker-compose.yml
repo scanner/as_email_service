@@ -1,5 +1,3 @@
-version: "3"
-
 volumes:
   redis_data:
     name: "as_email_redis_data_01"

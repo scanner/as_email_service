@@ -6,6 +6,7 @@ Like a template tag that produces the <script> includes for 3rd party utilities
 like django-simple-bulma so we can wrap those in django_compressor's compress
 tag.
 """
+
 # 3rd party iimports
 #
 from django import template

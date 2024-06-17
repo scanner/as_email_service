@@ -12,6 +12,7 @@ import email.message
 import logging
 import mailbox
 import random
+import shlex
 import smtplib
 import string
 from datetime import datetime
@@ -1147,38 +1148,30 @@ class MessageFilterRule(OrderedModel):
         actions. Once a message is matched by a message filter rule,
         it will be considered delivered and stop processing.
         """
-        rule_parts = rule_text.split()
-        if len(rule_parts) == 5:
-            (header, pattern, action, result, folder) = rule_parts
-            if action != "folder":
-                raise ValueError(
-                    "5 part message filter rule is only valid for 'folder' "
-                    "rules"
-                )
-            rule = cls(
-                email_account=email_account,
-                header=header,
-                pattern=pattern,
-                action=action,
-                destination=folder,
+        rule_parts = shlex.split(rule_text)
+        if len(rule_parts) < 4 or len(rule_parts) > 5:
+            raise ValueError(
+                "rule text must be 4 or 5 columns separated white space."
             )
-        elif len(rule_parts) == 4:
-            (header, pattern, action, result) = rule_parts
+
+        (header, pattern, action, result) = rule_parts[:4]
+        folder = rule_parts[4] if len(rule_parts) >= 5 else ""
+
+        if not folder:
             if action != "destroy":
                 raise ValueError(
                     "4 part message filter rule is only valid for 'destroy' "
                     "rules"
                 )
-            rule = cls(
-                email_account=email_account,
-                header=header,
-                pattern=pattern,
-                action=action,
-            )
-        else:
-            raise ValueError(
-                "rule text must be 4 or 5 columns separated white space."
-            )
+
+        rule, _ = cls.objects.get_or_create(
+            email_account=email_account,
+            header=header,
+            pattern=pattern,
+        )
+        rule.action = action
+        rule.result = result
+        rule.destination = folder
         rule.save()
         return rule
 
@@ -1190,7 +1183,13 @@ class MessageFilterRule(OrderedModel):
 
         NOTE: Matches are only case insensitive substring matches! Not regular
               expressions!
+
+        NOTE: If the rule has the header "default" it will always match.
+
         """
+        if self.header == "default":
+            return True
+
         if self.header not in email_message:
             return False
 

@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
+
 # System imports
 #
 from pathlib import Path
@@ -342,7 +343,7 @@ LOGGING = {
         },
         "huey": {
             "handlers": ["console"],
-            "level": "DEBUG" if DEBUG else "WARNING",
+            "level": "INFO" if DEBUG else "WARNING",
             "propagate": True,
         },
     },
