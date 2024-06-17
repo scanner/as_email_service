@@ -114,7 +114,7 @@ class MessageFilterRuleFactory(DjangoModelFactory):
     email_account = factory.SubFactory(EmailAccountFactory)
     pattern = factory.Faker("email")
     header = factory.fuzzy.FuzzyChoice(
-        [x[0] for x in MessageFilterRule.HEADER_CHOICES]
+        [x[0] for x in MessageFilterRule.HEADER_CHOICES if x[0] != "default"]
     )
 
     class Meta:
