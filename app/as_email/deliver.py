@@ -161,7 +161,12 @@ def _add_msg_to_folder(folder: MH, msg: EmailMessage):
     wraps those steps.
     """
     with lock_folder(folder):
-        msg_id = int(folder.add(msg))
+        # NOTE: The default `as_string()` on an EmailMessage will fail if the
+        #       generated string can not be converted to bytes with the
+        #       encoding 'ascii' by python's mailbox code.
+        #
+        msg_bytes = msg.as_bytes(policy=email.policy.default)
+        msg_id = int(folder.add(msg_bytes))
         sequences = folder.get_sequences()
         if "unseen" in sequences:
             sequences["unseen"].append(msg_id)
