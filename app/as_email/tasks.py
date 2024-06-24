@@ -553,7 +553,7 @@ def check_update_pwfile_for_emailaccount(ea_pk: int):
     write = False
     ea = EmailAccount.objects.get(pk=ea_pk)
 
-    # We decide whether to add or remove an account fomr the pwfile based on
+    # We decide whether to add or remove an account from the pwfile based on
     # whether or not it is using a valid password hasher. Thus email accounts
     # without a valid hash will not be put in to the pwfile.
     #

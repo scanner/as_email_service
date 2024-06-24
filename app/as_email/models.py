@@ -1185,7 +1185,7 @@ class MessageFilterRule(OrderedModel):
 
         (header, pattern, action, result) = rule_parts[:4]
         folder = rule_parts[4] if len(rule_parts) >= 5 else ""
-
+        header = header if header != "-" else cls.ANY
         if not folder:
             if action != "destroy":
                 raise ValueError(
@@ -1216,16 +1216,22 @@ class MessageFilterRule(OrderedModel):
         NOTE: If the rule has the header "default" it will always match.
 
         """
-        if self.header == "default":
+        if self.header == self.DEFAULT:
             return True
 
-        if self.header not in email_message:
+        if self.header != self.ANY and self.header not in email_message:
             return False
 
-        header_contents: list = email_message.get_all(self.header, [])
-        for hc in header_contents:
-            if self.pattern.lower() in hc.lower():
-                return True
+        if self.header == self.any:
+            headers = list(email_message.keys())
+        else:
+            headers = [self.header]
+
+        for header in headers:
+            header_contents: list = email_message.get_all(self.header, [])
+            for hc in header_contents:
+                if self.pattern.lower() in hc.lower():
+                    return True
 
         return False
 
