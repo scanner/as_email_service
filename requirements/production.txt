@@ -51,6 +51,7 @@ django==5.0.6
     #   crispy-bulma
     #   django-anymail
     #   django-appconf
+    #   django-compressor
     #   django-crispy-forms
     #   django-cryptography
     #   django-extensions
@@ -62,13 +63,13 @@ django==5.0.6
     #   djangorestframework
     #   drf-nested-routers
     #   sentry-sdk
-django-anymail==10.3
+django-anymail==11.0
     # via -r production.in
 django-appconf==1.0.6
     # via
     #   django-compressor
     #   django-cryptography
-django-compressor==4.4
+django-compressor==4.5
     # via -r production.in
 django-crispy-forms==2.2
     # via
@@ -94,7 +95,7 @@ django-settings-export==1.2.1
     # via -r production.in
 django-simple-bulma==2.6.0
     # via -r production.in
-djangorestframework==3.15.1
+djangorestframework==3.15.2
     # via
     #   -r production.in
     #   drf-nested-routers
@@ -153,7 +154,7 @@ pytz==2024.1
     # via -r production.in
 pyyaml==6.0.1
     # via -r production.in
-rcssmin==1.1.1
+rcssmin==1.1.2
     # via django-compressor
 reactivex==4.0.4
     # via influxdb-client
@@ -165,9 +166,9 @@ requests==2.32.3
     #   postmarker
 rich==13.7.1
     # via -r production.in
-rjsmin==1.2.1
+rjsmin==1.2.2
     # via django-compressor
-sentry-sdk==2.5.1
+sentry-sdk==2.6.0
     # via -r production.in
 six==1.16.0
     # via python-dateutil
@@ -186,7 +187,7 @@ ua-parser==0.18.0
     # via
     #   django-passkeys
     #   user-agents
-urllib3==2.2.1
+urllib3==2.2.2
     # via
     #   django-anymail
     #   influxdb-client
@@ -198,7 +199,7 @@ uvicorn==0.30.1
     # via -r production.in
 wait-for-it==2.2.2
     # via -r production.in
-whitenoise==6.6.0
+whitenoise==6.7.0
     # via -r production.in
 
 # The following packages are considered to be unsafe in a requirements file:
