@@ -182,13 +182,25 @@ def dispatch_incoming_email(email_account_pk, email_fname):
     try:
         deliver_message(email_account, msg)
     except Exception:
-        logger.exception(
-            "Failed to deliver message %s to '%s'",
-            msg["Message-ID"],
-            email_account.email_address,
-        )
+        try:
+            failed_msg_fname = (
+                settings.FAILED_INCOMING_MSG_DIR
+                / f"{email_msg['recipient']}-{email_file.name}"
+            )
+            settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
+            logger.exception(
+                "Failed to deliver message %s to '%s'. Moved to '%s'",
+                msg["Message-ID"],
+                email_account.email_address,
+                failed_msg_fname,
+            )
+            email_file.rename(failed_msg_fname)
+        except Exception as e:
+            logger.exception(
+                f"Exception moving failed message from '{email_file}' to '{failed_msg_fname}': {e}"
+            )
     finally:
-        email_file.unlink()
+        email_file.unlink(missing_ok=True)
 
 
 ####################################################################

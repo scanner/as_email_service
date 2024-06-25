@@ -204,6 +204,10 @@ def email_spool_dir(settings, tmp_path):
     spool_dir = tmp_path / "spool"
     spool_dir.mkdir(parents=True, exist_ok=True)
     settings.EMAIL_SPOOL_DIR = spool_dir
+    settings.FAILED_INCOMING_MSG_DIR = (
+        settings.EMAIL_SPOOL_DIR / "failed_incoming"
+    )
+    settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
     yield spool_dir
 
 
