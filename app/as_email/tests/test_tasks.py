@@ -5,6 +5,7 @@ Test the huey tasks
 """
 # system imports
 #
+import json
 from datetime import UTC, datetime
 
 # 3rd party imports
@@ -79,6 +80,43 @@ def test_dispatch_incoming_email(
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
+
+
+####################################################################
+#
+def test_dispatch_incoming_mail_failure(
+    mocker,
+    email_spool_dir,
+    email_account_factory,
+    email_factory,
+    settings,
+):
+    """
+    If we are unable to deliver a message due to some local issue, they
+    messages are dumped in to a failure directory. Force `deliver_message` to
+    fail and check to see if the message is moved to the failure directory.
+    """
+    mocker.patch(
+        "as_email.tasks.deliver_message", side_effect=Exception("ERROR")
+    )
+    ea = email_account_factory()
+    ea.save()
+    msg = email_factory(to=ea.email_address)
+    now = datetime.now()
+    message_id = msg["Message-ID"]
+    fname = write_spooled_email(
+        msg["To"], settings.EMAIL_SPOOL_DIR, msg, str(now), message_id
+    )
+
+    res = dispatch_incoming_email(ea.pk, str(fname))
+    res()
+
+    # We should find a single file in the failed message directory that has the
+    # same message id from above.
+    #
+    failed_msg_file = list(settings.FAILED_INCOMING_MSG_DIR.iterdir())[0]
+    email_msg = json.loads(failed_msg_file.read_text())
+    assert email_msg["message-id"] == message_id
 
 
 ####################################################################

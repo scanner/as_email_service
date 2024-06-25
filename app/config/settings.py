@@ -78,7 +78,6 @@ env = environ.FileAwareEnv(
 # services at `https`
 #
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
 # NOTE: We should try moving secrets to compose secrets.
 #
 DEBUG = env("DEBUG")
@@ -280,6 +279,7 @@ EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
 # directory there will be an "incoming" and "outgoing" directory.
 #
 EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
+FAILED_INCOMING_MSG_DIR = EMAIL_SPOOL_DIR / "failed_incoming"
 
 # This is the parent directory where all the MH mail dirs are for all the email
 # accounts. There will be a subdir for each server, and a dir with the username
