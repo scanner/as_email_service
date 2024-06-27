@@ -185,7 +185,7 @@ def dispatch_incoming_email(email_account_pk, email_fname):
         try:
             failed_msg_fname = (
                 settings.FAILED_INCOMING_MSG_DIR
-                / f"{email_msg['recipient']}-{email_file.name}"
+                / f"{email_msg['recipient'].lower()}-{email_file.name}"
             )
             settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
             logger.exception(
