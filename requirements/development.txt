@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=development.txt --strip-extras development.in
 #
-aiofiles==23.2.1
+aiofiles==24.1.0
     # via -r production.txt
 aiologger==0.7.0
     # via -r production.txt
@@ -169,7 +169,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==25.9.1
+faker==26.0.0
     # via factory-boy
 fido2==1.1.1
     # via
@@ -209,13 +209,13 @@ idna==3.7
     #   httpx
     #   requests
     #   trustme
-importlib-metadata==7.2.1
+importlib-metadata==8.0.0
     # via
     #   -r lint.txt
     #   yapf
 inflection==0.5.1
     # via pytest-factoryboy
-influxdb-client==1.43.0
+influxdb-client==1.44.0
     # via -r production.txt
 iniconfig==2.0.0
     # via pytest
@@ -245,7 +245,7 @@ mdurl==0.1.2
     # via
     #   -r production.txt
     #   markdown-it-py
-mypy==1.10.0
+mypy==1.10.1
     # via -r lint.txt
 mypy-extensions==1.0.0
     # via
@@ -375,7 +375,7 @@ reactivex==4.0.4
     # via
     #   -r production.txt
     #   influxdb-client
-redis==5.0.6
+redis==5.0.7
     # via -r production.txt
 requests==2.32.3
     # via
@@ -393,7 +393,7 @@ rjsmin==1.2.2
     #   django-compressor
 ruff==0.4.10
     # via -r lint.txt
-sentry-sdk==2.6.0
+sentry-sdk==2.7.0
     # via -r production.txt
 six==1.16.0
     # via
@@ -424,7 +424,7 @@ traitlets==5.14.3
     #   matplotlib-inline
 trustme==1.1.0
     # via -r development.in
-types-aiofiles==23.2.0.20240623
+types-aiofiles==24.1.0.20240626
     # via -r lint.txt
 types-cachetools==5.3.0.7
     # via -r lint.txt
@@ -446,7 +446,7 @@ types-redis==4.6.0.20240425
     # via -r lint.txt
 types-requests==2.32.0.20240622
     # via -r lint.txt
-types-setuptools==70.0.0.20240524
+types-setuptools==70.1.0.20240627
     # via
     #   -r lint.txt
     #   types-cffi
