@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=production.txt --strip-extras production.in
 #
-aiofiles==23.2.1
+aiofiles==24.1.0
     # via -r production.in
 aiologger==0.7.0
     # via -r production.in
@@ -124,7 +124,7 @@ idna==3.7
     #   anyio
     #   httpx
     #   requests
-influxdb-client==1.43.0
+influxdb-client==1.44.0
     # via -r production.in
 libsass==0.23.0
     # via django-simple-bulma
@@ -158,7 +158,7 @@ rcssmin==1.1.2
     # via django-compressor
 reactivex==4.0.4
     # via influxdb-client
-redis==5.0.6
+redis==5.0.7
     # via -r production.in
 requests==2.32.3
     # via
@@ -168,7 +168,7 @@ rich==13.7.1
     # via -r production.in
 rjsmin==1.2.2
     # via django-compressor
-sentry-sdk==2.6.0
+sentry-sdk==2.7.0
     # via -r production.in
 six==1.16.0
     # via python-dateutil
