@@ -976,6 +976,9 @@ class MessageFilterRule(OrderedModel):
     SOURCE = "source"
     SUBJECT = "subject"
     TO = "to"
+    DSPAM = "x-dspam-result"
+    SPAM_STATUS = "x-spam-status"
+    SPAM_SCORE = "x-spam-score"
 
     HEADER_CHOICES = [
         (ADDR, ADDR),
@@ -983,9 +986,12 @@ class MessageFilterRule(OrderedModel):
         (BCC, BCC),
         (CC, CC),
         (DEFAULT, DEFAULT),
+        (DSPAM, DSPAM),
         (FROM, FROM),
         (REPLY_TO, REPLY_TO),
         (SOURCE, SOURCE),
+        (SPAM_SCORE, SPAM_SCORE),
+        (SPAM_STATUS, SPAM_STATUS),
         (SUBJECT, SUBJECT),
         (TO, TO),
     ]

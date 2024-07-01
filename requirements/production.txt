@@ -168,7 +168,7 @@ rich==13.7.1
     # via -r production.in
 rjsmin==1.2.2
     # via django-compressor
-sentry-sdk==2.7.0
+sentry-sdk==2.7.1
     # via -r production.in
 six==1.16.0
     # via python-dateutil

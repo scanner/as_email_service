@@ -1037,12 +1037,24 @@ class TestMessageFilterRuleEndpoints:
                 mfr = message_filter_rule_factory(email_account=other_ea)
                 mfr.save()
 
+        # Also make sure that a specific email account will only see message
+        # filter rules that belong to it.
+        #
+        users_other_eas = []
+        for _ in range(2):
+            other_ea = email_account_factory(owner=user)
+            users_other_eas.append(other_ea)
+            for _ in range(3):
+                mfr = message_filter_rule_factory(email_account=other_ea)
+                mfr.save()
+
         return {
             "password": password,
             "user": user,
             "email_account": ea,
             "client": client,
             "other_eas": other_eas,
+            "users_other_eas": users_other_eas,
         }
 
     ####################################################################
@@ -1287,7 +1299,7 @@ class TestMessageFilterRuleEndpoints:
         ).exists()
         assert resp.status_code == 403
 
-        # What if you try to delete with bad key data?
+        # What if you try to delete with bad key data? Should not even see it.
         #
         url = reverse(
             "as_email:message-filter-rule-detail",
@@ -1297,7 +1309,7 @@ class TestMessageFilterRuleEndpoints:
         assert MessageFilterRule.objects.filter(
             pk=other_persons_mfr.pk
         ).exists()
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     ####################################################################
     #
