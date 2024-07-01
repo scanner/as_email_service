@@ -219,7 +219,7 @@ influxdb-client==1.44.0
     # via -r production.txt
 iniconfig==2.0.0
     # via pytest
-ipython==8.25.0
+ipython==8.26.0
     # via -r development.in
 isort==5.13.2
     # via -r lint.txt
@@ -391,9 +391,9 @@ rjsmin==1.2.2
     # via
     #   -r production.txt
     #   django-compressor
-ruff==0.4.10
+ruff==0.5.0
     # via -r lint.txt
-sentry-sdk==2.7.0
+sentry-sdk==2.7.1
     # via -r production.txt
 six==1.16.0
     # via

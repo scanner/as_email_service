@@ -603,6 +603,13 @@ class MessageFilterRuleViewSet(ModelViewSet):
 
     ####################################################################
     #
+    def get_queryset(self):
+        return MessageFilterRule.objects.filter(
+            email_account=self.kwargs["email_account_pk"]
+        )
+
+    ####################################################################
+    #
     def get_serializer_class(self):
         if self.action == "move":
             return MoveOrderSerializer

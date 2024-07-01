@@ -89,7 +89,7 @@ pyproject-hooks==1.1.0
     #   pip-tools
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.4.10
+ruff==0.5.0
     # via -r lint.in
 sqlparse==0.5.0
     # via django
