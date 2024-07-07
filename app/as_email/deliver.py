@@ -148,7 +148,7 @@ def lock_folder(
         try:
             folder.lock()
             break
-        except ExternalClashError:
+        except (ExternalClashError, FileExistsError):
             if fail:
                 raise
             timeout -= 0.1
