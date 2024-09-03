@@ -3,7 +3,7 @@ aiologger
 aiosmtpd
 aiospamc
 crispy-bulma
-cryptography>=41.0.4
+cryptography==42.0.8
 csscompressor
 django
 django-anymail

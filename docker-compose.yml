@@ -65,6 +65,7 @@ services:
       target: dev
     depends_on:
       - mailhog
+      - redis
     ports:
       - "11578:8000"
     command: wait-for-it --service redis:6379 -- /app/manage.py runserver_plus --cert-file /mnt/ssl/ssl_crt.pem --key-file /mnt/ssl/ssl_key.pem 0.0.0.0:8000

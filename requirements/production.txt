@@ -4,11 +4,15 @@
 #
 #    pip-compile --output-file=production.txt --strip-extras production.in
 #
+aiodns==2.0.0
+    # via pydnsbl
 aiofiles==24.1.0
     # via -r production.in
 aiologger==0.7.0
     # via -r production.in
 aiosmtpd==1.4.6
+    # via -r production.in
+aiospamc==1.0.0
     # via -r production.in
 annotated-types==0.7.0
     # via pydantic
@@ -16,23 +20,27 @@ anyio==4.4.0
     # via httpx
 asgiref==3.8.1
     # via django
-atpublic==4.1.0
+atpublic==5.0
     # via aiosmtpd
-attrs==23.2.0
+attrs==24.2.0
     # via aiosmtpd
-certifi==2024.6.2
+certifi==2024.8.30
     # via
+    #   aiospamc
     #   httpcore
     #   httpx
     #   influxdb-client
     #   requests
     #   sentry-sdk
-cffi==1.16.0
-    # via cryptography
+cffi==1.17.0
+    # via
+    #   cryptography
+    #   pycares
 charset-normalizer==3.3.2
     # via requests
 click==8.1.7
     # via
+    #   typer
     #   uvicorn
     #   wait-for-it
 crispy-bulma==0.11.0
@@ -45,7 +53,7 @@ cryptography==42.0.8
     #   pyopenssl
 csscompressor==0.9.5
     # via -r production.in
-django==5.0.6
+django==5.1
     # via
     #   -r production.in
     #   crispy-bulma
@@ -63,15 +71,15 @@ django==5.0.6
     #   djangorestframework
     #   drf-nested-routers
     #   sentry-sdk
-django-anymail==11.0
+django-anymail==11.1
     # via -r production.in
 django-appconf==1.0.6
     # via
     #   django-compressor
     #   django-cryptography
-django-compressor==4.5
+django-compressor==4.5.1
     # via -r production.in
-django-crispy-forms==2.2
+django-crispy-forms==2.3
     # via
     #   -r production.in
     #   crispy-bulma
@@ -83,7 +91,7 @@ django-environ==0.11.2
     # via -r production.in
 django-extensions==3.2.3
     # via -r production.in
-django-filter==24.2
+django-filter==24.3
     # via -r production.in
 django-guardian==2.4.0
     # via -r production.in
@@ -105,29 +113,32 @@ drf-nested-routers==0.94.1
     # via -r production.in
 fido2==1.1.1
     # via django-passkeys
-gunicorn==22.0.0
+gunicorn==23.0.0
     # via -r production.in
 h11==0.14.0
     # via
     #   httpcore
     #   uvicorn
-hiredis==2.3.2
+hiredis==3.0.0
     # via redis
 httpcore==1.0.5
     # via httpx
-httpx==0.27.0
+httpx==0.27.2
     # via -r production.in
 huey==2.5.1
     # via -r production.in
-idna==3.7
+idna==2.10
     # via
     #   anyio
     #   httpx
+    #   pydnsbl
     #   requests
-influxdb-client==1.44.0
+influxdb-client==1.45.0
     # via -r production.in
 libsass==0.23.0
     # via django-simple-bulma
+loguru==0.7.2
+    # via aiospamc
 markdown-it-py==3.0.0
     # via rich
 mdurl==0.1.2
@@ -136,15 +147,19 @@ packaging==24.1
     # via gunicorn
 postmarker==1.0
     # via -r production.in
+pycares==4.4.0
+    # via aiodns
 pycparser==2.22
     # via cffi
-pydantic==2.7.4
+pydantic==2.8.2
     # via -r production.in
-pydantic-core==2.18.4
+pydantic-core==2.20.1
     # via pydantic
+pydnsbl==1.1.6
+    # via -r production.in
 pygments==2.18.0
     # via rich
-pyopenssl==24.1.0
+pyopenssl==24.2.1
     # via -r production.in
 python-dateutil==2.9.0.post0
     # via influxdb-client
@@ -152,23 +167,23 @@ python-dotenv==1.0.1
     # via -r production.in
 pytz==2024.1
     # via -r production.in
-pyyaml==6.0.1
+pyyaml==6.0.2
     # via -r production.in
 rcssmin==1.1.2
     # via django-compressor
 reactivex==4.0.4
     # via influxdb-client
-redis==5.0.7
+redis==5.0.8
     # via -r production.in
 requests==2.32.3
     # via
     #   django-anymail
     #   postmarker
-rich==13.7.1
+rich==13.8.0
     # via -r production.in
 rjsmin==1.2.2
     # via django-compressor
-sentry-sdk==2.7.1
+sentry-sdk==2.13.0
     # via -r production.in
 six==1.16.0
     # via python-dateutil
@@ -176,13 +191,17 @@ sniffio==1.3.1
     # via
     #   anyio
     #   httpx
-sqlparse==0.5.0
+sqlparse==0.5.1
     # via django
+typer==0.9.4
+    # via aiospamc
 typing-extensions==4.12.2
     # via
+    #   aiospamc
     #   pydantic
     #   pydantic-core
     #   reactivex
+    #   typer
 ua-parser==0.18.0
     # via
     #   django-passkeys
@@ -195,7 +214,7 @@ urllib3==2.2.2
     #   sentry-sdk
 user-agents==2.2.0
     # via django-passkeys
-uvicorn==0.30.1
+uvicorn==0.30.6
     # via -r production.in
 wait-for-it==2.2.2
     # via -r production.in

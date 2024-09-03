@@ -4,11 +4,17 @@
 #
 #    pip-compile --output-file=development.txt --strip-extras development.in
 #
+aiodns==2.0.0
+    # via
+    #   -r production.txt
+    #   pydnsbl
 aiofiles==24.1.0
     # via -r production.txt
 aiologger==0.7.0
     # via -r production.txt
 aiosmtpd==1.4.6
+    # via -r production.txt
+aiospamc==1.0.0
     # via -r production.txt
 annotated-types==0.7.0
     # via
@@ -26,35 +32,37 @@ asgiref==3.8.1
     #   django-stubs
 asttokens==2.4.1
     # via stack-data
-atpublic==4.1.0
+atpublic==5.0
     # via
     #   -r production.txt
     #   aiosmtpd
-attrs==23.2.0
+attrs==24.2.0
     # via
     #   -r production.txt
     #   aiosmtpd
 autopep8==2.3.1
     # via -r lint.txt
-black==24.4.2
+black==24.8.0
     # via -r lint.txt
 build==1.2.1
     # via
     #   -r lint.txt
     #   pip-tools
-certifi==2024.6.2
+certifi==2024.8.30
     # via
     #   -r production.txt
+    #   aiospamc
     #   httpcore
     #   httpx
     #   influxdb-client
     #   requests
     #   sentry-sdk
-cffi==1.16.0
+cffi==1.17.0
     # via
     #   -r lint.txt
     #   -r production.txt
     #   cryptography
+    #   pycares
 cfgv==3.4.0
     # via
     #   -r lint.txt
@@ -69,9 +77,10 @@ click==8.1.7
     #   -r production.txt
     #   black
     #   pip-tools
+    #   typer
     #   uvicorn
     #   wait-for-it
-coverage==7.5.4
+coverage==7.6.1
     # via
     #   -r development.in
     #   -r lint.txt
@@ -92,13 +101,13 @@ csscompressor==0.9.5
     # via -r production.txt
 decorator==5.1.1
     # via ipython
-dirty-equals==0.7.1.post0
+dirty-equals==0.8.0
     # via -r development.in
 distlib==0.3.8
     # via
     #   -r lint.txt
     #   virtualenv
-django==5.0.6
+django==5.1
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -118,16 +127,16 @@ django==5.0.6
     #   django-stubs-ext
     #   djangorestframework
     #   drf-nested-routers
-django-anymail==11.0
+django-anymail==11.1
     # via -r production.txt
 django-appconf==1.0.6
     # via
     #   -r production.txt
     #   django-compressor
     #   django-cryptography
-django-compressor==4.5
+django-compressor==4.5.1
     # via -r production.txt
-django-crispy-forms==2.2
+django-crispy-forms==2.3
     # via
     #   -r production.txt
     #   crispy-bulma
@@ -139,7 +148,7 @@ django-environ==0.11.2
     # via -r production.txt
 django-extensions==3.2.3
     # via -r production.txt
-django-filter==24.2
+django-filter==24.3
     # via -r production.txt
 django-guardian==2.4.0
     # via -r production.txt
@@ -151,9 +160,9 @@ django-settings-export==1.2.1
     # via -r production.txt
 django-simple-bulma==2.6.0
     # via -r production.txt
-django-stubs==5.0.2
+django-stubs==5.0.4
     # via -r lint.txt
-django-stubs-ext==5.0.2
+django-stubs-ext==5.0.4
     # via
     #   -r lint.txt
     #   django-stubs
@@ -165,11 +174,11 @@ dnspython==2.6.1
     # via -r production.txt
 drf-nested-routers==0.94.1
     # via -r production.txt
-executing==2.0.1
+executing==2.1.0
     # via stack-data
-factory-boy==3.3.0
+factory-boy==3.3.1
     # via pytest-factoryboy
-faker==26.0.0
+faker==28.1.0
     # via factory-boy
 fido2==1.1.1
     # via
@@ -179,47 +188,48 @@ filelock==3.15.4
     # via
     #   -r lint.txt
     #   virtualenv
-flake8==7.1.0
+flake8==7.1.1
     # via -r lint.txt
-gunicorn==22.0.0
+gunicorn==23.0.0
     # via -r production.txt
 h11==0.14.0
     # via
     #   -r production.txt
     #   httpcore
     #   uvicorn
-hiredis==2.3.2
+hiredis==3.0.0
     # via -r production.txt
 httpcore==1.0.5
     # via
     #   -r production.txt
     #   httpx
-httpx==0.27.0
+httpx==0.27.2
     # via -r production.txt
 huey==2.5.1
     # via -r production.txt
-identify==2.5.36
+identify==2.6.0
     # via
     #   -r lint.txt
     #   pre-commit
-idna==3.7
+idna==2.10
     # via
     #   -r production.txt
     #   anyio
     #   httpx
+    #   pydnsbl
     #   requests
     #   trustme
-importlib-metadata==8.0.0
+importlib-metadata==8.4.0
     # via
     #   -r lint.txt
     #   yapf
 inflection==0.5.1
     # via pytest-factoryboy
-influxdb-client==1.44.0
+influxdb-client==1.45.0
     # via -r production.txt
 iniconfig==2.0.0
     # via pytest
-ipython==8.26.0
+ipython==8.27.0
     # via -r development.in
 isort==5.13.2
     # via -r lint.txt
@@ -229,6 +239,10 @@ libsass==0.23.0
     # via
     #   -r production.txt
     #   django-simple-bulma
+loguru==0.7.2
+    # via
+    #   -r production.txt
+    #   aiospamc
 markdown-it-py==3.0.0
     # via
     #   -r production.txt
@@ -245,7 +259,7 @@ mdurl==0.1.2
     # via
     #   -r production.txt
     #   markdown-it-py
-mypy==1.10.1
+mypy==1.11.2
     # via -r lint.txt
 mypy-extensions==1.0.0
     # via
@@ -286,15 +300,19 @@ pluggy==1.5.0
     # via pytest
 postmarker==1.0
     # via -r production.txt
-pre-commit==3.7.1
+pre-commit==3.8.0
     # via -r lint.txt
 prompt-toolkit==3.0.47
     # via ipython
 ptyprocess==0.7.0
     # via pexpect
-pure-eval==0.2.2
+pure-eval==0.2.3
     # via stack-data
-pycodestyle==2.12.0
+pycares==4.4.0
+    # via
+    #   -r production.txt
+    #   aiodns
+pycodestyle==2.12.1
     # via
     #   -r lint.txt
     #   autopep8
@@ -304,12 +322,14 @@ pycparser==2.22
     #   -r lint.txt
     #   -r production.txt
     #   cffi
-pydantic==2.7.4
+pydantic==2.8.2
     # via -r production.txt
-pydantic-core==2.18.4
+pydantic-core==2.20.1
     # via
     #   -r production.txt
     #   pydantic
+pydnsbl==1.1.6
+    # via -r production.txt
 pyflakes==3.2.0
     # via
     #   -r lint.txt
@@ -319,14 +339,14 @@ pygments==2.18.0
     #   -r production.txt
     #   ipython
     #   rich
-pyopenssl==24.1.0
+pyopenssl==24.2.1
     # via -r production.txt
 pyproject-hooks==1.1.0
     # via
     #   -r lint.txt
     #   build
     #   pip-tools
-pytest==8.2.2
+pytest==8.3.2
     # via
     #   -r development.in
     #   pytest-asyncio
@@ -335,7 +355,7 @@ pytest==8.2.2
     #   pytest-factoryboy
     #   pytest-mock
     #   pytest-sugar
-pytest-asyncio==0.23.7
+pytest-asyncio==0.24.0
     # via -r development.in
 pytest-cov==5.0.0
     # via pytest-cover
@@ -343,7 +363,7 @@ pytest-cover==3.0.0
     # via pytest-coverage
 pytest-coverage==0.0
     # via -r development.in
-pytest-django==4.8.0
+pytest-django==4.9.0
     # via -r development.in
 pytest-factoryboy==2.7.0
     # via -r development.in
@@ -359,10 +379,8 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
     # via -r production.txt
 pytz==2024.1
-    # via
-    #   -r production.txt
-    #   dirty-equals
-pyyaml==6.0.1
+    # via -r production.txt
+pyyaml==6.0.2
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -375,7 +393,7 @@ reactivex==4.0.4
     # via
     #   -r production.txt
     #   influxdb-client
-redis==5.0.7
+redis==5.0.8
     # via -r production.txt
 requests==2.32.3
     # via
@@ -385,15 +403,15 @@ requests==2.32.3
     #   requests-mock
 requests-mock==1.12.1
     # via -r development.in
-rich==13.7.1
+rich==13.8.0
     # via -r production.txt
 rjsmin==1.2.2
     # via
     #   -r production.txt
     #   django-compressor
-ruff==0.5.0
+ruff==0.6.3
     # via -r lint.txt
-sentry-sdk==2.7.1
+sentry-sdk==2.13.0
     # via -r production.txt
 six==1.16.0
     # via
@@ -405,7 +423,7 @@ sniffio==1.3.1
     #   -r production.txt
     #   anyio
     #   httpx
-sqlparse==0.5.0
+sqlparse==0.5.1
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -424,29 +442,33 @@ traitlets==5.14.3
     #   matplotlib-inline
 trustme==1.1.0
     # via -r development.in
+typer==0.9.4
+    # via
+    #   -r production.txt
+    #   aiospamc
 types-aiofiles==24.1.0.20240626
     # via -r lint.txt
-types-cachetools==5.3.0.7
+types-cachetools==5.5.0.20240820
     # via -r lint.txt
 types-cffi==1.16.0.20240331
     # via
     #   -r lint.txt
     #   types-pyopenssl
-types-pyopenssl==24.1.0.20240425
+types-pyopenssl==24.1.0.20240722
     # via
     #   -r lint.txt
     #   types-redis
 types-pytz==2024.1.0.20240417
     # via -r lint.txt
-types-pyyaml==6.0.12.20240311
+types-pyyaml==6.0.12.20240808
     # via
     #   -r lint.txt
     #   django-stubs
-types-redis==4.6.0.20240425
+types-redis==4.6.0.20240819
     # via -r lint.txt
-types-requests==2.32.0.20240622
+types-requests==2.32.0.20240712
     # via -r lint.txt
-types-setuptools==70.1.0.20240627
+types-setuptools==74.0.0.20240831
     # via
     #   -r lint.txt
     #   types-cffi
@@ -454,6 +476,7 @@ typing-extensions==4.12.2
     # via
     #   -r lint.txt
     #   -r production.txt
+    #   aiospamc
     #   django-stubs
     #   django-stubs-ext
     #   mypy
@@ -461,6 +484,7 @@ typing-extensions==4.12.2
     #   pydantic-core
     #   pytest-factoryboy
     #   reactivex
+    #   typer
 ua-parser==0.18.0
     # via
     #   -r production.txt
@@ -479,7 +503,7 @@ user-agents==2.2.0
     # via
     #   -r production.txt
     #   django-passkeys
-uvicorn==0.30.1
+uvicorn==0.30.6
     # via -r production.txt
 virtualenv==20.26.3
     # via
@@ -489,9 +513,9 @@ wait-for-it==2.2.2
     # via -r production.txt
 wcwidth==0.2.13
     # via prompt-toolkit
-werkzeug==3.0.3
+werkzeug==3.0.4
     # via -r development.in
-wheel==0.43.0
+wheel==0.44.0
     # via
     #   -r lint.txt
     #   pip-tools
@@ -499,7 +523,7 @@ whitenoise==6.7.0
     # via -r production.txt
 yapf==0.40.2
     # via -r lint.txt
-zipp==3.19.2
+zipp==3.20.1
     # via
     #   -r lint.txt
     #   importlib-metadata
