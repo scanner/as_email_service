@@ -222,6 +222,9 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
     # deliver it to the inbox, unless auto filing for spam is turned on and it
     # is spam.
     #
+    # XXX Do we want to consider auto-filing spam no mater which mailbox it is
+    #     delivered to?
+    #
     if not delivered_to:
         spam_score = 0
         if "X-Spam-Score" in msg:

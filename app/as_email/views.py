@@ -480,6 +480,11 @@ class OwnerFilterBackend(DRYPermissionFiltersBase):
         """
         Limits all list requests to only be seen by the owners.
         """
+        # Owner or admin or super user can see.
+        #
+        # if request.user.is_admin or request.user.is_superuser:
+        #     return queryset
+
         return queryset.filter(owner=request.user)
 
 

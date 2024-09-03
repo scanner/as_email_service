@@ -25,13 +25,13 @@ import email.policy
 import logging
 import ssl
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
-from email.utils import parseaddr
-from typing import Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 # 3rd party imports
 #
+import aiospamc
 import pydnsbl
 import sentry_sdk
 from aiosmtpd.controller import Controller
@@ -46,7 +46,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 #
 from as_email.models import EmailAccount
 from as_email.tasks import dispatch_incoming_email
-from as_email.utils import write_spooled_email
+from as_email.utils import split_email_mailbox_hash, write_spooled_email
 
 LISTEN_PORT = 19247
 
@@ -56,9 +56,33 @@ logger = logging.getLogger("as_email.local_delivery_aiosmtpd")
 ########################################################################
 ########################################################################
 #
-class DenyInfo(BaseModel):
+class SpamAassassinService:
+
+    ####################################################################
+    #
+    def __init__(self, host: str = "localhost", port: int = 783):
+        self.svc_host = host
+        self.svc_port = port
+
+    ####################################################################
+    #
+    async def check(self, msg: bytes) -> Dict[str, Any]:
+        """
+        Passes the given message and return the headers from spam assassin
+        """
+        r = await aiospamc.check(msg, host=self.svc_host, port=self.svc_port)
+        return r.headers
+
+
+########################################################################
+########################################################################
+#
+class BlackWhiteListInfo(BaseModel):
     """
     Info for recording failure attempts by a peer, domain or email address.
+
+    Also used to record white listed entries (so we are not hitting the DNS BL
+    service as often.)
 
     NOTE: A peer is the first part of the tuple that we back from `peername` for
 
@@ -88,45 +112,66 @@ class DenyInfo(BaseModel):
           This is probably where the email block reports should collect data.
     """
 
-    num_fails: int
-    peer_addr: Optional[str] = None
-    email_addr: Optional[str] = None
+    num_fails: int = 0
+    addr: Optional[str] = None
     domain_name: Optional[str] = None
     expiry: Optional[datetime] = None
-    # dnsbl: bool  # XXX if this was was blocked because it was on a dnsbl? Do
-    # #     we care? It should be a domain block.
+    reason: Optional[str] = None
 
 
 ########################################################################
 ########################################################################
 #
-class SpamBlocker:
+class BlackListService:
     """
-    A class that is used to handle dns black list checking, spam checking,
-    and repeated attempts.
+    A class that is used to handle dns and ip black list checking as well
+    as repeated attempts from the same ip address.
 
-    It will use dnsbl's and spam assassin to check if we deny a message based
-    on its source domain, source ip address, or email content.
+    Once a domain name or ip address is listed as being black listed or white
+    listed we cache that information for a short bit to reduce the number of
+    times we
 
     It will track addresses and source ip's for frequent abuses and provide a
     check to deny them sooner if they are a repeater offender.
     """
 
-    # Max number of allowed failures within the failure expiry time limit.
+    # How long before an entry expires and we check directly with pydnsbl
     #
-    MAX_NUM_BLOCKS = 5
-    FAILURE_EXPIRY = timedelta(hours=1)
+    ENTRY_EXPIRY = timedelta(hours=1)
+
+    # How often is a given IP address marked as doing bad things. Once it
+    # exceeds this number that IP address will be added to the black list
+    #
+    MAX_BAD_ATTEMPTS = 5
 
     ####################################################################
     #
-    def __init__(self):
-        self.blacklist = {}
-        self.ip_checker = pydnsbl.DNSBLIpChecker()
-        self.domain_checker = pydnsbl.DNSBLDomainChecker()
+    def __init__(self, white_listed_ips: Optional[List[str]] = None) -> None:
+        if white_listed_ips is None:
+            white_listed_ips = []
+        self.blacklist: Dict[str, BlackWhiteListInfo] = {}
+        self.whitelist: Dict[str, BlackWhiteListInfo] = {}
+
+        # The badness list holds entries by ip address that are getting dinged
+        # for some other reason (usually attempting to relay email) and that
+        # when they get dinged enough, they get removed from the badness list
+        # and added to the blacklist. This is where the `num_fails` attribute
+        # on the BlackWhiteListInfo is used.
+        #
+        self.badnesslist: Dict[str, BlackWhiteListInfo] = {}
+
+        self.ip_checker: Optional[pydnsbl.DNSBLIpChecker] = None
+        self.domain_checker: Optional[pydnsbl.DNSBLDomainChecker] = None
+
+        # If we have a set of pre-emptively white listed IP addresses add them
+        # to our white list without any expiry time.
+        #
+        for ip_addr in white_listed_ips:
+            self.whitelist[ip_addr] = BlackWhiteListInfo(addr=ip_addr)
 
     ####################################################################
     #
-    def _check(self, what: str) -> bool:
+    async def check_deny(self, ip_addr: str, hostname: str) -> bool:
         """
         Check to see if `what` is on the blacklist. `what` may be the peer
         address (as a string), an email address, or a domain name.
@@ -150,114 +195,122 @@ class SpamBlocker:
         Keyword Arguments:
         what: str --
         """
-        if what not in self.blacklist:
-            return False
+        # We create and set the ip checker and domain checker in this function
+        # because they require an active asyncio loop to instantiate.
+        #
+        if self.ip_checker is None:
+            self.ip_checker = pydnsbl.DNSBLIpChecker()
+        if self.domain_checker is None:
+            self.domain_checker = pydnsbl.DNSBLDomainChecker()
 
-        now = datetime.utcnow()
-        deny = self.blacklist[what]
-        if now > deny.expiry:
-            # Note that one DenyInfo may be stored until multiple keys so we
-            # nee to delete it for all of those possible key.
-            #
-            del self.blacklist[what]
-            for x in (deny.peer_addr, deny.email_addr, deny.domain_name):
-                if x in self.blacklist:
-                    del self.blacklist[x]
-            return False
+        now = datetime.now(UTC)
 
-        if deny.num_fails < self.MAX_NUM_BLOCKS:
-            return False
-        return True
+        # Check tos ee if the entry is in either whitelist.  If it is in the
+        # blacklist, but the expiry for that entry has passed, delete it from
+        # the black list and move on. Entries with an expiry of None never
+        # expire
+        #
+        if ip_addr in self.whitelist:
+            entry = self.whitelist[ip_addr]
+            if entry.expiry is None or entry.expiry > now:
+                return False
+            del self.whitelist[ip_addr]
 
-    ####################################################################
-    #
-    def _incr_fails(self, what: str, check_type: str):
-        """
-        Increment fails for an entry in the black list.
-        Every deny extends the expiry time.
-        """
-        expiry = datetime.utcnow() + self.FAILURE_EXPIRY
+        if hostname in self.whitelist:
+            entry = self.whitelist[hostname]
+            if entry.expiry is None or entry.expiry > now:
+                return False
+            del self.whitelist[hostname]
 
-        if what not in self.blacklist:
-            match check_type:
-                case "peer":
-                    deny = DenyInfo(num_fails=1, peer_addr=what, expiry=expiry)
-                case "domain_name":
-                    deny = DenyInfo(
-                        num_fails=1, domain_name=what, expiry=expiry
-                    )
-                case "email_address":
-                    deny = DenyInfo(num_fails=1, email_addr=what, expiry=expiry)
-
-            self.blacklist[what] = deny
-        else:
-            deny = self.blacklist[what]
-            deny.num_fails += 1
-            deny.expiry = expiry
-
-    ####################################################################
-    #
-    async def check_deny_peer(self, peer: str, mail_from: str) -> bool:
-        """
-        - Check to see if the peer or mail_from are on the internal black list
-          and count >= MAX_NUM_BLOCKS.
-          - If they are, and it is not yet expired, then increment the failure
-            count, and update the expiry time. Return True (deny)
-          - If they are, and it has expired, remove it from the black list.
-        - Check to see if the peer is on a DNSBL.
-          - If it is then add them to the blacklist by peer and mail_from.
-            Add the peer and  mail_from to the blacklist (but count is 1)
-            Return True (deny)
-        - Return False (allow)
-        """
-        try:
-            addr = email.utils.parseaddr(mail_from)[1]
-            domain = addr.split("@")[1]
-        except Exception:
-            logger.exception("Unable to parse email address '%s'", mail_from)
-            return True
-
-        if self._check(peer=peer, addr=addr, domain=domain):
-            # See if dnsbl recommends we block based on the peer or domain name
-            #
-            result = await self.ip_checker(peer)
-            if result.blacklisted:
-                logger.warn(
-                    "check_deny: Deny because peer %s is black listed: %s",
-                    peer,
-                    result.detected_by,
-                )
-                self._incr_fails(peer=peer, check_type="peer")
+        # Check to see if the entry is in either blacklist. If it is in the
+        # blacklist, but the expiry for that entry has passed, delete it from
+        # the black list and move on. Entries with an expiry of None never
+        # expire
+        #
+        if ip_addr in self.blacklist:
+            entry = self.blacklist[ip_addr]
+            if entry.expiry is None or entry.expiry > now:
+                logger.info("Denied: '%s'", entry.reason)
                 return True
-            result = await self.domain_checker()
+            del self.blacklist[ip_addr]
 
-        now = datetime.utcnow()
-        deny = self.blacklist[peer]
-        if now > deny.expiry:
-            del self.blacklist[peer]
-            return False
+        if hostname in self.blacklist:
+            entry = self.blacklist[hostname]
+            if entry.expiry is None or entry.expiry > now:
+                logger.info("Denied: '%s'", entry.reason)
+                return True
+            del self.blacklist[hostname]
 
-        if deny.num_fails < self.MAX_NUM_BLOCKS:
-            return False
-        return True
+        # Actually query the blacklist system, and cache the result.
+        #
+        entry = BlackWhiteListInfo(addr=ip_addr, expiry=now + self.ENTRY_EXPIRY)
+        result = await self.ip_checker.check_async(ip_addr)
+        if result.blacklisted:
+            entry.reason = str(result)
+            self.blacklist[ip_addr] = entry
+            return True
+        else:
+            self.whitelist[ip_addr] = entry
 
-    def check_deny_mail_from(self, peer, mail_from: str) -> bool:
-        """
-        - Check and see if the domain of the mail_from are on the internal
-          black list and count >= MAX_NUM_BLOCKS
-          - If they are, and it is not yet expired, then increment the failure
-            count, and update the expiry time. Return True (deny)
-          - If they are, and it has expired, remove it from the black list.
-        - Check to see if the domain is on a DNSBL
-          - If it is then add them to the blacklist by peer and mail_from.
-            Add the peer and  mail_from to the blacklist (but count is 1)
-            Return True (deny)
-        - Return False (allow)
-        """
+        entry = BlackWhiteListInfo(
+            domain_name=hostname, expiry=now + self.ENTRY_EXPIRY
+        )
+        result = await self.domain_checker.check_async(hostname)
+        if result.blacklisted:
+            entry.reason = str(result)
+            self.blacklist[hostname] = entry
+            logger.info("Denied: '%s'", entry.reason)
+            return True
+        else:
+            self.whitelist[hostname] = entry
+
         return False
 
-    def check_deny_content(self, peer, mail_from: str, content: bytes) -> bool:
-        return False
+    ####################################################################
+    #
+    def incr_badness(self, ip_addr: str) -> None:
+        """
+        Keyword Arguments:
+        ip_addr: str --
+        """
+        # If the entry is already on the blacklist then return.
+        #
+        if ip_addr in self.blacklist:
+            return
+
+        now = datetime.now(UTC)
+
+        # If they are already in the badness list then increment the number of
+        # failures.
+        #
+        if ip_addr in self.badnesslist:
+            entry = self.badnesslist[ip_addr]
+            if entry.expiry is None or entry.expiry > now:
+                entry.num_fails += 1
+
+                # If the number of failures exceeds the acceptable amount,
+                # remove the entry from the badness list, and create a new
+                # entry in the black list.
+                #
+                if entry.num_fails > self.MAX_BAD_ATTEMPTS:
+                    del self.badnesslist[ip_addr]
+                    entry.expiry = now + self.ENTRY_EXPIRY
+                    entry.reason = "Too much badness"
+                    self.blacklist[ip_addr] = entry
+                    logger.info(
+                        "IP Address %s black listed: %s", ip_addr, entry.reason
+                    )
+                    return
+            # Otherwise this entry has expired...
+            #
+            del self.badnesslist[ip_addr]
+
+        # And create a new entry with a new expiry.
+        #
+        entry = BlackWhiteListInfo(
+            addr=ip_addr, expiry=now + self.ENTRY_EXPIRY, num_fails=1
+        )
+        self.badnesslist[ip_addr] = entry
 
 
 ########################################################################
@@ -299,13 +352,38 @@ class SentryController(Controller):
 class LocalEmailHandler:
     ####################################################################
     #
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        blacklist_service: BlackListService,
+        spama_service: SpamAassassinService,
+    ) -> None:
         """
         Sets up the deny info dictionary, spam assassin, local spam system,
         and dns bl info.
         """
         logger.debug("RelayHandler, init")
-        self.blacklist: Dict[str, DenyInfo] = {}
+        self.blacklist = blacklist_service
+        self.spama = spama_service
+
+    ####################################################################
+    #
+    async def check_deny(
+        self, session_peer, hostname, rcpt_tos, mail_from
+    ) -> bool:
+        """
+        Check to see if we are denying this email for any number of reasons.
+        Returns `True` for deny, and False otherwise.
+        """
+        return await self.blacklist.check_deny(session_peer[0], hostname)
+
+    ####################################################################
+    #
+    def incr_badness(self, session):
+        """
+        Keyword Arguments:
+        session --
+        """
+        self.blacklist.incr_badness(session.peer[0])
 
     ####################################################################
     #
@@ -319,10 +397,11 @@ class LocalEmailHandler:
     ) -> List[str]:
         """
         the primary purpose of having a handler for EHLO is to
-        quickly deny hosts that have suffered repeated authentication failures
+        quickly deny hosts that are black listed.
         """
         logger.debug(
-            "handle_EHLO: smtp: %r, session: %r, envelope: %r, hostname: %s, responses: %r",
+            "handle_EHLO: smtp: %r, session: %r, envelope: %r, hostname: %s, "
+            "responses: %r",
             smtp,
             session,
             envelope,
@@ -340,93 +419,54 @@ class LocalEmailHandler:
             # will hopefully slow down connection attempts a little bit.
             #
             await asyncio.sleep(30)
-            responses.append("550 Too many failed attempts")
+            responses.append("550 Denied")
 
-        # Deny if:
-        # - dns bl
-        # - sender on internal black list (probably a new model that lets
-        #   us just block some senders outright instead of waiting for dnsbl or
-        #   spam rules.)
-        # - rcpt_tos contains email for domain not supported by this server
-        # - rcpt_tos contains email address not supported by this server
-        #   XXX will we get rcpt_tos with both valid emails and emails for other
-        #       systems?
         return responses
 
     ####################################################################
     #
-    async def handle_MAIL(
-        self,
-        server: SMTP,
-        session: SMTPSession,
-        envelope: SMTPEnvelope,
-        address: str,
-        mail_options: List[str],
-    ) -> str:
+    async def handle_RCPT(
+        self, server, session, envelope, address, rcpt_options
+    ):
         """
-        You can only send email _to_ an email address supported by this server.
-        If the email is tagged as spam, add appropriate headers.
+        Determine if we will accept email to address `address`. We only
+        accept delivery for email destined
+
+        Keyword Arguments:
+        server       --
+        session      --
+        envelope     --
+        address      --
+        rcpt_options --
         """
-        # handle_MAIL is responsible for setting the mail_from and mail_options
-        # on the envelope! I am not sure if we should or should not do this
-        # when we are going to possibly deny this request.
-        #
-        envelope.mail_from = address
-        envelope.mail_options.extend(mail_options)
+        addr, _ = split_email_mailbox_hash(address)
+        if await EmailAccount.objects.aexists(email_address=addr):
+            envelope.rcpt_tos.append(address)
+            return "250 OK"
 
-        # XXX run envelope through spam assassin
-        # XXX run envelope through our spam system
+        # if they are trying to send to an email address we do not support then
+        # increment their badness level. When it gets to high they will start
+        # getting denies during EHLO.
         #
-        # XXX add rule to discard mail marked as spam.
-        #
-        # XXX We should record email that we have received for all valid email
-        #     addresses for 30 days, and add a way to re-deliver email.  this
-        #     way we can set "do not send spam" and check email that has not
-        #     been delivered but marked as spam in the web UI so it can be
-        #     resent.
+        self.incr_badness(session)
 
-        # The email address part of `from` MUST be the same as the email
-        # address on this EmailAccount.
+        # And we sleep a bit whenever someone tries to send to a non-existent
+        # address to give them a little bit of a tar pit.
         #
-        account = session.auth_data
-        valid_from = account.email_address.lower()
-        logger.debug("handle_MAIL: account: %s, address: %s", account, address)
-        _, frm = parseaddr(address)
-        if frm is None or frm.lower() != valid_from:
-            logger.info(
-                "handle_MAIL: For account '%s', FROM '%s' (%s) is not valid "
-                "(from address %s)",
-                account,
-                frm,
-                address,
-                session.peer[0],
-            )
-            return f"551 FROM must be your email account's email address: '{valid_from}', not '{frm}'"
-
-        return "250 OK valid FROM"
+        await asyncio.sleep(5)
+        return "550 not relaying"
 
     ####################################################################
     #
     async def handle_DATA(
         self, server: SMTP, session: SMTPSession, envelope: SMTPEnvelope
     ) -> str:
-        # The as_email.models.EmailAccount object instance is passed in via
-        # session.auth_data.
-        #
-        account = session.auth_data
-        logger.debug(
-            "handle_DATA: account: %s, envelope from: %s",
-            account,
-            envelope.mail_from,
-        )
 
-        # Do a double check to make sure that any 'From' headers are the email
-        # account sending the message.
-        #
-        # NOTE: "president of the universe <foo@example.com>" is still
-        #       considered a valid "from" address for "foo@example.com"
+        # Get the spam assassin headers for this message
         #
         assert envelope.original_content
+        spama_headers = await self.spama.check(envelope.original_content)
+
         msg = cast(
             EmailMessage,
             email.message_from_bytes(
@@ -435,10 +475,16 @@ class LocalEmailHandler:
             ),
         )
 
+        # Add the spam assassin headers to our message
+        #
+        for hdr, value in spama_headers.items():
+            msg[hdr] = value
+
         # If everything checks out, deliver the message to our local user.
         #
         try:
-            for addr in msg.rcpt_tos:
+            for addr in envelope.rcpt_tos:
+                addr, mhash = split_email_mailbox_hash(addr)
                 addr = addr.lower()
                 email_account = await EmailAccount.objects.aget(
                     email_address=addr
@@ -467,13 +513,26 @@ class LocalEmailHandler:
 class Command(BaseCommand):
     help = (
         "Runs a SMTP demon to receive email for email accounts on this system. "
-        "This serves as a receiver for email from the internet at large. "
+        "This serves as a receiver for email from the internet at large. It "
+        "will only accept email for accounts in the system."
         "It supports various spam tagging and filtering."
     )
 
     ####################################################################
     #
     def add_arguments(self, parser):
+        parser.add_argument(
+            "--server_hostname",
+            type=str,
+            action="store",
+            default=settings.SITE_NAME,
+        )
+        parser.add_argument(
+            "--listen_host",
+            type=str,
+            action="store",
+            default="0.0.0.0",
+        )
         parser.add_argument(
             "--listen_port",
             type=int,
@@ -486,6 +545,8 @@ class Command(BaseCommand):
     ####################################################################
     #
     def handle(self, *args, **options):
+        server_hostname = options["server_hostname"]
+        listen_host = options["listen_host"]
         listen_port = options["listen_port"]
         ssl_cert_file = options["ssl_cert"]
         ssl_key_file = options["ssl_key"]
@@ -495,14 +556,21 @@ class Command(BaseCommand):
             f"key: '{ssl_key_file}'"
         )
 
+        # TODO: Add support for passing in white listed ip addrs
+        #       Either some model in the db, or something passed in via the env
+        #
+        bl_service = BlackListService()
+        spama_service = SpamAassassinService(host="spamassassin")
         tls_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         tls_context.check_hostname = False
         tls_context.load_cert_chain(ssl_cert_file, ssl_key_file)
-        handler = LocalEmailHandler()
+        handler = LocalEmailHandler(
+            blacklist_service=bl_service, spama_service=spama_service
+        )
         controller = SentryController(
             handler,
-            hostname="0.0.0.0",  # This means listens on all interfaces.
-            server_hostname=settings.SITE_NAME,
+            hostname=listen_host,
+            server_hostname=server_hostname,
             port=listen_port,
             tls_context=tls_context,
             require_starttls=True,
