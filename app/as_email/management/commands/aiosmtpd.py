@@ -50,6 +50,7 @@ from as_email.tasks import dispatch_incoming_email
 from as_email.utils import write_spooled_email
 
 LISTEN_PORT = 19246
+LISTEN_HOST = "0.0.0.0"
 
 logger = logging.getLogger("as_email.aiosmtpd")
 
@@ -259,6 +260,11 @@ class Command(BaseCommand):
             action="store",
             default=LISTEN_PORT,
         )
+        parser.add_argument(
+            "--listen_host",
+            action="store",
+            default=LISTEN_HOST,
+        )
         parser.add_argument("--ssl_key", action="store", required=True)
         parser.add_argument("--ssl_cert", action="store", required=True)
 
@@ -266,14 +272,21 @@ class Command(BaseCommand):
     #
     def handle(self, *args, **options):
         listen_port = options["listen_port"]
+        listen_host = options["listen_host"]
         ssl_cert_file = options["ssl_cert"]
         ssl_key_file = options["ssl_key"]
         spool_dir = settings.EMAIL_SPOOL_DIR
 
         logger.info(
-            f"aiosmtpd: Listening on {listen_port} , cert: '{ssl_cert_file}', "
-            f"key: '{ssl_key_file}'"
+            f"aiosmtpd: Listening on {listen_host}, {listen_port}, "
+            f"cert: '{ssl_cert_file}', key: '{ssl_key_file}'"
         )
+
+        # If `list_host` contains commas we are going to assume it is a set of
+        # ip addressses separated by commas.
+        #
+        if "," in listen_host:
+            listen_host = [x.strip() for x in listen_host.split(",")]
 
         tls_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         tls_context.check_hostname = False
@@ -282,7 +295,7 @@ class Command(BaseCommand):
         handler = RelayHandler(spool_dir=spool_dir, authenticator=authenticator)
         controller = AsyncioAuthController(
             handler,
-            hostname="0.0.0.0",  # This means listens on all interfaces.
+            hostname=listen_host,
             server_hostname=settings.SITE_NAME,
             port=listen_port,
             authenticator=authenticator,

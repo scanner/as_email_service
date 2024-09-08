@@ -556,6 +556,12 @@ class Command(BaseCommand):
             f"key: '{ssl_key_file}'"
         )
 
+        # If `listen_host` contains commas we are going to assume it is a set of
+        # ip addressses separated by commas.
+        #
+        if "," in listen_host:
+            listen_host = [x.strip() for x in listen_host.split(",")]
+
         # TODO: Add support for passing in white listed ip addrs
         #       Either some model in the db, or something passed in via the env
         #
