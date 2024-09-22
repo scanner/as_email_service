@@ -2,7 +2,7 @@
 #
 # Builder stage
 #
-FROM python:3.12 as builder
+FROM python:3.12 AS builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -19,7 +19,7 @@ ENV PATH /venv/bin:$PATH
 #
 # includes the 'development' requirements
 #
-FROM builder as dev
+FROM builder AS dev
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
 LABEL org.opencontainers.image.description="Apricot Systematic Email Service"
@@ -59,7 +59,7 @@ CMD ["/app/scripts/start_app.sh"]
 #
 # `app` - The docker image for the django app web service
 #
-FROM python:3.12-slim as prod
+FROM python:3.12-slim AS prod
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
 LABEL org.opencontainers.image.description="Apricot Systematic Email Service"

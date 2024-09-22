@@ -1,6 +1,7 @@
 autopep8
 black
 coverage
+cryptography>=41.0.4,<=42.0.8
 django-stubs[compatible-mypy]
 flake8
 isort
