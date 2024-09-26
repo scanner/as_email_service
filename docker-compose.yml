@@ -125,5 +125,21 @@ services:
     restart: unless-stopped
     ports:
       - "8025:8025"
+      - "1025:1025"
+    profiles:
+      - dev
+
+  stunnel:
+    image: dweomer/stunnel
+    restart: always
+    environment:
+      - STUNNEL_SERVICE=smtp
+      - STUNNEL_ACCEPT=1587
+      - STUNNEL_CONNECT=mailhog:1025
+    volumes:
+      - "${HOST_SSL_DIR}/ssl_crt.pem:/etc/stunnel/stunnel.pem:ro"
+      - "${HOST_SSL_DIR}/ssl_key.pem:/etc/stunnel/stunnel.key:ro"
+    ports:
+      - 1587:1587 # smtp tls
     profiles:
       - dev
