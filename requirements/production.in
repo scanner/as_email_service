@@ -27,6 +27,7 @@ httpx
 huey
 influxdb-client
 postmarker
+proxy-protocol
 pyOpenSSL
 pydantic
 pydnsbl
