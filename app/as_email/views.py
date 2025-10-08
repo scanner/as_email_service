@@ -1,4 +1,4 @@
-""""
+"""
 The simplistic set of views for the users of the as_email app.
 
 For adminstrative functions this is supported by the django admin interface.

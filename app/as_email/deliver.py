@@ -51,7 +51,7 @@ def deliver_message(
     email_account: EmailAccount,
     msg: EmailMessage,
     depth: int = 1,
-):
+) -> None:
     """
     Deliver the given message to the given email account. This accounts for
     locally delivery, aliases, and forwards to external systems.

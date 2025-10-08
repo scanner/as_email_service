@@ -159,7 +159,7 @@ def decrement_num_bounces_counter():
 ####################################################################
 #
 @db_task()
-def dispatch_incoming_email(email_account_pk, email_fname):
+def dispatch_incoming_email(email_account_pk: int, email_fname: str) -> None:
     """
     This is called after a message has been received by the incoming
     hook. This decides what do with this email based on the configured email
