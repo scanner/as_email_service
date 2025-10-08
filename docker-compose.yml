@@ -130,14 +130,19 @@ services:
       - dev
 
   spamassassin:
-    image: tiredofit/spamassassin:2.0.12
+    image: instantlinux/spamassassin:4.0.1-1
     container_name: spamassassin
     restart: unless-stopped
-    env_file: .env
     volumes:
-      - "./spama/logs:/logs"
-      - "./spama/config:/config"
-      - "./spama/data:/data"
+      - ./spama/local.cf:/etc/mail/spamassassin/local.cf:ro
+      - ./spama/home:/var/lib/spamassassin
+      - ./spama/logs:/var/log
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 10
+    env_file: .env
     expose:
       - 783
     profiles:
