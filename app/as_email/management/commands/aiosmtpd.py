@@ -20,10 +20,11 @@ from base64 import b64decode
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import parseaddr
-from typing import Any, List, Optional
+from typing import Any, Iterable, List, Optional, Tuple
 
 # 3rd party imports
 #
+import aiospamc
 import sentry_sdk
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import (
@@ -40,12 +41,13 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from pydantic import BaseModel
+from pydnsbl import DNSBLChecker
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # Project imports
 #
 from as_email.deliver import make_delivery_status_notification
-from as_email.models import EmailAccount, InactiveEmail
+from as_email.models import EmailAccount, InactiveEmail, Server
 from as_email.tasks import dispatch_incoming_email
 from as_email.utils import write_spooled_email
 
@@ -53,6 +55,144 @@ LISTEN_PORT = 19246
 LISTEN_HOST = "0.0.0.0"
 
 logger = logging.getLogger("as_email.aiosmtpd")
+
+
+########################################################################
+#
+async def tarpit_delay(seconds: int = 30) -> None:
+    """
+    Sleep for a period of time to slow down malicious clients.
+    This is used when denying connections for blacklisting or auth failures.
+    """
+    await asyncio.sleep(seconds)
+
+
+########################################################################
+#
+def format_dnsbl_providers(detected_by: Iterable[Tuple[str, List[str]]]) -> str:
+    """
+    Format DNSBL provider information into a readable string.
+
+    Args:
+        detected_by: Iterable of tuples containing (provider_name, [categories])
+
+    Returns:
+        A comma-separated list of "provider: category" entries.
+    """
+    providers = []
+    for provider in detected_by:
+        for name, categories in provider:
+            category = ",".join(categories)
+            providers.append(f"{name}: {category}")
+    return ", ".join(providers)
+
+
+########################################################################
+#
+async def check_spam(spamc_client: aiospamc.Client, msg_bytes: bytes) -> bytes:
+    """
+    Run the message through SpamAssassin and return it with spam headers added.
+
+    Args:
+        spamc_client: The SpamAssassin client
+        msg_bytes: The original message bytes
+
+    Returns:
+        Message bytes with spam headers added, or original bytes if check fails
+    """
+    try:
+        result = await spamc_client.process(msg_bytes)
+        return result.message.as_bytes()
+    except Exception as e:
+        logger.error("SpamAssassin check failed: %r", e)
+        return msg_bytes
+
+
+########################################################################
+#
+def validate_from_header(
+    msg: EmailMessage, account: Optional[EmailAccount]
+) -> Optional[str]:
+    """
+    Validate that the FROM header matches the authenticated account.
+
+    Args:
+        msg: The email message to validate
+        account: The authenticated EmailAccount, or None if not authenticated
+
+    Returns:
+        Error message string if validation fails, None if validation succeeds
+    """
+    if not account:
+        # No account means unauthenticated, no validation needed
+        return None
+
+    froms = msg.get_all("from")
+    if not froms:
+        # No FROM header, let it pass (will likely fail elsewhere)
+        return None
+
+    valid_from = account.email_address.lower()
+    for msg_from in froms:
+        _, frm = parseaddr(msg_from)
+        if frm is None or frm.lower() != valid_from:
+            logger.info(
+                "handle_DATA: `from` header in email not valid: '%s' (must be from '%s')",
+                frm,
+                valid_from,
+            )
+            return f"551 FROM must be '{valid_from}', not '{frm}'"
+
+    return None
+
+
+########################################################################
+#
+async def categorize_recipients(
+    rcpt_tos: List[str],
+) -> Tuple[List[str], List[str], List[str]]:
+    """
+    Categorize recipients into local, remote, and invalid local addresses.
+
+    Args:
+        rcpt_tos: List of recipient email addresses from the SMTP envelope
+
+    Returns:
+        Tuple of (local_addrs, remote_addrs, invalid_local_addrs)
+        - local_addrs: Valid email accounts on domains we own
+        - remote_addrs: Email addresses on domains we don't own
+        - invalid_local_addrs: Addresses on our domains but no EmailAccount exists
+    """
+    local_addrs = []
+    remote_addrs = []
+    invalid_local_addrs = []
+
+    for rcpt_to in rcpt_tos:
+        _, email_addr = parseaddr(rcpt_to)
+        # Extract the domain from the email address
+        domain = (
+            email_addr.split("@")[-1].lower() if "@" in email_addr else None
+        )
+
+        # Check if there is a Server for this domain name. We only consider
+        # email addresses for servers we own to be local.
+        if (
+            domain
+            and await Server.objects.filter(
+                domain_name__iexact=domain
+            ).aexists()
+        ):
+            # What is more, make sure that the email address is one served by us.
+            if await EmailAccount.objects.filter(
+                email_address__iexact=email_addr
+            ).aexists():
+                local_addrs.append(email_addr.lower())
+            else:
+                invalid_local_addrs.append(email_addr.lower())
+        else:
+            remote_addrs.append(email_addr)
+
+    return local_addrs, remote_addrs, invalid_local_addrs
 
 
 ########################################################################
@@ -301,7 +441,17 @@ class Command(BaseCommand):
             authenticator=authenticator,
             tls_context=tls_context,
             require_starttls=True,
-            auth_required=True,
+            # During communication with the SMTP client we may require
+            # authentication, but we do not require it until we know that the
+            # SMTP client is trying to relay email to domains that the AS Email
+            # service is not hosting.
+            #
+            auth_required=False,
+            # auth_required=True,
+            # Commands RCPT and NOOP have their own limits; others have an
+            # implicit limit of 20 (CALL_LIMIT_DEFAULT)
+            #
+            command_call_limit={"RCPT": 30, "NOOP": 5},
         )
         logger.info("Starting controller")
         controller.start()
@@ -332,6 +482,30 @@ class Authenticator:
         # This blacklist is keyed by ip address.
         #
         self.blacklist = {}
+
+    ####################################################################
+    #
+    def _auth_fail(
+        self, session, log_msg: str, error_msg: str = "Authentication failed"
+    ) -> AuthResult:
+        """
+        Helper to handle authentication failures consistently.
+
+        Args:
+            session: The SMTP session
+            log_msg: Log message describing the failure
+            error_msg: User-facing error message
+
+        Returns:
+            AuthResult indicating failure
+        """
+        self.incr_fails(session.peer)
+        logger.info(
+            "Authenticator: FAIL: %s, from: %s", log_msg, session.peer[0]
+        )
+        result = AuthResult(success=False, handled=False)
+        result.message = error_msg
+        return result
 
     ####################################################################
     #
@@ -413,68 +587,34 @@ class Authenticator:
             auth_data,
             session.peer[0],
         )
-        fail_nothandled = AuthResult(success=False, handled=False)
+
         if mechanism not in ("LOGIN", "PLAIN"):
-            self.incr_fails(session.peer)
-            logger.info(
-                "Authenticator: FAIL: auth mechanism %s not accepted, from: %s",
-                mechanism,
-                session.peer[0],
+            return self._auth_fail(
+                session,
+                f"auth mechanism {mechanism} not accepted",
+                f"Authenticator: FAIL: auth mechanism {mechanism} not accepted",
             )
-            fail_nothandled.message = (
-                f"Authenticator: FAIL: auth mechanism {mechanism} not accepted"
-            )
-            return fail_nothandled
 
         if not isinstance(auth_data, LoginPassword):
-            self.incr_fails(session.peer)
-            logger.info(
-                "Authenticator: FAIL: '%r' not LoginPassword, from %s",
-                auth_data,
-                session.peer[0],
+            return self._auth_fail(
+                session, f"'{auth_data!r}' not LoginPassword"
             )
-            fail_nothandled.message = "Authentication failed"
-            return fail_nothandled
 
         username = str(auth_data.login, "utf-8")
         password = str(auth_data.password, "utf-8")
+
         try:
             account = await EmailAccount.objects.aget(email_address=username)
         except EmailAccount.DoesNotExist:
-            # XXX We need to keep a count of failures for accounts
-            #     that do not exist and if we get above a ceratin amount
-            #     of them find a cheap way to block that connection for a
-            #     period of time.
-            self.incr_fails(session.peer)
-            logger.info(
-                "Authenticator: FAIL: '%s' not a valid account, from: %s",
-                username,
-                session.peer[0],
-            )
-            fail_nothandled.message = "Authentication failed"
-            return fail_nothandled
+            return self._auth_fail(session, f"'{username}' not a valid account")
 
-        # If the account is deactivated it is not allowed to relay email.
-        #
         if account.deactivated:
-            self.incr_fails(session.peer)
-            logger.info(
-                "Authenticator: FAIL: '%s' is deactivated, from: %s",
-                account,
-                session.peer[0],
+            return self._auth_fail(
+                session, f"'{account}' is deactivated", "Account deactivated"
             )
-            fail_nothandled.message = "Account deactivated"
-            return fail_nothandled
 
         if not account.check_password(password):
-            self.incr_fails(session.peer)
-            logger.info(
-                "Authenticator: FAIL: '%s' invalid password from %s",
-                account,
-                session.peer[0],
-            )
-            fail_nothandled.message = "Authentication failed"
-            return fail_nothandled
+            return self._auth_fail(session, f"'{account}' invalid password")
 
         # Upon success we pass the account back as the auth_data
         # back. This gets saved in to the session.auth_data attribute
@@ -503,6 +643,34 @@ class RelayHandler:
         logger.debug("RelayHandler, init. Spool dir: '%s'", spool_dir)
         self.spool_dir = spool_dir
         self.authenticator = authenticator
+        self.dnsbl = DNSBLChecker()
+        self.spamc_client = aiospamc.Client()
+
+    ####################################################################
+    #
+    async def handle_CONNECT(
+        self,
+        smtp: SMTP,
+        session: SMTPSession,
+        envelope: SMTPEnvelope,
+        hostname: str,
+        port: int,
+    ):
+        # XXX Should we add a configurable white list in case one of our ip
+        #     addresses is black listed maliciously? probably not.. been fine
+        #     for so many years as it is.  .  If we were maybe we should allow
+        #     if the ip address is on a white list and a user authenticated?
+        #     (But what if someone's credentaisl get stolen and suddenly they
+        #     are used for spam?)
+        #
+        peer_ip, _ = session.peer
+        result = await self.dnsbl.check(peer_ip)
+        if result.blacklisted:
+            detected_by = format_dnsbl_providers(result.detected_by)
+            logger.info(f"IP {peer_ip} is blacklisted: {detected_by}")
+            await tarpit_delay()
+            return "554 Your IP is blacklisted. Connection refused."
+        return "220 OK"
 
     ####################################################################
     #
@@ -511,7 +679,7 @@ class RelayHandler:
         smtp: SMTP,
         session: SMTPSession,
         envelope: SMTPEnvelope,
-        hostname,
+        hostname: str,
         responses: List[str],
     ) -> List[str]:
         """
@@ -531,13 +699,10 @@ class RelayHandler:
         session.host_name = hostname
         if self.authenticator.check_deny(session.peer):
             logger.info(
-                "handle_EHLO: Denying %s due to many failed auth attempts",
+                "handle_EHLO: Denying %s due to too many failed auth attempts",
                 session.peer[0],
             )
-            # If we deny this connection we also sleep for a short bit before
-            # returning the error to the client. This makes a mini-tarpit that
-            # will hopefully slow down connection attempts a little bit.
-            await asyncio.sleep(30)
+            await tarpit_delay()
             responses.append("550 Too many failed attempts")
         return responses
 
@@ -552,78 +717,89 @@ class RelayHandler:
         mail_options: List[str],
     ) -> str:
         """
-        You can ONLY send email _from_ the email address of the email
-        account that authenticated to the relay.
+        Handle the MAIL FROM command. We accept any FROM address here because:
+        - For unauthenticated sessions: we need to receive mail from the internet
+        - For authenticated sessions: FROM validation happens in handle_DATA
+          where we can check the actual message headers
         """
-        # handle_MAIL is responsible for setting the mail_from and mail_options
-        # on the envelope! I am not sure if we should or should not do this
-        # when we are going to possibly deny this request.
-        #
         envelope.mail_from = address
         envelope.mail_options.extend(mail_options)
-
-        # The email address part of `from` MUST be the same as the email
-        # address on this EmailAccount.
-        #
-        account = session.auth_data
-        valid_from = account.email_address.lower()
-        logger.debug("handle_MAIL: account: %s, address: %s", account, address)
-        _, frm = parseaddr(address)
-        if frm is None or frm.lower() != valid_from:
-            logger.info(
-                "handle_MAIL: For account '%s', FROM '%s' (%s) is not valid "
-                "(from address %s)",
-                account,
-                frm,
-                address,
-                session.peer[0],
-            )
-            return f"551 FROM must be your email account's email address: '{valid_from}', not '{frm}'"
-
-        return "250 OK valid FROM"
+        return "250 OK"
 
     ####################################################################
     #
     async def handle_DATA(
         self, server: SMTP, session: SMTPSession, envelope: SMTPEnvelope
     ) -> str:
-        # The as_email.models.EmailAccount object instance is passed in via
-        # session.auth_data.
+        # Categorize recipients into local, remote, and invalid addresses
+        local_addrs, remote_addrs, invalid_local_addrs = (
+            await categorize_recipients(envelope.rcpt_tos)
+        )
+
+        # If there are invalid local addresses, report them
         #
-        account = session.auth_data
+        if invalid_local_addrs:
+            # If ALL addresses are invalid, reject the entire message
+            #
+            if not local_addrs and not remote_addrs:
+                invalid_list = ", ".join(invalid_local_addrs)
+                return f"550 5.1.1 Recipient address rejected: User unknown in local recipient table ({invalid_list})"
+            # If some addresses are valid, log the invalid ones but continue
+            # (the valid addresses will still receive the message)
+            #
+            logger.warning(
+                "Invalid local email addresses in RCPT TO list: %s (from %s)",
+                ", ".join(invalid_local_addrs),
+                session.peer[0],
+            )
+
+        if remote_addrs and not session.authenticated:
+            return "530 Authentication required for relaying"
+
+        # NOTE: If the sender (ie: 'From') is a valid local email account, but
+        #       is deactivated then they will have been denied authentication
+        #       so we do not need to check here if this is a locally
+        #       deactivated email account.
+
+        # XXX session.auth_data is only valid for authenticated smtp sessions
+        #     so we should check if authenticated has succeed before getting
+        #     the "account" object.
+        #
+        account = session.auth_data if session.authenticated else None
         logger.debug(
             "handle_DATA: account: %s, envelope from: %s",
             account,
             envelope.mail_from,
         )
 
-        # Do a double check to make sure that any 'From' headers are the email
-        # account sending the message.
-        #
-        # NOTE: "president of the universe <foo@example.com>" is still
-        #       considered a valid "from" address for "foo@example.com"
-        #
-        msg = email.message_from_bytes(
-            envelope.original_content,
-            policy=email.policy.default,
+        # Check spam and parse the message
+        msg_bytes = envelope.original_content
+        msg_bytes_with_spam_headers = await check_spam(
+            self.spamc_client, msg_bytes
         )
-        froms = msg.get_all("from")
-        valid_from = account.email_address.lower()
-        if froms:
-            for msg_from in froms:
-                _, frm = parseaddr(msg_from)
-                if frm is None or frm.lower() != valid_from:
-                    logger.info(
-                        "handle_DATA: `from` header in email not valid: '%s' (must be from '%s')",
-                        frm,
-                        valid_from,
-                    )
-                    return f"551 FROM must be '{valid_from}', not '{frm}'"
-        try:
-            await relay_email_to_provider(account, envelope.rcpt_tos, msg)
-        except Exception as exc:
-            logger.error(f"Failed: {exc}")
-            return f"500 Mail Provider error: {exc}"
+        msg = email.message_from_bytes(msg_bytes, policy=email.policy.default)
+
+        # Validate FROM header for authenticated sessions
+        if from_error := validate_from_header(msg, account):
+            return from_error
+
+        # Deliver to local addresses if any
+        if local_addrs:
+            try:
+                await deliver_email_locally(
+                    account, local_addrs, msg_bytes_with_spam_headers
+                )
+            except Exception as exc:
+                logger.error(f"Local delivery failed: {exc}")
+                return f"500 Local delivery error: {exc}"
+
+        # Relay to remote addresses if any
+        if remote_addrs:
+            try:
+                await relay_email_to_provider(account, remote_addrs, msg)
+            except Exception as exc:
+                logger.error(f"Failed to relay: {exc}")
+                return f"500 Mail Provider error: {exc}"
 
         return "250 OK"
 
@@ -653,9 +829,71 @@ def send_email_via_smtp(
 
 ####################################################################
 #
+async def deliver_email_locally(
+    account: EmailAccount, rcpt_tos: List[str], msg_bytes: bytes
+) -> None:
+    """
+    Create delivery email files for each entry in rcpt_tos, and store the
+    message in that file, then invoke the async task `dispatch_incoming_email`
+    to actually deliver it.
+
+    If a `rcp_to` is not a valid local email account, or one that is blocked
+    from receiving email (there is no such setting right now) then the message
+    is not dispatched and a warning log message is generated.
+    """
+    # Convert bytes to EmailMessage once, then to string representation once.
+    # This avoids repeated conversions for multiple recipients and handles
+    # encoding properly using the email library's built-in conversion.
+    #
+    msg = email.message_from_bytes(msg_bytes, policy=email.policy.default)
+    msg_id = msg.get("Message-ID", "unknown")
+    msg_str = msg.as_string(policy=email.policy.default)
+
+    for rcpt_to in rcpt_tos:
+        try:
+            # Get the EmailAccount for this recipient
+            recipient_account = await EmailAccount.objects.aget(
+                email_address__iexact=rcpt_to
+            )
+        except EmailAccount.DoesNotExist:
+            logger.warning(
+                "deliver_email_locally: Recipient '%s' does not exist, "
+                "skipping delivery for message %s",
+                rcpt_to,
+                msg_id,
+            )
+            continue
+
+        # Write the message to the recipient's incoming spool directory
+        #
+        spool_dir = recipient_account.server.incoming_spool_dir
+        fname = write_spooled_email(
+            rcpt_to,
+            spool_dir,
+            msg_str,
+            msg_id=msg_id,
+        )
+
+        # Dispatch the delivery task asynchronously (we need to sync_to_async
+        # this in case Huey is in immediate mode)
+        #
+        await sync_to_async(dispatch_incoming_email)(
+            recipient_account.pk, str(fname)
+        )
+
+        logger.info(
+            "deliver_email_locally: Queued delivery for '%s', message %s, file %s",
+            rcpt_to,
+            msg_id,
+            fname,
+        )
+
+
+####################################################################
+#
 async def relay_email_to_provider(
     account: EmailAccount, rcpt_tos: List[str], msg: EmailMessage
-):
+) -> None:
     """
     Relay the email we have gotten from the user to our mail provider to
     send out.
