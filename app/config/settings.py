@@ -35,6 +35,7 @@ BASE_DIR = Path(__file__).parent.parent
 random_chars = "abcdefghijklmnopqrstuvwxyz0123456789!@#%^&*(-_=+)"
 env = environ.FileAwareEnv(
     DEBUG=(bool, False),
+    TZ=(str, "America/Los_Angeles"),
     DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
     SITE_NAME=(str, "example.com"),
     DATABASE_URL=(str, "sqlite:///:memory:"),
@@ -196,7 +197,7 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "home"
 
-TIME_ZONE = "America/Los_Angeles"
+TIME_ZONE = env("TZ")
 # https://docs.djangoproject.com/en/dev/ref/settings/#language-code
 LANGUAGE_CODE = "en-us"
 # https://docs.djangoproject.com/en/dev/ref/settings/#site-id
