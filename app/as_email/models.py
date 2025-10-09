@@ -911,7 +911,7 @@ class Alias(models.Model):
             ),
             models.CheckConstraint(
                 name="%(app_label)s_%(class)s_prevent_self_alias",
-                check=~models.Q(
+                condition=~models.Q(
                     from_email_account=models.F("to_email_account")
                 ),
             ),
