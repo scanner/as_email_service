@@ -52,6 +52,20 @@ def mock_aiospamc_process(mocker):
     )
 
 
+####################################################################
+#
+@pytest.fixture
+def mock_tarpit_delay(mocker):
+    """
+    Fixture to mock tarpit_delay to avoid waiting during tests.
+    Returns the mock so tests can verify it was called if needed.
+    """
+    return mocker.patch(
+        "as_email.management.commands.aiosmtpd.tarpit_delay",
+        new_callable=mocker.AsyncMock,
+    )
+
+
 ########################################################################
 ########################################################################
 #
@@ -531,7 +545,12 @@ class TestAuthentication:
     #
     @pytest.mark.asyncio
     async def test_relayhandler_handle_EHLO_denies_blacklisted(
-        self, tmp_path, faker, aiosmtp_session, aiosmtp_envelope
+        self,
+        tmp_path,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mock_tarpit_delay,
     ):
         """
         Given a peer that has been blacklisted for auth failures
