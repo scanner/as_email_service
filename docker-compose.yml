@@ -133,6 +133,8 @@ services:
     image: instantlinux/spamassassin:4.0.1-1
     container_name: spamassassin
     restart: unless-stopped
+    ports:
+      - "783:783"
     volumes:
       - ./spama/local.cf:/etc/mail/spamassassin/local.cf:ro
       - ./spama/home:/var/lib/spamassassin
