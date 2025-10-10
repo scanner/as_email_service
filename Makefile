@@ -5,28 +5,50 @@ include $(ROOT_DIR)/Make.rules
 DOCKER_BUILDKIT := 1
 LATEST_TAG := $(shell git describe --abbrev=0)
 
-.PHONY: clean lint test mypy logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs help
+.PHONY: clean test logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs sync lock add add-dev upgrade help
 
-build: requirements/production.txt requirements/development.txt	## `docker compose build` for both `prod` and `dev` profiles
+build:	## `docker compose build` for both `prod` and `dev` profiles
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile prod build
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile dev build
+
+uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
+	@uv sync
+
+uv-lock:	## Update uv.lock file from pyproject.toml dependencies
+	@uv lock
+
+uv-add:	## Add a new dependency (usage: make add PACKAGE=requests)
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Error: PACKAGE not specified. Usage: make add PACKAGE=requests"; \
+		exit 1; \
+	fi
+	@uv add $(PACKAGE)
+
+uv-add-dev:	## Add a new dev dependency (usage: make add-dev PACKAGE=pytest-xdist)
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Error: PACKAGE not specified. Usage: make add-dev PACKAGE=pytest-xdist"; \
+		exit 1; \
+	fi
+	@uv add --dev $(PACKAGE)
+
+uv-upgrade:	## Upgrade all dependencies to latest compatible versions
+	@uv sync --upgrade
 
 dirs: dbs ssl spool spama    ## Make the local directories for dbs, ssl, and spool.
 
 dbs:
-	@mkdir $(ROOT_DIR)/dbs
+	@mkdir -p $(ROOT_DIR)/dbs
 
 ssl:
-	@mkdir $(ROOT_DIR)/ssl
+	@mkdir -p $(ROOT_DIR)/ssl
 
 spool:
-	@mkdir $(ROOT_DIR)/spool
+	@mkdir -p $(ROOT_DIR)/spool
 
 spama:
-	@mkdir $(ROOT_DIR)/spama
-	@mkdir $(ROOT_DIR)/spama/logs
-	@mkdir $(ROOT_DIR)/spama/config
-	@mkdir $(ROOT_DIR)/spama/data
+	@mkdir -p $(ROOT_DIR)/spama/logs
+	@mkdir -p $(ROOT_DIR)/spama/config
+	@mkdir -p $(ROOT_DIR)/spama/data
 
 # XXX Should we have an option to NOT use certs/mkcert (either just make
 #     self-signed ourself) in case a developer does not want to go through the
@@ -76,8 +98,8 @@ createadmin: migrate   ## Create django admin account `admin` with password `tes
 logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
 	@docker compose logs -f worker devweb devsmtpd mailhog
 
-test:	## Run all of the tests
-	@cd app/ && pytest
+test: .venv	## Run all of the tests
+	@$(UV_RUN) pytest app/
 
 release: build	## Make a release. Builds and then tags the latest docker image with most recent git tag. Then pushes it to ghcr.io/scanner/as_email_service_app
 	docker tag as_email_service_app:latest as_email_service_app:$(LATEST_TAG)

@@ -1,3 +1,95 @@
+[project]
+name = "as-email-service"
+version = "0.1.0"
+description = "Apricot Systematic Email Service"
+requires-python = ">=3.12"
+dependencies = [
+    "aiofiles",
+    "aiologger",
+    "aiosmtpd",
+    "aiospamc",
+    "crispy-bulma",
+    "cryptography==42.0.8",
+    "csscompressor",
+    "django",
+    "django-anymail",
+    "django-crispy-forms",
+    "django-cryptography",
+    "django-dry-rest-permissions",
+    "django-environ",
+    "django-extensions",
+    "django-filter",
+    "django-guardian",
+    "django-ordered-model",
+    "django-passkeys",
+    "django-settings-export",
+    "django-simple-bulma",
+    "django-compressor",
+    "djangorestframework",
+    "dnspython",
+    "drf-nested-routers",
+    "gunicorn",
+    "httpx",
+    "huey",
+    "influxdb-client",
+    "postmarker",
+    "proxy-protocol",
+    "pyOpenSSL",
+    "pydantic",
+    "pydnsbl",
+    "python-dotenv",
+    "pytz",
+    "pyyaml",
+    "redis[hiredis]",
+    "rich",
+    "sentry-sdk[django]",
+    "uvicorn",
+    "wait-for-it",
+    "whitenoise",
+]
+
+[dependency-groups]
+dev = [
+    # Testing
+    "coverage",
+    "dirty-equals",
+    "fakeredis",
+    "ipython",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-coverage",
+    "pytest-django",
+    "pytest-factoryboy",
+    "pytest-mock",
+    "pytest-sugar",
+    "requests-mock",
+    "trustme",
+    "werkzeug",
+    # Linting and formatting
+    "autopep8",
+    "black",
+    "django-stubs[compatible-mypy]",
+    "flake8",
+    "isort",
+    "mypy",
+    "pre-commit",
+    "ruff",
+    "types-aiofiles",
+    "types-cachetools",
+    "types-pytz",
+    "types-redis",
+    "types-requests",
+    "types-setuptools",
+    "yapf",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
 [tool.black]
 line-length = 80
 exclude = '''
@@ -50,8 +142,9 @@ plugins = ["mypy_django_plugin.main"]
 strict_optional = true
 ignore_missing_imports = true
 
-[[mypy.plugins.django-stubs]]
-django_settings_module = "config.settings"
+[[tool.mypy.overrides]]
+module = "*.migrations.*"
+ignore_errors = true
 
 [tool.django-stubs]
 django_settings_module = "config.settings"

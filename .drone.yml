@@ -9,13 +9,16 @@ steps:
       PYTHONUNBUFFERED: 1
       DEBUG: true
     commands:
-      - pip install -U pip
-      - pip install -r ./requirements/development.txt
+      # Install uv via pip
+      - pip install uv
+      # Create venv and install all dependencies including dev
+      - uv sync
+      # Run Django commands and tests using uv run
       - cd ./app/
       - mkdir ./staticfiles
-      - python ./manage.py collectstatic --clear --no-input --verbosity 0
-      - python ./manage.py compress
-      - pytest
+      - uv run python ./manage.py collectstatic --clear --no-input --verbosity 0
+      - uv run python ./manage.py compress
+      - uv run pytest
 
 ---
 kind: pipeline
