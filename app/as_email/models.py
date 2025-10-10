@@ -21,7 +21,6 @@ from typing import List, Union
 
 # 3rd party imports
 #
-import aiofiles
 import pytz
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -243,14 +242,9 @@ class Server(models.Model):
         directory specified exists.
         """
         self._set_initial_values()
-        # Make sure that the directories for the file fields exist.
-        #
-        if not await aiofiles.os.path.exists(self.incoming_spool_dir):
-            await aiofiles.os.mkdirs(self.incoming_spool_dir)
-        if not await aiofiles.os.path.exists(self.outgoing_spool_dir):
-            await aiofiles.os.mkdirs(self.outgoing_spool_dir)
-        if not await aiofiles.os.path.exists(self.mail_dir_parent):
-            await aiofiles.os.mkdirs(self.mail_dir_parent)
+        Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
 
         await super().asave(*args, **kwargs)
 

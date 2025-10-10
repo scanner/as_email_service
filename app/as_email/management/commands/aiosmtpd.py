@@ -41,7 +41,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from pydantic import BaseModel
-from pydnsbl import DNSBLChecker
+from pydnsbl import DNSBLIpChecker
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # Project imports
@@ -81,28 +81,29 @@ def format_dnsbl_providers(detected_by: Iterable[Tuple[str, List[str]]]) -> str:
     """
     providers = []
     for provider in detected_by:
-        for name, categories in provider:
-            category = ",".join(categories)
-            providers.append(f"{name}: {category}")
+        name, categories = provider
+        category = ",".join(categories)
+        providers.append(f"{name}: {category}")
     return ", ".join(providers)
 
 
 ########################################################################
 #
-async def check_spam(spamc_client: aiospamc.Client, msg_bytes: bytes) -> bytes:
+async def check_spam(msg_bytes: bytes) -> bytes:
     """
     Run the message through SpamAssassin and return it with spam headers added.
 
     Args:
-        spamc_client: The SpamAssassin client
         msg_bytes: The original message bytes
 
     Returns:
         Message bytes with spam headers added, or original bytes if check fails
     """
     try:
-        result = await spamc_client.process(msg_bytes)
-        return result.message.as_bytes()
+        result = await aiospamc.process(
+            msg_bytes, host=settings.SPAMD_HOST, port=settings.SPAMD_PORT
+        )
+        return result.body
     except Exception as e:
         logger.error("SpamAssassin check failed: %r", e)
         return msg_bytes
@@ -643,8 +644,7 @@ class RelayHandler:
         logger.debug("RelayHandler, init. Spool dir: '%s'", spool_dir)
         self.spool_dir = spool_dir
         self.authenticator = authenticator
-        self.dnsbl = DNSBLChecker()
-        self.spamc_client = aiospamc.Client()
+        self.dnsbl = DNSBLIpChecker()
 
     ####################################################################
     #
@@ -774,9 +774,7 @@ class RelayHandler:
 
         # Check spam and parse the message
         msg_bytes = envelope.original_content
-        msg_bytes_with_spam_headers = await check_spam(
-            self.spamc_client, msg_bytes
-        )
+        msg_bytes_with_spam_headers = await check_spam(msg_bytes)
         msg = email.message_from_bytes(msg_bytes, policy=email.policy.default)
 
         # Validate FROM header for authenticated sessions

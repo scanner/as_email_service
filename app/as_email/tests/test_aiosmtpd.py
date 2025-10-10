@@ -3,13 +3,10 @@
 """
 Test the aiosmtpd daemon/django command.
 """
-import email
-import email.policy
-
 # system imports
 #
 from datetime import UTC, datetime
-from email.utils import parseaddr
+from email.message import EmailMessage
 
 # 3rd party imports
 #
@@ -23,424 +20,1295 @@ from dirty_equals import Contains
 from ..management.commands.aiosmtpd import (
     Authenticator,
     RelayHandler,
+    categorize_recipients,
+    check_spam,
+    format_dnsbl_providers,
     relay_email_to_provider,
+    validate_from_header,
 )
 from ..models import InactiveEmail
-from .conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
 
 
-####################################################################
+########################################################################
+########################################################################
 #
-@pytest.mark.asyncio
-async def test_authenticator_authenticate(
-    email_account_factory, faker, aiosmtp_session
-):
-    """
-    Given an email account check various authentication attempts and its
-    failure methods.
-    """
-    sess = aiosmtp_session
-    password = faker.pystr(min_chars=8, max_chars=32)
-    ea = await sync_to_async(email_account_factory)(password=password)
-    await ea.asave()
-    auth = Authenticator()
+class TestHelperFunctions:
+    """Tests for standalone helper functions."""
 
-    # Our authenticator only uses the `session`, `mechanism`, and `auth_data`
-    # parameters to check authentication.
+    ####################################################################
     #
-    for mechanism in ("LOGIN", "PLAIN"):
-        auth_data = LoginPassword(
-            login=bytes(ea.email_address, "utf-8"),
-            password=bytes(password, "utf-8"),
-        )
-        res = await auth(None, sess, None, mechanism, auth_data)
-        assert res.success
-        assert res.auth_data == ea
-    mechanism = "LOGIN"
+    def test_format_dnsbl_providers_empty(self):
+        """
+        Given an empty list of DNSBL providers
+        When format_dnsbl_providers is called
+        Then it should return an empty string
+        """
+        result = format_dnsbl_providers([])
+        assert result == ""
 
-    # Test invalid password.
+    ####################################################################
     #
-    auth_data = LoginPassword(
-        login=bytes(ea.email_address, "utf-8"),
-        password=bytes(faker.pystr(), "utf-8"),
-    )
-    res = await auth(None, sess, None, mechanism, auth_data)
-    assert res.success is False
+    def test_format_dnsbl_providers_single_provider_single_category(self):
+        """
+        Given a single DNSBL provider with one category
+        When format_dnsbl_providers is called
+        Then it should return "provider: category" format
+        """
+        providers = [("spamhaus.org", ["spam"])]
+        result = format_dnsbl_providers(providers)
+        assert result == "spamhaus.org: spam"
 
-    # Test invalid account.
+    ####################################################################
     #
-    auth_data = LoginPassword(
-        login=bytes(faker.email(), "utf-8"),
-        password=bytes(password, "utf-8"),
-    )
-    res = await auth(None, sess, None, mechanism, auth_data)
-    assert res.success is False
+    def test_format_dnsbl_providers_single_provider_multiple_categories(self):
+        """
+        Given a single DNSBL provider with multiple categories
+        When format_dnsbl_providers is called
+        Then it should return categories comma-separated
+        """
+        providers = [("spamhaus.org", ["spam", "malware"])]
+        result = format_dnsbl_providers(providers)
+        assert result == "spamhaus.org: spam,malware"
 
-    # Test deactivated account.
+    ####################################################################
     #
-    ea.deactivated = True
-    await ea.asave()
-    auth_data = LoginPassword(
-        login=bytes(ea.email_address, "utf-8"),
-        password=bytes(password, "utf-8"),
-    )
-    res = await auth(None, sess, None, mechanism, auth_data)
-    assert res.success is False
+    def test_format_dnsbl_providers_multiple_providers(self):
+        """
+        Given multiple DNSBL providers with various categories
+        When format_dnsbl_providers is called
+        Then it should return all providers comma-separated
+        """
+        providers = [
+            ("spamhaus.org", ["spam"]),
+            ("barracuda.com", ["malware", "phishing"]),
+        ]
+        result = format_dnsbl_providers(providers)
+        assert "spamhaus.org: spam" in result
+        assert "barracuda.com: malware,phishing" in result
 
-    # We do not support these auth mechanisms. Also make sure random strings
-    # fail. This is mostly so that when we DO support these mechanisms this
-    # test will fail to remind us to make sure this test is updated.
+    ####################################################################
     #
-    for mechanism in (
-        "CRAM-MD5",
-        "DIGEST-MD5",
-        "NTLM",
-        "GSSAPI",
-        "XOAUTH",
-        "XOAUTH2",
-        faker.pystr(),
+    def test_validate_from_header_unauthenticated(self, email_factory):
+        """
+        Given an unauthenticated session (no account)
+        When validate_from_header is called
+        Then it should return None (no validation required)
+        """
+        msg = email_factory()
+        result = validate_from_header(msg, None)
+        assert result is None
+
+    ####################################################################
+    #
+    def test_validate_from_header_no_from_headers(self, email_account_factory):
+        """
+        Given a message with no FROM headers
+        When validate_from_header is called
+        Then it should return None (pass validation)
+        """
+        ea = email_account_factory()
+        msg = EmailMessage()
+        result = validate_from_header(msg, ea)
+        assert result is None
+
+    ####################################################################
+    #
+    def test_validate_from_header_valid_match(
+        self, email_account_factory, email_factory
     ):
-        auth_data = LoginPassword(
-            login=bytes(ea.email_address, "utf-8"),
-            password=bytes(password, "utf-8"),
+        """
+        Given a message with FROM matching the authenticated account
+        When validate_from_header is called
+        Then it should return None (validation passes)
+        """
+        ea = email_account_factory()
+        msg = email_factory(msg_from=ea.email_address)
+        result = validate_from_header(msg, ea)
+        assert result is None
+
+    ####################################################################
+    #
+    def test_validate_from_header_with_display_name(
+        self, email_account_factory, email_factory, faker
+    ):
+        """
+        Given a message with display name but valid email in FROM
+        When validate_from_header is called
+        Then it should return None (display name allowed)
+        """
+        ea = email_account_factory()
+        from_with_name = f"{faker.name()} <{ea.email_address}>"
+        msg = email_factory(msg_from=from_with_name)
+        result = validate_from_header(msg, ea)
+        assert result is None
+
+    ####################################################################
+    #
+    def test_validate_from_header_invalid_mismatch(
+        self, email_account_factory, email_factory, faker
+    ):
+        """
+        Given a message with FROM not matching the authenticated account
+        When validate_from_header is called
+        Then it should return an error message starting with "551 FROM must be"
+        """
+        ea = email_account_factory()
+        msg = email_factory(msg_from=faker.email())
+        result = validate_from_header(msg, ea)
+        assert result is not None
+        assert result.startswith("551 FROM must be")
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_check_spam_success(self, mocker):
+        """
+        Given a SpamAssassin client that successfully processes a message
+        When check_spam is called
+        Then it should return the message with spam headers added
+        """
+        mock_client = mocker.AsyncMock()
+        mock_result = mocker.Mock()
+        mock_result.message.as_bytes.return_value = b"message with spam headers"
+        mock_client.process.return_value = mock_result
+
+        original = b"original message"
+        result = await check_spam(mock_client, original)
+
+        assert result == b"message with spam headers"
+        mock_client.process.assert_called_once_with(original)
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_check_spam_failure(self, mocker):
+        """
+        Given a SpamAssassin client that raises an exception
+        When check_spam is called
+        Then it should return the original message unmodified
+        """
+        mock_client = mocker.AsyncMock()
+        mock_client.process.side_effect = Exception("Connection failed")
+
+        original = b"original message"
+        result = await check_spam(mock_client, original)
+
+        assert result == original
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_categorize_recipients_all_local(self, email_account_factory):
+        """
+        Given a list of email addresses that all have local EmailAccounts
+        When categorize_recipients is called
+        Then all addresses should be categorized as local
+        And remote and invalid lists should be empty
+        """
+        ea1 = await sync_to_async(email_account_factory)()
+        ea2 = await sync_to_async(email_account_factory)()
+        await ea1.asave()
+        await ea2.asave()
+
+        local, remote, invalid = await categorize_recipients(
+            [ea1.email_address, ea2.email_address]
         )
-        res = await auth(None, sess, None, mechanism, auth_data)
-        assert res.success is False
+
+        assert len(local) == 2
+        assert len(remote) == 0
+        assert len(invalid) == 0
+        assert ea1.email_address.lower() in local
+        assert ea2.email_address.lower() in local
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_categorize_recipients_all_remote(self, faker):
+        """
+        Given a list of email addresses on external domains
+        When categorize_recipients is called
+        Then all addresses should be categorized as remote
+        And local and invalid lists should be empty
+        """
+        remote_addrs = [faker.email(), faker.email()]
+
+        local, remote, invalid = await categorize_recipients(remote_addrs)
+
+        assert len(local) == 0
+        assert len(remote) == 2
+        assert len(invalid) == 0
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_categorize_recipients_mixed(
+        self, email_account_factory, faker
+    ):
+        """
+        Given a list with both local and remote email addresses
+        When categorize_recipients is called
+        Then addresses should be correctly categorized as local or remote
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+        remote_addr = faker.email()
+
+        local, remote, invalid = await categorize_recipients(
+            [ea.email_address, remote_addr]
+        )
+
+        assert len(local) == 1
+        assert len(remote) == 1
+        assert len(invalid) == 0
+        assert ea.email_address.lower() in local
+        assert remote_addr in remote
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_categorize_recipients_invalid_local(
+        self, server_factory, faker
+    ):
+        """
+        Given an email address on our domain but with no EmailAccount
+        When categorize_recipients is called
+        Then the address should be categorized as invalid
+        """
+        server = await sync_to_async(server_factory)()
+        await server.asave()
+        invalid_addr = f"{faker.user_name()}@{server.domain_name}"
+
+        local, remote, invalid = await categorize_recipients([invalid_addr])
+
+        assert len(local) == 0
+        assert len(remote) == 0
+        assert len(invalid) == 1
+        assert invalid_addr.lower() in invalid
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_categorize_recipients_case_insensitive(
+        self, email_account_factory
+    ):
+        """
+        Given an email address with uppercase characters
+        When categorize_recipients is called
+        Then it should match case-insensitively and normalize to lowercase
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        # Test with uppercase version
+        upper_addr = ea.email_address.upper()
+        local, remote, invalid = await categorize_recipients([upper_addr])
+
+        assert len(local) == 1
+        assert len(remote) == 0
+        assert len(invalid) == 0
+        assert ea.email_address.lower() in local
 
 
-####################################################################
+########################################################################
+########################################################################
 #
-@pytest.mark.asyncio
-async def test_authenticator_blacklist(
-    email_account_factory, faker, aiosmtp_session
-):
-    """
-    Test the Authenticator blacklist mechanism that blocks too many
-    authentication failures.
-    """
-    # Our authenticator only uses the `session`, `mechanism`, and `auth_data`
-    # parameters to check authentication.
-    #
-    sess = aiosmtp_session
-    password = faker.pystr(min_chars=8, max_chars=32)
-    ea = await sync_to_async(email_account_factory)(password=password)
-    await ea.asave()
-    auth = Authenticator()
+class TestAuthentication:
+    """Tests for authentication and authorization."""
 
-    # A time before any failed attempts (so we can check expiry against this)
+    ####################################################################
     #
-    now = datetime.now(UTC)
+    @pytest.mark.asyncio
+    async def test_authenticator_authenticate_success(
+        self, email_account_factory, faker, aiosmtp_session
+    ):
+        """
+        Given valid credentials for an active EmailAccount
+        When authenticating with LOGIN or PLAIN mechanism
+        Then authentication should succeed
+        And the account should be returned in auth_data
+        """
+        sess = aiosmtp_session
+        password = faker.pystr(min_chars=8, max_chars=32)
+        ea = await sync_to_async(email_account_factory)(password=password)
+        await ea.asave()
+        auth = Authenticator()
 
-    # Before any authentications happen connections are not denied.
-    #
-    assert auth.check_deny(sess.peer) is False
+        for mechanism in ("LOGIN", "PLAIN"):
+            auth_data = LoginPassword(
+                login=bytes(ea.email_address, "utf-8"),
+                password=bytes(password, "utf-8"),
+            )
+            res = await auth(None, sess, None, mechanism, auth_data)
+            assert res.success
+            assert res.auth_data == ea
 
-    # After a single unsuccessful login, access is still allowed.
+    ####################################################################
     #
-    mechanism = "LOGIN"
-    auth_data = LoginPassword(
-        login=bytes(ea.email_address, "utf-8"),
-        password=bytes(faker.pystr(), "utf-8"),
-    )
-    res = await auth(None, sess, None, mechanism, auth_data)
-    assert res.success is False
+    @pytest.mark.asyncio
+    async def test_authenticator_invalid_password(
+        self, email_account_factory, faker, aiosmtp_session
+    ):
+        """
+        Given valid account credentials with incorrect password
+        When authenticating
+        Then authentication should fail
+        """
+        sess = aiosmtp_session
+        password = faker.pystr(min_chars=8, max_chars=32)
+        ea = await sync_to_async(email_account_factory)(password=password)
+        await ea.asave()
+        auth = Authenticator()
 
-    # Before any authentications happen connections are not denied.
-    #
-    assert auth.check_deny(sess.peer) is False
-
-    # We do a bunch of bad auths in quick succession. access will now be denied.
-    #
-    for _ in range(Authenticator.MAX_NUM_AUTH_FAILURES):
         auth_data = LoginPassword(
             login=bytes(ea.email_address, "utf-8"),
             password=bytes(faker.pystr(), "utf-8"),
         )
-        res = await auth(None, sess, None, mechanism, auth_data)
+        res = await auth(None, sess, None, "LOGIN", auth_data)
         assert res.success is False
 
-    # Failure is denied. Failure should be denied for all auths in the next
-    # AUTH_FAILURE_EXPIRY.
+    ####################################################################
     #
-    assert auth.check_deny(sess.peer)
-    deny = auth.blacklist[sess.peer[0]]
-    assert deny.expiry >= now + auth.AUTH_FAILURE_EXPIRY
+    @pytest.mark.asyncio
+    async def test_authenticator_invalid_account(
+        self, email_account_factory, faker, aiosmtp_session
+    ):
+        """
+        Given credentials for a non-existent account
+        When authenticating
+        Then authentication should fail
+        """
+        sess = aiosmtp_session
+        password = faker.pystr(min_chars=8, max_chars=32)
+        ea = await sync_to_async(email_account_factory)(password=password)
+        await ea.asave()
+        auth = Authenticator()
 
-    # Reset expiry back to `now` so that the next check will not be denied. It
-    # is important to note that when a client connects we check during EHLO,
-    # which is before authentication. If the protocol was such that
-    # `check_deny()` happened AFTER authentication, then on failed connection
-    # attempts the black list would never get a chance to expire (we expire
-    # when we check, not when we increment the number of failures.)
+        auth_data = LoginPassword(
+            login=bytes(faker.email(), "utf-8"),
+            password=bytes(password, "utf-8"),
+        )
+        res = await auth(None, sess, None, "LOGIN", auth_data)
+        assert res.success is False
+
+    ####################################################################
     #
-    deny.expiry = now
-    assert auth.check_deny(sess.peer) is False
-    assert sess.peer[0] not in auth.blacklist
+    @pytest.mark.asyncio
+    async def test_authenticator_deactivated_account(
+        self, email_account_factory, faker, aiosmtp_session
+    ):
+        """
+        Given valid credentials for a deactivated account
+        When authenticating
+        Then authentication should fail
+        """
+        sess = aiosmtp_session
+        password = faker.pystr(min_chars=8, max_chars=32)
+        ea = await sync_to_async(email_account_factory)(password=password)
+        await ea.asave()
+        auth = Authenticator()
 
-    res = await auth(None, sess, None, mechanism, auth_data)
-    assert res.success is False
-    assert sess.peer[0] in auth.blacklist
+        ea.deactivated = True
+        await ea.asave()
+
+        auth_data = LoginPassword(
+            login=bytes(ea.email_address, "utf-8"),
+            password=bytes(password, "utf-8"),
+        )
+        res = await auth(None, sess, None, "LOGIN", auth_data)
+        assert res.success is False
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_authenticator_unsupported_mechanisms(
+        self, email_account_factory, faker, aiosmtp_session
+    ):
+        """
+        Given valid credentials but unsupported authentication mechanism
+        When authenticating with mechanisms other than LOGIN or PLAIN
+        Then authentication should fail
+        """
+        sess = aiosmtp_session
+        password = faker.pystr(min_chars=8, max_chars=32)
+        ea = await sync_to_async(email_account_factory)(password=password)
+        await ea.asave()
+        auth = Authenticator()
+
+        for mechanism in (
+            "CRAM-MD5",
+            "DIGEST-MD5",
+            "NTLM",
+            "GSSAPI",
+            "XOAUTH",
+            "XOAUTH2",
+            faker.pystr(),
+        ):
+            auth_data = LoginPassword(
+                login=bytes(ea.email_address, "utf-8"),
+                password=bytes(password, "utf-8"),
+            )
+            res = await auth(None, sess, None, mechanism, auth_data)
+            assert res.success is False
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_authenticator_blacklist_mechanism(
+        self, email_account_factory, faker, aiosmtp_session
+    ):
+        """
+        Given a peer with repeated authentication failures
+        When the number of failures exceeds MAX_NUM_AUTH_FAILURES
+        Then the peer should be blacklisted
+        And access should be denied until expiry time passes
+        """
+        sess = aiosmtp_session
+        password = faker.pystr(min_chars=8, max_chars=32)
+        ea = await sync_to_async(email_account_factory)(password=password)
+        await ea.asave()
+        auth = Authenticator()
+
+        now = datetime.now(UTC)
+
+        # Before any authentications, connections are not denied
+        assert auth.check_deny(sess.peer) is False
+
+        # Single failed auth still allows access
+        auth_data = LoginPassword(
+            login=bytes(ea.email_address, "utf-8"),
+            password=bytes(faker.pystr(), "utf-8"),
+        )
+        res = await auth(None, sess, None, "LOGIN", auth_data)
+        assert res.success is False
+        assert auth.check_deny(sess.peer) is False
+
+        # Multiple failed auths trigger denial
+        for _ in range(Authenticator.MAX_NUM_AUTH_FAILURES):
+            auth_data = LoginPassword(
+                login=bytes(ea.email_address, "utf-8"),
+                password=bytes(faker.pystr(), "utf-8"),
+            )
+            res = await auth(None, sess, None, "LOGIN", auth_data)
+            assert res.success is False
+
+        # Now access is denied
+        assert auth.check_deny(sess.peer)
+        deny = auth.blacklist[sess.peer[0]]
+        assert deny.expiry >= now + auth.AUTH_FAILURE_EXPIRY
+
+        # Expiry works - reset to past and check is no longer denied
+        deny.expiry = now
+        assert auth.check_deny(sess.peer) is False
+        assert sess.peer[0] not in auth.blacklist
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_relayhandler_handle_EHLO_denies_blacklisted(
+        self, tmp_path, faker, aiosmtp_session, aiosmtp_envelope
+    ):
+        """
+        Given a peer that has been blacklisted for auth failures
+        When handle_EHLO is called
+        Then the connection should be denied with a 550 error
+        """
+        sess = aiosmtp_session
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+        hostname = faker.hostname()
+
+        # First access is okay
+        responses = await handler.handle_EHLO(
+            smtp, sess, envelope, hostname, []
+        )
+        assert len(responses) == 0
+        assert sess.host_name == hostname
+
+        # Blacklist the peer
+        authenticator.incr_fails(sess.peer)
+        authenticator.blacklist[sess.peer[0]].num_fails = (
+            Authenticator.MAX_NUM_AUTH_FAILURES + 1
+        )
+
+        # Now they're denied
+        responses = await handler.handle_EHLO(
+            smtp, sess, envelope, hostname, []
+        )
+        assert len(responses) == 1
+        assert responses[0].startswith("550 ")
 
 
-####################################################################
+########################################################################
+########################################################################
 #
-@pytest.mark.asyncio
-async def test_relayhandler_handle_EHLO(
-    tmp_path, faker, aiosmtp_session, aiosmtp_envelope
-):
-    """
-    the EHLO handler is where we deny connections from hosts on the
-    authenticator's blacklist.
-    """
-    sess = aiosmtp_session
-    authenticator = Authenticator()
-    handler = RelayHandler(tmp_path, authenticator)
-    smtp = SMTP(handler, authenticator=authenticator)
-    envelope = aiosmtp_envelope()
-    hostname = faker.hostname()
+class TestSMTPHandlers:
+    """Tests for SMTP protocol handlers."""
 
-    # does a `check_deny()` against the session.peer. Okay on the first access.
-    responses = await handler.handle_EHLO(smtp, sess, envelope, hostname, [])
-    assert len(responses) == 0
-    assert sess.host_name == hostname
-
-    # However, if this peer has failed to authenticate multiple times then we
-    # will deny them.
+    ####################################################################
     #
-    authenticator.incr_fails(sess.peer)
-    authenticator.blacklist[sess.peer[0]].num_fails = (
-        Authenticator.MAX_NUM_AUTH_FAILURES + 1
-    )
+    @pytest.mark.asyncio
+    async def test_handle_MAIL_authenticated(
+        self, email_account_factory, faker, aiosmtp_session, aiosmtp_envelope
+    ):
+        """
+        Given an authenticated SMTP session
+        When handle_MAIL is called with any FROM address
+        Then the request should be accepted (validation happens in handle_DATA)
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
 
-    responses = await handler.handle_EHLO(smtp, sess, envelope, hostname, [])
-    assert len(responses) == 1
-    assert responses[0].startswith("550 ")
+        sess = aiosmtp_session
+        sess.authenticated = True
+        sess.auth_data = ea
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        # Any FROM is accepted (validation happens in handle_DATA)
+        from_address = ea.email_address
+        response = await handler.handle_MAIL(
+            smtp, sess, envelope, from_address, []
+        )
+        assert response.startswith("250 OK")
+        assert envelope.mail_from == from_address
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_MAIL_unauthenticated(
+        self, faker, aiosmtp_session, aiosmtp_envelope, tmp_path
+    ):
+        """
+        Given an unauthenticated SMTP session
+        When handle_MAIL is called with any FROM address
+        Then the request should be accepted (needed for incoming mail)
+        """
+        sess = aiosmtp_session
+        sess.authenticated = False
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        # Any FROM is accepted (needed for incoming mail)
+        from_address = faker.email()
+        response = await handler.handle_MAIL(
+            smtp, sess, envelope, from_address, []
+        )
+        assert response.startswith("250 OK")
+        assert envelope.mail_from == from_address
 
 
-####################################################################
+########################################################################
+########################################################################
 #
-@pytest.mark.asyncio
-async def test_relayhandler_handle_MAIL(
-    email_account_factory, faker, aiosmtp_session, aiosmtp_envelope
-):
-    """
-    the `handle_MAIL` is where we set the `mail_from` attribute of the
-    SMTPEnvelolope. This is where we make sure that the email account relaying
-    through aiosmtpd is using their FROM address (because we only allow them to
-    send email from the email address associated with their email account.
-    """
-    ea = await sync_to_async(email_account_factory)()
-    await ea.asave()
+class TestRecipientHandling:
+    """Tests for recipient categorization and delivery."""
 
-    sess = aiosmtp_session
-    sess.auth_data = ea
-    authenticator = Authenticator()
-    handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-    smtp = SMTP(handler, authenticator=authenticator)
-    envelope = aiosmtp_envelope()
-
-    # from address is valid as long as the email part is the same as the
-    # ea.email_address.
+    ####################################################################
     #
-    from_address = ea.email_address
-    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
-    assert response.startswith("250 OK")
-    assert envelope.mail_from == from_address
+    @pytest.mark.asyncio
+    async def test_handle_DATA_unauthenticated_to_local(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mocker,
+    ):
+        """
+        Given an unauthenticated SMTP session sending to a local address
+        When handle_DATA is called
+        Then the message should be accepted and delivered locally
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
 
-    # Even saying you are someone else is okay, as long as your email address
-    # is your email address.
+        sess = aiosmtp_session
+        sess.authenticated = False
+
+        # Mock external services
+        mock_deliver_local = mocker.patch(
+            "as_email.management.commands.aiosmtpd.deliver_email_locally",
+            new_callable=mocker.AsyncMock,
+        )
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
+        envelope.rcpt_tos = [ea.email_address]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("250 OK")
+        mock_deliver_local.assert_called_once()
+        assert ea.email_address.lower() in mock_deliver_local.call_args[0][1]
+
+    ####################################################################
     #
-    from_address = f"{faker.name()} <{ea.email_address}>"
-    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
-    assert response.startswith("250 OK")
-    assert envelope.mail_from == from_address
+    @pytest.mark.asyncio
+    async def test_handle_DATA_unauthenticated_to_remote(
+        self, faker, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
+    ):
+        """
+        Given an unauthenticated SMTP session sending to a remote address
+        When handle_DATA is called
+        Then the request should be rejected with "530 Authentication required"
+        """
+        sess = aiosmtp_session
+        sess.authenticated = False
 
-    # However anyother email address, even from the same domain will be denied.
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        remote_addr = faker.email()
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=remote_addr)
+        envelope.rcpt_tos = [remote_addr]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("530 Authentication required")
+
+    ####################################################################
     #
-    from_address = faker.email()
-    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
-    assert response.startswith("551 ")
-    # NOTE: mail_from is set even if we deny them.
-    assert envelope.mail_from == from_address
+    @pytest.mark.asyncio
+    async def test_handle_DATA_unauthenticated_mixed_recipients(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mocker,
+    ):
+        """
+        Given an unauthenticated session sending to local and remote addresses
+        When handle_DATA is called
+        Then the request should be rejected (authentication required for relay)
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
 
-    # Different username, same domain.
+        sess = aiosmtp_session
+        sess.authenticated = False
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        remote_addr = faker.email()
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
+        envelope.rcpt_tos = [ea.email_address, remote_addr]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("530 Authentication required")
+
+    ####################################################################
     #
-    from_address = f"{faker.user_name()}@{ea.email_address.split('@')[1]}"
-    response = await handler.handle_MAIL(smtp, sess, envelope, from_address, [])
-    assert response.startswith("551 ")
-    assert envelope.mail_from == from_address
+    @pytest.mark.asyncio
+    async def test_handle_DATA_authenticated_to_remote(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        smtp,
+        mocker,
+    ):
+        """
+        Given an authenticated session sending to a remote address
+        When handle_DATA is called
+        Then the message should be relayed to the mail provider
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = True
+        sess.auth_data = ea
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        to = faker.email()
+        envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
+        envelope.rcpt_tos = [to]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("250 ")
+        send_message = smtp.return_value.sendmail
+        assert send_message.call_count == 1
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_DATA_authenticated_mixed_recipients(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        smtp,
+        mocker,
+    ):
+        """
+        Given an authenticated session sending to both local and remote addresses
+        When handle_DATA is called
+        Then messages should be delivered locally AND relayed to provider
+        """
+        ea1 = await sync_to_async(email_account_factory)()
+        await ea1.asave()
+        ea2 = await sync_to_async(email_account_factory)()
+        await ea2.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = True
+        sess.auth_data = ea1
+
+        # Mock deliver_email_locally
+        mock_deliver_local = mocker.patch(
+            "as_email.management.commands.aiosmtpd.deliver_email_locally",
+            new_callable=mocker.AsyncMock,
+        )
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea1.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        remote_to = faker.email()
+        envelope = aiosmtp_envelope(msg_from=ea1.email_address, to=remote_to)
+        envelope.rcpt_tos = [ea2.email_address, remote_to]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("250 OK")
+        # Both local delivery and relay should be called
+        mock_deliver_local.assert_called_once()
+        smtp.return_value.sendmail.assert_called_once()
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_DATA_invalid_local_addresses_only(
+        self, server_factory, faker, aiosmtp_session, aiosmtp_envelope, mocker
+    ):
+        """
+        Given a message sent only to invalid local addresses (domain exists, no account)
+        When handle_DATA is called
+        Then the request should be rejected with "550 5.1.1 Recipient address rejected"
+        """
+        server = await sync_to_async(server_factory)()
+        await server.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = False
+
+        authenticator = Authenticator()
+        handler = RelayHandler(server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        invalid_addr = f"{faker.user_name()}@{server.domain_name}"
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=invalid_addr)
+        envelope.rcpt_tos = [invalid_addr]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("550 5.1.1 Recipient address rejected")
+        assert invalid_addr.lower() in response
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_DATA_some_invalid_local_addresses(
+        self,
+        email_account_factory,
+        server_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mocker,
+    ):
+        """
+        Given a message with both valid and invalid local addresses
+        When handle_DATA is called
+        Then the message should be delivered only to valid addresses
+        And a warning should be logged for invalid addresses
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = False
+
+        mock_deliver_local = mocker.patch(
+            "as_email.management.commands.aiosmtpd.deliver_email_locally",
+            new_callable=mocker.AsyncMock,
+        )
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        invalid_addr = f"{faker.user_name()}@{ea.server.domain_name}"
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
+        envelope.rcpt_tos = [ea.email_address, invalid_addr]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        # Should succeed but only deliver to valid address
+        assert response.startswith("250 OK")
+        mock_deliver_local.assert_called_once()
+        # Only valid address in delivery list
+        assert ea.email_address.lower() in mock_deliver_local.call_args[0][1]
+        assert len(mock_deliver_local.call_args[0][1]) == 1
 
 
-####################################################################
+########################################################################
+########################################################################
 #
-@pytest.mark.asyncio
-async def test_relayhandler_handle_DATA(
-    email_account_factory, faker, aiosmtp_session, aiosmtp_envelope, smtp
-):
-    ea = await sync_to_async(email_account_factory)()
-    await ea.asave()
+class TestFromHeaderValidation:
+    """Tests for FROM header validation in handle_DATA."""
 
-    to = faker.email()
-
-    sess = aiosmtp_session
-    sess.auth_data = ea
-    authenticator = Authenticator()
-    handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-    aio_smtp = SMTP(handler, authenticator=authenticator)
-    envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
-    envelope.mail_from = ea.email_address
-
-    response = await handler.handle_DATA(aio_smtp, sess, envelope)
-    assert response.startswith("250 ")
-
-    send_message = smtp.return_value.sendmail
-    assert send_message.call_count == 1
-    assert send_message.call_args.args == Contains(
-        ea.email_address,
-        [to],
-    )
-
-    msg = email.message_from_bytes(
-        envelope.original_content,
-        policy=email.policy.default,
-    )
-
-    sent_message_bytes = send_message.call_args.args[2]
-    sent_message = email.message_from_bytes(
-        sent_message_bytes, policy=email.policy.default
-    )
-
-    assert sent_message["From"] == ea.email_address
-    assert sent_message["To"] == to
-    assert sent_message["Subject"] == msg["Subject"]
-
-    assert_email_equal(msg, sent_message, ignore_headers=True)
-
-    # If you stick a `From` header in to the message that is NOT your valid
-    # from email address, this will fail and the email will not be sent.
+    ####################################################################
     #
-    # NOTE: by not supplying msg_from the email generated by
-    #       `aiosmtp_envelope()` will have a random from email address that
-    #       does NOT match ea.email_address and thus should be denied because
-    #       it is the the email account trying to send email
+    @pytest.mark.asyncio
+    async def test_handle_DATA_authenticated_valid_from(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        smtp,
+        mocker,
+    ):
+        """
+        Given an authenticated session with correct FROM header
+        When handle_DATA is called
+        Then the message should be accepted and relayed
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = True
+        sess.auth_data = ea
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        to = faker.email()
+        envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
+        envelope.rcpt_tos = [to]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("250 ")
+
+    ####################################################################
     #
-    envelope = aiosmtp_envelope()
-    envelope.mail_from = ea.email_address
-    msg = email.message_from_bytes(
-        envelope.original_content,
-        policy=email.policy.default,
-    )
-    assert parseaddr(msg["From"]) != ea.email_address
+    @pytest.mark.asyncio
+    async def test_handle_DATA_authenticated_invalid_from(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        smtp,
+        mocker,
+    ):
+        """
+        Given an authenticated session with wrong FROM header
+        When handle_DATA is called
+        Then the request should be rejected with "551 FROM must be"
+        And no message should be sent
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
 
-    response = await handler.handle_DATA(aio_smtp, sess, envelope)
-    assert response.startswith("551 ")
+        sess = aiosmtp_session
+        sess.authenticated = True
+        sess.auth_data = ea
 
-    # '1' because this is the same mock object as before, and its count should
-    # not have increased from the previous time in this test.
-    #
-    assert send_message.call_count == 1
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: b"spam checked")
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        to = faker.email()
+        # Envelope has wrong FROM address in message body
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=to)
+        envelope.rcpt_tos = [to]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("551 FROM must be")
+        # Message should not be sent
+        assert smtp.return_value.sendmail.call_count == 0
 
 
-####################################################################
+########################################################################
+########################################################################
 #
-@pytest.mark.asyncio
-async def test_relay_email_to_provider(
-    email_account_factory, email_factory, inactive_email_factory, faker, smtp
-):
-    """
-    Make sure that the function used to relay email to the provider filters
-    out inactive emails from recipients, and send a DSN to the email account
-    that tried to send email to inactive emails.
-    """
-    ea = await sync_to_async(email_account_factory)()
-    await ea.asave()
+class TestDNSBL:
+    """Tests for DNSBL checking in handle_CONNECT."""
 
-    inactives = []
-    for _ in range(5):
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_CONNECT_not_blacklisted(
+        self, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
+    ):
+        """
+        Given a connecting IP that is not on any DNSBL
+        When handle_CONNECT is called
+        Then the connection should be accepted with "220 OK"
+        """
+        sess = aiosmtp_session
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+
+        # Mock DNSBL check - not blacklisted
+        mock_result = mocker.Mock()
+        mock_result.blacklisted = False
+        handler.dnsbl = mocker.AsyncMock()
+        handler.dnsbl.check = mocker.AsyncMock(return_value=mock_result)
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        response = await handler.handle_CONNECT(
+            smtp_server, sess, envelope, "hostname", 25
+        )
+
+        assert response == "220 OK"
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_CONNECT_blacklisted(
+        self, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
+    ):
+        """
+        Given a connecting IP that is on a DNSBL
+        When handle_CONNECT is called
+        Then the connection should be rejected with "554 Your IP is blacklisted"
+        And a tarpit delay should be applied
+        """
+        sess = aiosmtp_session
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+
+        # Mock DNSBL check - blacklisted
+        mock_result = mocker.Mock()
+        mock_result.blacklisted = True
+        mock_result.detected_by = [(("spamhaus.org", ["spam"]),)]
+        handler.dnsbl = mocker.AsyncMock()
+        handler.dnsbl.check = mocker.AsyncMock(return_value=mock_result)
+
+        # Mock tarpit delay to avoid waiting
+        mocker.patch(
+            "as_email.management.commands.aiosmtpd.tarpit_delay",
+            new_callable=mocker.AsyncMock,
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        response = await handler.handle_CONNECT(
+            smtp_server, sess, envelope, "hostname", 25
+        )
+
+        assert response.startswith("554 Your IP is blacklisted")
+
+
+########################################################################
+########################################################################
+#
+class TestSpamAssassinIntegration:
+    """Tests for SpamAssassin spam checking."""
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_DATA_spam_check_success(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mocker,
+    ):
+        """
+        Given a successful SpamAssassin check that adds headers
+        When handle_DATA is called for local delivery
+        Then the spam-checked message with headers should be delivered
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = False
+
+        mock_deliver_local = mocker.patch(
+            "as_email.management.commands.aiosmtpd.deliver_email_locally",
+            new_callable=mocker.AsyncMock,
+        )
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock successful spam check with headers
+        spam_headers = b"X-Spam-Score: 5.0\r\nX-Spam-Status: Yes\r\n"
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            return_value=mocker.Mock(
+                message=mocker.Mock(as_bytes=lambda: spam_headers)
+            )
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
+        envelope.rcpt_tos = [ea.email_address]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        assert response.startswith("250 OK")
+        # Verify spam-checked bytes passed to deliver_email_locally
+        mock_deliver_local.assert_called_once()
+        assert mock_deliver_local.call_args[0][2] == spam_headers
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_DATA_spam_check_failure(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mocker,
+    ):
+        """
+        Given a SpamAssassin check that fails with an exception
+        When handle_DATA is called
+        Then the original message should be delivered unchanged
+        And the error should be logged
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = False
+
+        mock_deliver_local = mocker.patch(
+            "as_email.management.commands.aiosmtpd.deliver_email_locally",
+            new_callable=mocker.AsyncMock,
+        )
+
+        authenticator = Authenticator()
+        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+
+        # Mock spam check failure
+        handler.spamc_client = mocker.AsyncMock()
+        handler.spamc_client.process = mocker.AsyncMock(
+            side_effect=Exception("SpamAssassin connection failed")
+        )
+
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
+        envelope.rcpt_tos = [ea.email_address]
+
+        response = await handler.handle_DATA(smtp_server, sess, envelope)
+
+        # Should still succeed
+        assert response.startswith("250 OK")
+        # Should deliver original message
+        mock_deliver_local.assert_called_once()
+        assert mock_deliver_local.call_args[0][2] == envelope.original_content
+
+
+########################################################################
+########################################################################
+#
+class TestRelayToProvider:
+    """Tests for relay_email_to_provider function."""
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_relay_email_to_provider_filters_inactives(
+        self,
+        email_account_factory,
+        email_factory,
+        inactive_email_factory,
+        faker,
+        smtp,
+    ):
+        """
+        Given a message sent only to inactive email addresses
+        When relay_email_to_provider is called
+        Then no message should be sent to the provider
+        And a delivery status notification should be sent to the sender
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        inactives = []
+        for _ in range(5):
+            inact = inactive_email_factory()
+            await inact.asave()
+            inactives.append(inact)
+
+        inactive_emails = []
+        async for inactive in InactiveEmail.objects.all():
+            inactive_emails.append(inactive)
+
+        # Send to only inactive address
+        inactive = inactive_emails[0].email_address
+        msg = email_factory(msg_from=ea.email_address, to=inactive)
+        await relay_email_to_provider(ea, [inactive], msg)
+
+        # No email sent to provider
+        send_message = smtp.return_value.sendmail
+        assert send_message.call_count == 0
+
+        # DSN delivered locally
+        mh = ea.MH()
+        folder = mh.get_folder("inbox")
+        stored_msg = folder.get(1)
+
+        from_addr = f"mailer-daemon@{ea.server.domain_name}"
+        assert stored_msg["From"] == from_addr
+        assert stored_msg["To"] == ea.email_address
+        assert (
+            stored_msg["Subject"]
+            == "NOTICE: Email not sent due to destination address marked as inactive"
+        )
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_relay_email_to_provider_mixed_valid_inactive(
+        self,
+        email_account_factory,
+        email_factory,
+        inactive_email_factory,
+        faker,
+        smtp,
+    ):
+        """
+        Given a message sent to both valid and inactive addresses
+        When relay_email_to_provider is called
+        Then the message should be sent only to valid addresses
+        And a delivery status notification should be sent for inactive addresses
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
         inact = inactive_email_factory()
         await inact.asave()
-        inactives.append(inact)
 
-    inactive_emails = []
-    async for inactive in InactiveEmail.objects.all():
-        inactive_emails.append(inactive)
+        inactive = inact.email_address
+        to = faker.email()
+        msg = email_factory(msg_from=ea.email_address, to=to, cc=inactive)
+        await relay_email_to_provider(ea, [to, inactive], msg)
 
-    # If we sending email to just one inactive address it is not delivered to
-    # anyone, but a DSN is delivered to the email account that tried to send
-    # the message.
-    #
-    inactive = inactive_emails[0].email_address
-    msg = email_factory(msg_from=ea.email_address, to=inactive)
-    await relay_email_to_provider(ea, [inactive], msg)
+        # Message sent to valid address
+        send_message = smtp.return_value.sendmail
+        assert send_message.call_count == 1
+        assert send_message.call_args.args == Contains(
+            ea.email_address,
+            [to],
+        )
 
-    # First, no email should have been sent to the provider.
-    #
-    send_message = smtp.return_value.sendmail
-    assert send_message.call_count == 0
-
-    # Second, the email account will have a single message delivered to its
-    # inbox (via local delivery) that is our DSN
-    #
-    # The message should have been delivered to the inbox since there are no
-    # mail filter rules. And it should be the only message in the mailbox.
-    #
-    mh = ea.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-
-    from_addr = f"mailer-daemon@{ea.server.domain_name}"
-    assert stored_msg["From"] == from_addr
-    assert stored_msg["To"] == ea.email_address
-    assert (
-        stored_msg["Subject"]
-        == "NOTICE: Email not sent due to destination address marked as inactive"
-    )
-    assert stored_msg.is_multipart()
-
-    # There should only be one rfc822 part on the message. This should be the
-    # message that was being sent.
-    #
-    for part in stored_msg.walk():
-        if part.get_content_type == "message/rfc822":
-            assert part.get_content().as_bytes() == msg.as_bytes()
-            break
-
-    # Do a similar test, but send to one valid email and one inactive email.
-    # We will still get a bounce, but the non-inactve email will be sent the
-    # message.
-    #
-    inactive = inactive_emails[0].email_address
-    to = faker.email()
-    msg = email_factory(msg_from=ea.email_address, to=to, cc=inactive)
-    await relay_email_to_provider(ea, [to, inactive], msg)
-
-    stored_msg = folder.get(2)
-
-    from_addr = f"mailer-daemon@{ea.server.domain_name}"
-    assert stored_msg["From"] == from_addr
-    assert stored_msg["To"] == ea.email_address
-    assert (
-        stored_msg["Subject"]
-        == "NOTICE: Email not sent due to destination address marked as inactive"
-    )
-
-    # And a message was sent..
-    #
-    assert send_message.call_count == 1
-    assert send_message.call_args.args == Contains(
-        ea.email_address,
-        [to],
-    )
-
-    sent_message_bytes = send_message.call_args.args[2]
-    sent_message = email.message_from_bytes(
-        sent_message_bytes, policy=email.policy.default
-    )
-
-    assert sent_message["From"] == ea.email_address
-    assert sent_message["To"] == to
-    assert sent_message["Subject"] == msg["Subject"]
-
-    assert_email_equal(msg, sent_message, ignore_headers=True)
+        # DSN also sent
+        mh = ea.MH()
+        folder = mh.get_folder("inbox")
+        stored_msg = folder.get(1)
+        assert (
+            stored_msg["Subject"]
+            == "NOTICE: Email not sent due to destination address marked as inactive"
+        )
