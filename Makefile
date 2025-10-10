@@ -11,28 +11,28 @@ build:	## `docker compose build` for both `prod` and `dev` profiles
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile prod build
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile dev build
 
-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
+uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
 	@uv sync
 
-lock:	## Update uv.lock file from pyproject.toml dependencies
+uv-lock:	## Update uv.lock file from pyproject.toml dependencies
 	@uv lock
 
-add:	## Add a new dependency (usage: make add PACKAGE=requests)
+uv-add:	## Add a new dependency (usage: make add PACKAGE=requests)
 	@if [ -z "$(PACKAGE)" ]; then \
 		echo "Error: PACKAGE not specified. Usage: make add PACKAGE=requests"; \
 		exit 1; \
 	fi
 	@uv add $(PACKAGE)
 
-add-dev:	## Add a new dev dependency (usage: make add-dev PACKAGE=pytest-xdist)
+uv-add-dev:	## Add a new dev dependency (usage: make add-dev PACKAGE=pytest-xdist)
 	@if [ -z "$(PACKAGE)" ]; then \
 		echo "Error: PACKAGE not specified. Usage: make add-dev PACKAGE=pytest-xdist"; \
 		exit 1; \
 	fi
 	@uv add --dev $(PACKAGE)
 
-upgrade:	## Upgrade all dependencies to latest compatible versions
-	@uv lock --upgrade
+uv-upgrade:	## Upgrade all dependencies to latest compatible versions
+	@uv sync --upgrade
 
 dirs: dbs ssl spool spama    ## Make the local directories for dbs, ssl, and spool.
 
