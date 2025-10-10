@@ -32,6 +32,27 @@ pytestmark = pytest.mark.django_db
 
 
 ########################################################################
+#
+@pytest.fixture
+def mock_aiospamc_process(mocker):
+    """
+    Fixture to mock aiospamc.process.
+    Returns the mock so tests can customize return values or verify calls.
+    By default returns a successful response with spam headers.
+    """
+    mock_result = mocker.Mock()
+    mock_result.body = (
+        b"X-Spam-Status: No\r\nX-Spam-Score: 0.1\r\n\r\noriginal message body"
+    )
+
+    return mocker.patch(
+        "as_email.management.commands.aiosmtpd.aiospamc.process",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_result,
+    )
+
+
+########################################################################
 ########################################################################
 #
 class TestHelperFunctions:
@@ -163,37 +184,40 @@ class TestHelperFunctions:
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_check_spam_success(self, mocker):
+    async def test_check_spam_success(self, mock_aiospamc_process, mocker):
         """
-        Given a SpamAssassin client that successfully processes a message
+        Given aiospamc.process that successfully processes a message
         When check_spam is called
-        Then it should return the message with spam headers added
+        Then it should return the message body with spam headers added
         """
-        mock_client = mocker.AsyncMock()
+        # Customize the mock result for this test
         mock_result = mocker.Mock()
-        mock_result.message.as_bytes.return_value = b"message with spam headers"
-        mock_client.process.return_value = mock_result
+        mock_result.body = b"message with spam headers"
+        mock_aiospamc_process.return_value = mock_result
 
         original = b"original message"
-        result = await check_spam(mock_client, original)
+        result = await check_spam(original)
 
         assert result == b"message with spam headers"
-        mock_client.process.assert_called_once_with(original)
+        mock_aiospamc_process.assert_called_once_with(
+            original, host=mocker.ANY, port=mocker.ANY
+        )
 
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_check_spam_failure(self, mocker):
+    async def test_check_spam_failure(self, mock_aiospamc_process):
         """
-        Given a SpamAssassin client that raises an exception
+        Given aiospamc.process that raises an exception
         When check_spam is called
         Then it should return the original message unmodified
+        And the error should be logged
         """
-        mock_client = mocker.AsyncMock()
-        mock_client.process.side_effect = Exception("Connection failed")
+        # Configure the mock to raise an exception
+        mock_aiospamc_process.side_effect = Exception("Connection failed")
 
         original = b"original message"
-        result = await check_spam(mock_client, original)
+        result = await check_spam(original)
 
         assert result == original
 
@@ -621,6 +645,7 @@ class TestRecipientHandling:
         aiosmtp_session,
         aiosmtp_envelope,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given an unauthenticated SMTP session sending to a local address
@@ -642,14 +667,6 @@ class TestRecipientHandling:
         authenticator = Authenticator()
         handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
 
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
-
         smtp_server = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
         envelope.rcpt_tos = [ea.email_address]
@@ -664,7 +681,13 @@ class TestRecipientHandling:
     #
     @pytest.mark.asyncio
     async def test_handle_DATA_unauthenticated_to_remote(
-        self, faker, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
+        self,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        tmp_path,
+        mocker,
+        mock_aiospamc_process,
     ):
         """
         Given an unauthenticated SMTP session sending to a remote address
@@ -676,14 +699,6 @@ class TestRecipientHandling:
 
         authenticator = Authenticator()
         handler = RelayHandler(tmp_path, authenticator)
-
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         remote_addr = faker.email()
@@ -704,6 +719,7 @@ class TestRecipientHandling:
         aiosmtp_session,
         aiosmtp_envelope,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given an unauthenticated session sending to local and remote addresses
@@ -718,14 +734,6 @@ class TestRecipientHandling:
 
         authenticator = Authenticator()
         handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         remote_addr = faker.email()
@@ -747,6 +755,7 @@ class TestRecipientHandling:
         aiosmtp_envelope,
         smtp,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given an authenticated session sending to a remote address
@@ -762,14 +771,6 @@ class TestRecipientHandling:
 
         authenticator = Authenticator()
         handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
@@ -793,6 +794,7 @@ class TestRecipientHandling:
         aiosmtp_envelope,
         smtp,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given an authenticated session sending to both local and remote addresses
@@ -817,14 +819,6 @@ class TestRecipientHandling:
         authenticator = Authenticator()
         handler = RelayHandler(ea1.server.outgoing_spool_dir, authenticator)
 
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
-
         smtp_server = SMTP(handler, authenticator=authenticator)
         remote_to = faker.email()
         envelope = aiosmtp_envelope(msg_from=ea1.email_address, to=remote_to)
@@ -841,7 +835,13 @@ class TestRecipientHandling:
     #
     @pytest.mark.asyncio
     async def test_handle_DATA_invalid_local_addresses_only(
-        self, server_factory, faker, aiosmtp_session, aiosmtp_envelope, mocker
+        self,
+        server_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mocker,
+        mock_aiospamc_process,
     ):
         """
         Given a message sent only to invalid local addresses (domain exists, no account)
@@ -856,14 +856,6 @@ class TestRecipientHandling:
 
         authenticator = Authenticator()
         handler = RelayHandler(server.outgoing_spool_dir, authenticator)
-
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         invalid_addr = f"{faker.user_name()}@{server.domain_name}"
@@ -886,6 +878,7 @@ class TestRecipientHandling:
         aiosmtp_session,
         aiosmtp_envelope,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given a message with both valid and invalid local addresses
@@ -906,14 +899,6 @@ class TestRecipientHandling:
 
         authenticator = Authenticator()
         handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         invalid_addr = f"{faker.user_name()}@{ea.server.domain_name}"
@@ -947,6 +932,7 @@ class TestFromHeaderValidation:
         aiosmtp_envelope,
         smtp,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given an authenticated session with correct FROM header
@@ -962,14 +948,6 @@ class TestFromHeaderValidation:
 
         authenticator = Authenticator()
         handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
@@ -991,6 +969,7 @@ class TestFromHeaderValidation:
         aiosmtp_envelope,
         smtp,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given an authenticated session with wrong FROM header
@@ -1007,14 +986,6 @@ class TestFromHeaderValidation:
 
         authenticator = Authenticator()
         handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
-        # Mock spam check
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: b"spam checked")
-            )
-        )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
@@ -1084,7 +1055,7 @@ class TestDNSBL:
         # Mock DNSBL check - blacklisted
         mock_result = mocker.Mock()
         mock_result.blacklisted = True
-        mock_result.detected_by = [(("spamhaus.org", ["spam"]),)]
+        mock_result.detected_by = [("spamhaus.org", ["spam"])]
         handler.dnsbl = mocker.AsyncMock()
         handler.dnsbl.check = mocker.AsyncMock(return_value=mock_result)
 
@@ -1120,6 +1091,7 @@ class TestSpamAssassinIntegration:
         aiosmtp_session,
         aiosmtp_envelope,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given a successful SpamAssassin check that adds headers
@@ -1142,12 +1114,9 @@ class TestSpamAssassinIntegration:
 
         # Mock successful spam check with headers
         spam_headers = b"X-Spam-Score: 5.0\r\nX-Spam-Status: Yes\r\n"
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            return_value=mocker.Mock(
-                message=mocker.Mock(as_bytes=lambda: spam_headers)
-            )
-        )
+        mock_result = mocker.Mock()
+        mock_result.body = spam_headers
+        mock_aiospamc_process.return_value = mock_result
 
         smtp_server = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
@@ -1170,6 +1139,7 @@ class TestSpamAssassinIntegration:
         aiosmtp_session,
         aiosmtp_envelope,
         mocker,
+        mock_aiospamc_process,
     ):
         """
         Given a SpamAssassin check that fails with an exception
@@ -1192,9 +1162,8 @@ class TestSpamAssassinIntegration:
         handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
 
         # Mock spam check failure
-        handler.spamc_client = mocker.AsyncMock()
-        handler.spamc_client.process = mocker.AsyncMock(
-            side_effect=Exception("SpamAssassin connection failed")
+        mock_aiospamc_process.side_effect = Exception(
+            "SpamAssassin connection failed"
         )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
