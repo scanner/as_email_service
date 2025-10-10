@@ -7,7 +7,7 @@ pytest fixtures for our tests
 #
 import email.policy
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -17,6 +17,7 @@ from email.utils import parseaddr
 import pytest
 from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
 from django.core import mail
+from fakeredis import FakeConnection
 from pytest_factoryboy import register
 from requests import Response
 from rest_framework.test import APIClient, RequestsClient
@@ -44,6 +45,35 @@ register(MessageFilterRuleFactory)
 
 ####################################################################
 #
+@pytest.fixture
+def redis_client(request):
+    """
+    Provide a `fakeredis` instance as a fixture.
+    """
+    import fakeredis
+
+    redis_client = fakeredis.FakeRedis()
+    return redis_client
+
+
+####################################################################
+#
+@pytest.fixture
+def fakeredis_cache(settings) -> None:
+    """
+    Configure django to use fakeredis for its cache
+    """
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": "redis://localhost:6379",
+            "OPTIONS": {"connection_class": FakeConnection},
+        }
+    }
+
+
+####################################################################
+#
 def assert_email_equal(msg1, msg2, ignore_headers=False):
     """
     Because we can not directly compare a Message and EmailMessage object
@@ -55,8 +85,8 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     if ignore_headers is False:
         assert len(msg1.items()) == len(msg2.items())
         for header, value in msg1.items():
-            value = value.replace("\n", "")
-            assert msg2[header].replace("\n", "") == value
+            value = value.replace("\n", "").replace("\r", "")
+            assert msg2[header].replace("\n", "").replace("\r", "") == value
 
     # If we are ignoring only some headers, then skip those.
     #
@@ -81,7 +111,9 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     assert len(parts1) == len(parts2)
 
     for part1, part2 in zip(parts1, parts2):
-        assert part1.get_payload() == part2.get_payload()
+        assert part1.get_payload().strip().replace("\r", "").replace(
+            "\n", ""
+        ) == part2.get_payload().strip().replace("\r", "").replace("\n", "")
 
 
 ####################################################################
@@ -202,6 +234,10 @@ def email_spool_dir(settings, tmp_path):
     spool_dir = tmp_path / "spool"
     spool_dir.mkdir(parents=True, exist_ok=True)
     settings.EMAIL_SPOOL_DIR = spool_dir
+    settings.FAILED_INCOMING_MSG_DIR = (
+        settings.EMAIL_SPOOL_DIR / "failed_incoming"
+    )
+    settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
     yield spool_dir
 
 
@@ -217,6 +253,7 @@ def mailbox_dir(settings, tmp_path):
     mail_base_dir = tmp_path / "mail_base_dir"
     mail_base_dir.mkdir(parents=True, exist_ok=True)
     settings.MAIL_DIRS = mail_base_dir
+    settings.EXT_PW_FILE = mail_base_dir / "asimapd_passwords.txt"
     yield mail_base_dir
 
 
@@ -388,7 +425,7 @@ def postmark_request_bounce(
         print(f"Response update: {response_update}")
 
         response = {
-            "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "CanActivate": True,
             "Content": email_message.as_string(policy=email.policy.default),
             "Description": "The server was unable to deliver your message (ex: unknown user, mailbox not found).",

@@ -1,6 +1,7 @@
 autopep8
 black
 coverage
+cryptography==42.0.8
 django-stubs[compatible-mypy]
 flake8
 isort
@@ -8,10 +9,10 @@ mypy
 pip-tools
 pre-commit
 ruff
+types-aiofiles
 types-cachetools
 types-pytz
+types-redis
 types-requests
 types-setuptools
-types-aiofiles
-types-redis
 yapf

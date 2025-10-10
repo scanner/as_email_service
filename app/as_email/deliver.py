@@ -40,6 +40,8 @@ from typing import List, Union, cast
 #
 from .models import EmailAccount, MessageFilterRule
 
+ENCODINGS = ("ascii", "iso-8859-1", "utf-8")
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,7 +51,7 @@ def deliver_message(
     email_account: EmailAccount,
     msg: EmailMessage,
     depth: int = 1,
-):
+) -> None:
     """
     Deliver the given message to the given email account. This accounts for
     locally delivery, aliases, and forwards to external systems.
@@ -74,6 +76,10 @@ def deliver_message(
                 deliver_message(alias_for, msg, depth + 1)
         case EmailAccount.FORWARDING:
             forward_message(email_account, msg)
+        case _:
+            raise RuntimeError(
+                f"Unknown delivery method {email_account.delivery_method}"
+            )
 
 
 ####################################################################
@@ -142,7 +148,7 @@ def lock_folder(
         try:
             folder.lock()
             break
-        except ExternalClashError:
+        except (ExternalClashError, FileExistsError):
             if fail:
                 raise
             timeout -= 0.1
@@ -160,8 +166,23 @@ def _add_msg_to_folder(folder: MH, msg: EmailMessage):
     Adding a message to a MH folder requires several simple steps. This
     wraps those steps.
     """
+    # To deal with encoding snafus from whoever sent this message we try to
+    # encode it as bytes using several different encoders.
+    #
+    msg_bytes = None
+    msg_text = msg.as_string(policy=email.policy.default)
+    for encoding in ENCODINGS:
+        try:
+            msg_bytes = msg_text.encode(encoding)
+            break
+        except ValueError:
+            pass
+
+    if msg_bytes is None:
+        raise ValueError(f"Unable to encode message using any of {ENCODINGS}")
+
     with lock_folder(folder):
-        msg_id = int(folder.add(msg))
+        msg_id = int(folder.add(msg_bytes))
         sequences = folder.get_sequences()
         if "unseen" in sequences:
             sequences["unseen"].append(msg_id)
@@ -200,6 +221,9 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
     # If the message was not delivered to any folders in the above loop,
     # deliver it to the inbox, unless auto filing for spam is turned on and it
     # is spam.
+    #
+    # XXX Do we want to consider auto-filing spam no mater which mailbox it is
+    #     delivered to?
     #
     if not delivered_to:
         spam_score = 0
@@ -293,9 +317,9 @@ def make_encapsulated_fwd_msg(
 
     msg = EmailMessage()
     if "Subject" in orig_msg:
-        msg[
-            "Subject"
-        ] = f"Fwd: {subj_spam}forwarded from {original_from}: {orig_msg['Subject']}"
+        msg["Subject"] = (
+            f"Fwd: {subj_spam}forwarded from {original_from}: {orig_msg['Subject']}"
+        )
     else:
         msg["Subject"] = f"Fwd: {subj_spam}forwarded from {orig_msg['From']}"
 

@@ -12,6 +12,7 @@ import email.message
 import logging
 import mailbox
 import random
+import shlex
 import smtplib
 import string
 from datetime import datetime
@@ -20,7 +21,6 @@ from typing import List, Union
 
 # 3rd party imports
 #
-import aiofiles
 import pytz
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -35,6 +35,10 @@ from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
 from postmarker.exceptions import ClientError
 from requests import RequestException
+
+# project imports
+#
+from .utils import sendmail
 
 # Various models that belong to a specific user need the User object.
 #
@@ -238,14 +242,9 @@ class Server(models.Model):
         directory specified exists.
         """
         self._set_initial_values()
-        # Make sure that the directories for the file fields exist.
-        #
-        if not await aiofiles.os.path.exists(self.incoming_spool_dir):
-            await aiofiles.os.mkdirs(self.incoming_spool_dir)
-        if not await aiofiles.os.path.exists(self.outgoing_spool_dir):
-            await aiofiles.os.mkdirs(self.outgoing_spool_dir)
-        if not await aiofiles.os.path.exists(self.mail_dir_parent):
-            await aiofiles.os.mkdirs(self.mail_dir_parent)
+        Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
 
         await super().asave(*args, **kwargs)
 
@@ -316,9 +315,7 @@ class Server(models.Model):
         try:
             smtp_client.starttls()
             smtp_client.login(token, token)
-            smtp_client.send_message(
-                msg, from_addr=email_from, to_addrs=rcpt_tos
-            )
+            sendmail(smtp_client, msg, from_addr=email_from, to_addrs=rcpt_tos)
         except smtplib.SMTPException as exc:
             logger.error(
                 f"Mail from {email_from}, to: {rcpt_tos}, failed with "
@@ -785,7 +782,7 @@ class EmailAccount(models.Model):
         # even if self.id is set because the mail dir may have been
         # changed and we want this process to ensure that it exists.
         #
-        _ = self.MH()
+        self.MH()
 
     ####################################################################
     #
@@ -861,10 +858,8 @@ class EmailAccount(models.Model):
             ),
             create=create,
         )
-        try:
-            _ = mh.get_folder("inbox")
-        except mailbox.NoSuchMailboxError:
-            _ = mh.add_folder("inbox")
+        for folder in settings.DEFAULT_FOLDERS:
+            mh.add_folder(folder)
         return mh
 
     ####################################################################
@@ -910,7 +905,7 @@ class Alias(models.Model):
             ),
             models.CheckConstraint(
                 name="%(app_label)s_%(class)s_prevent_self_alias",
-                check=~models.Q(
+                condition=~models.Q(
                     from_email_account=models.F("to_email_account")
                 ),
             ),
@@ -975,6 +970,9 @@ class MessageFilterRule(OrderedModel):
     SOURCE = "source"
     SUBJECT = "subject"
     TO = "to"
+    DSPAM = "x-dspam-result"
+    SPAM_STATUS = "x-spam-status"
+    SPAM_SCORE = "x-spam-score"
 
     HEADER_CHOICES = [
         (ADDR, ADDR),
@@ -982,9 +980,12 @@ class MessageFilterRule(OrderedModel):
         (BCC, BCC),
         (CC, CC),
         (DEFAULT, DEFAULT),
+        (DSPAM, DSPAM),
         (FROM, FROM),
         (REPLY_TO, REPLY_TO),
         (SOURCE, SOURCE),
+        (SPAM_SCORE, SPAM_SCORE),
+        (SPAM_STATUS, SPAM_STATUS),
         (SUBJECT, SUBJECT),
         (TO, TO),
     ]
@@ -1147,38 +1148,30 @@ class MessageFilterRule(OrderedModel):
         actions. Once a message is matched by a message filter rule,
         it will be considered delivered and stop processing.
         """
-        rule_parts = rule_text.split()
-        if len(rule_parts) == 5:
-            (header, pattern, action, result, folder) = rule_parts
-            if action != "folder":
-                raise ValueError(
-                    "5 part message filter rule is only valid for 'folder' "
-                    "rules"
-                )
-            rule = cls(
-                email_account=email_account,
-                header=header,
-                pattern=pattern,
-                action=action,
-                destination=folder,
+        rule_parts = shlex.split(rule_text)
+        if len(rule_parts) < 4 or len(rule_parts) > 5:
+            raise ValueError(
+                "rule text must be 4 or 5 columns separated white space."
             )
-        elif len(rule_parts) == 4:
-            (header, pattern, action, result) = rule_parts
+
+        (header, pattern, action, result) = rule_parts[:4]
+        folder = rule_parts[4] if len(rule_parts) >= 5 else ""
+
+        if not folder:
             if action != "destroy":
                 raise ValueError(
                     "4 part message filter rule is only valid for 'destroy' "
                     "rules"
                 )
-            rule = cls(
-                email_account=email_account,
-                header=header,
-                pattern=pattern,
-                action=action,
-            )
-        else:
-            raise ValueError(
-                "rule text must be 4 or 5 columns separated white space."
-            )
+
+        rule, _ = cls.objects.get_or_create(
+            email_account=email_account,
+            header=header,
+            pattern=pattern,
+        )
+        rule.action = action
+        rule.result = result
+        rule.destination = folder
         rule.save()
         return rule
 
@@ -1190,7 +1183,13 @@ class MessageFilterRule(OrderedModel):
 
         NOTE: Matches are only case insensitive substring matches! Not regular
               expressions!
+
+        NOTE: If the rule has the header "default" it will always match.
+
         """
+        if self.header == "default":
+            return True
+
         if self.header not in email_message:
             return False
 

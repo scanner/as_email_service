@@ -3,6 +3,7 @@
 
 coverage
 dirty-equals
+fakeredis
 ipython
 pytest
 pytest-asyncio

@@ -441,7 +441,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="alias",
             constraint=models.CheckConstraint(
-                check=models.Q(
+                condition=models.Q(
                     ("from_email_account", models.F("to_email_account")),
                     _negated=True,
                 ),

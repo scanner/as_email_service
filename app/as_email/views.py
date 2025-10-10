@@ -1,4 +1,4 @@
-""""
+"""
 The simplistic set of views for the users of the as_email app.
 
 For adminstrative functions this is supported by the django admin interface.
@@ -18,6 +18,7 @@ These views are for users. It needs to provide functions to:
 - order mail filter rules (for an email account)
 
 """
+
 # System imports
 #
 import json
@@ -172,6 +173,7 @@ def hook_postmark_incoming(request, domain_name):
         return HttpResponseBadRequest(f"invalid json: {exc}")
 
     message_id = email["MessageID"] if "MessageID" in email else None
+    from_addr = email["From"] if "From" in email else "<unknown>"
 
     if "OriginalRecipient" not in email:
         logger.warning(
@@ -201,7 +203,9 @@ def hook_postmark_incoming(request, domain_name):
         email_account = EmailAccount.objects.get(email_address=addr)
     except EmailAccount.DoesNotExist:
         logger.info(
-            "Received email for email account that does not exist: %s", addr
+            "Received email for EmailAccount that does not exist: %s, from: %s",
+            addr,
+            from_addr,
         )
         # XXX here we would log metrics for getting email that no one is going
         #     to receive.
@@ -476,6 +480,11 @@ class OwnerFilterBackend(DRYPermissionFiltersBase):
         """
         Limits all list requests to only be seen by the owners.
         """
+        # Owner or admin or super user can see.
+        #
+        # if request.user.is_admin or request.user.is_superuser:
+        #     return queryset
+
         return queryset.filter(owner=request.user)
 
 
@@ -596,6 +605,13 @@ class MessageFilterRuleViewSet(ModelViewSet):
         CSRFExemptSessionAuthentication,
         BasicAuthentication,
     )
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        return MessageFilterRule.objects.filter(
+            email_account=self.kwargs["email_account_pk"]
+        )
 
     ####################################################################
     #
