@@ -1,8 +1,9 @@
 aiofiles
 aiologger
 aiosmtpd
+aiospamc
 crispy-bulma
-cryptography>=41.0.4,<=42.0.8
+cryptography==42.0.8
 csscompressor
 django
 django-anymail
@@ -26,8 +27,10 @@ httpx
 huey
 influxdb-client
 postmarker
+proxy-protocol
 pyOpenSSL
 pydantic
+pydnsbl
 python-dotenv
 pytz
 pyyaml

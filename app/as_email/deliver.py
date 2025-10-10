@@ -51,7 +51,7 @@ def deliver_message(
     email_account: EmailAccount,
     msg: EmailMessage,
     depth: int = 1,
-):
+) -> None:
     """
     Deliver the given message to the given email account. This accounts for
     locally delivery, aliases, and forwards to external systems.
@@ -221,6 +221,9 @@ def deliver_message_locally(email_account: EmailAccount, msg: EmailMessage):
     # If the message was not delivered to any folders in the above loop,
     # deliver it to the inbox, unless auto filing for spam is turned on and it
     # is spam.
+    #
+    # XXX Do we want to consider auto-filing spam no mater which mailbox it is
+    #     delivered to?
     #
     if not delivered_to:
         spam_score = 0

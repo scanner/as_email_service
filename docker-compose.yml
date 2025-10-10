@@ -65,6 +65,7 @@ services:
       target: dev
     depends_on:
       - mailhog
+      - redis
     ports:
       - "11578:8000"
     command: wait-for-it --service redis:6379 -- /app/manage.py runserver_plus --cert-file /mnt/ssl/ssl_crt.pem --key-file /mnt/ssl/ssl_key.pem 0.0.0.0:8000
@@ -127,3 +128,25 @@ services:
       - "8025:8025"
     profiles:
       - dev
+
+  spamassassin:
+    image: instantlinux/spamassassin:4.0.1-1
+    container_name: spamassassin
+    restart: unless-stopped
+    ports:
+      - "783:783"
+    volumes:
+      - ./spama/local.cf:/etc/mail/spamassassin/local.cf:ro
+      - ./spama/home:/var/lib/spamassassin
+      - ./spama/logs:/var/log
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 10
+    env_file: .env
+    expose:
+      - 783
+    profiles:
+      - dev
+      - prod
