@@ -19,18 +19,20 @@ RUN apt-get update && \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements/production.txt /app/requirements/production.txt
-COPY pyproject.toml /app/
+# Install uv
+RUN pip install --no-cache-dir uv
 
-# Create venv and install production dependencies
-#
-RUN python -m venv --copies /venv && \
-    . /venv/bin/activate && \
-    pip install --no-cache-dir --upgrade pip setuptools && \
-    pip install --no-cache-dir -r /app/requirements/production.txt
+# Copy dependency files
+COPY pyproject.toml uv.lock /app/
+
+# Sync dependencies to /venv using uv
+# --no-dev excludes development dependencies for production
+# --frozen uses exact versions from uv.lock without updating it
+# --no-install-project skips installing the project itself (we just want deps)
+ENV UV_PROJECT_ENVIRONMENT=/venv
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Clean up unnecessary files from venv to reduce size
-#
 RUN find /venv -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true && \
     find /venv -type d -name 'tests' -prune -exec rm -rf {} + 2>/dev/null || true && \
     find /venv -type d -name 'test' -prune -exec rm -rf {} + 2>/dev/null || true
@@ -66,23 +68,24 @@ RUN apt-get update && \
     jove \
     vim \
     git \
-    curl \
     procps \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install uv
+RUN pip install --no-cache-dir uv
+
 # Copy the production venv from builder
 COPY --from=builder /venv /venv
 
-# Copy requirements and install dev dependencies
-COPY requirements/development.txt /app/requirements/development.txt
-RUN . /venv/bin/activate && \
-    pip install --no-cache-dir -r requirements/development.txt
+# Copy dependency files and sync with dev dependencies
+COPY pyproject.toml uv.lock /app/
+ENV UV_PROJECT_ENVIRONMENT=/venv
+RUN uv sync --frozen --no-install-project
 
 # Puts the venv's python (and other executables) at the front of the PATH
 ENV PATH=/venv/bin:$PATH
 
-COPY pyproject.toml /app/
 COPY ./app ./
 
 RUN /venv/bin/python /app/manage.py collectstatic --no-input
@@ -120,12 +123,6 @@ RUN apt-get update && \
     apt-get install --assume-yes --no-install-recommends \
     # PostgreSQL client library (for psycopg2)
     libpq5 \
-    # If you use Pillow/imaging, uncomment:
-    # libjpeg62-turbo \
-    # libfreetype6 \
-    # If you use lxml, uncomment:
-    # libxml2 \
-    # libxslt1.1 \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

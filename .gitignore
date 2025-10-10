@@ -103,6 +103,9 @@ env.bak/
 venv.bak/
 venv_*/
 
+# uv
+.python-version
+
 # Spyder project settings
 .spyderproject
 .spyproject
