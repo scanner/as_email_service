@@ -34,24 +34,15 @@ BASE_DIR = Path(__file__).parent.parent
 #
 random_chars = "abcdefghijklmnopqrstuvwxyz0123456789!@#%^&*(-_=+)"
 env = environ.FileAwareEnv(
-    DEBUG=(bool, False),
-    TZ=(str, "America/Los_Angeles"),
-    DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
-    SITE_NAME=(str, "example.com"),
-    DATABASE_URL=(str, "sqlite:///:memory:"),
-    EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
-    EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
-    MAIL_DIRS=(str, "/mnt/mail_dir"),
-    DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
     ALLOWED_HOSTS=(list, list()),
-    REDIS_SERVER=(str, "redis"),
-    VERSION=(str, "unknown"),
     CACHE_URL=(str, "dummycache://"),
-    SENTRY_DSN=(str, None),
-    SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
-    SENTRY_PROFILES_SAMPLE_RATE=(float, 0.0),
     COMPRESS_ENABLED=(bool, True),
     COMPRESS_OFFLINE=(bool, True),
+    DATABASE_URL=(str, "sqlite:///:memory:"),
+    DEBUG=(bool, False),
+    DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
+    DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
+    EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
     # Email service accounts are email addresses that are widely expected to
     # exist for any domain that accepts email. This will be created, linked
     # together via alises, and owned by the earliest admin account on the
@@ -71,8 +62,20 @@ env = environ.FileAwareEnv(
             "noc",
         ],
     ),
+    EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
+    MAIL_DIRS=(str, "/mnt/mail_dir"),
+    REDIS_SERVER=(str, "redis"),
+    SENTRY_DSN=(str, None),
+    SENTRY_PROFILES_SAMPLE_RATE=(float, 0.0),
+    SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
+    SITE_NAME=(str, "example.com"),
+    SPAMD_HOST=(str, "spamassassin:783"),
+    TZ=(str, "America/Los_Angeles"),
+    VERSION=(str, "unknown"),
     EMAIL_SERVICE_ACCOUNTS_OWNER=(str, None),
 )
+
+DEBUG = env("DEBUG")
 
 # If we are running through a reverse proxy (like caddy) we need to make sure
 # that even though we are being access at `http` we make sure we resolve all
@@ -81,7 +84,8 @@ env = environ.FileAwareEnv(
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # NOTE: We should try moving secrets to compose secrets.
 #
-DEBUG = env("DEBUG")
+SPAMD_HOST, SPAMD_PORT = env("SPAMD_HOST").split(":")
+SPAMD_PORT = int(SPAMD_PORT)
 VERSION = env("VERSION")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 SITE_NAME = env("SITE_NAME")
