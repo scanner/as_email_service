@@ -43,7 +43,57 @@ EST = pytz.timezone("EST")  # Postmark API is in EST! Really!
 #
 DISPATCH_NUM_PER_RUN = 100
 
+# How many messages do we attempt to redeliver after failure per run.
+#
+NUM_DELIVER_FAILURE_ATTEMPTS_PER_RUN = 5
+
+
 logger = logging.getLogger("as_email.tasks")
+
+
+####################################################################
+#
+@db_periodic_task(crontab(minute="*/10"))
+def retry_failed_incoming_email():
+    """
+    Go through any messages in the failed incoming spool dir and attempt to
+    deliver them again. Logging the exception if it fails.
+
+    To avoid high noise rates stop attempting after a limited number of
+    failures
+    """
+    failing_incoming_dir = Path(settings.FAILED_INCOMING_MSG_DIR)
+    if not failing_incoming_dir.exists():
+        return
+
+    num_failures = 0
+    for email_file in failing_incoming_dir.iterdir():
+        try:
+            email_msg = json.loads(email_file.read_text())
+            email_addr = email_msg["recipient"].strip()
+            email_account = EmailAccount.objects.get(email_address=email_addr)
+            msg = email.message_from_string(
+                email_msg["raw_email"], policy=email.policy.default
+            )
+            deliver_message(email_account, msg)
+            logger.info(
+                "Successfully delivered previously failed message '%s' for "
+                "email account '%s'",
+                email_file,
+                email_addr,
+            )
+
+        except Exception as e:
+            logger.exception(
+                "Unable to deliver failed message '%s': %s", email_file, e
+            )
+            num_failures += 1
+            if num_failures >= NUM_DELIVER_FAILURE_ATTEMPTS_PER_RUN:
+                logger.error(
+                    "Stopping redelivery attempts after %d attempts",
+                    num_failures,
+                )
+                break
 
 
 ####################################################################

@@ -22,6 +22,7 @@ from ..tasks import (
     dispatch_spooled_outgoing_email,
     process_email_bounce,
     process_email_spam,
+    retry_failed_incoming_email,
 )
 from ..utils import read_emailaccount_pwfile, write_spooled_email
 from .test_deliver import assert_email_equal
@@ -92,7 +93,7 @@ def test_dispatch_incoming_mail_failure(
     settings,
 ):
     """
-    If we are unable to deliver a message due to some local issue, they
+    If we are unable to deliver a message due to some local issue, the
     messages are dumped in to a failure directory. Force `deliver_message` to
     fail and check to see if the message is moved to the failure directory.
     """
@@ -117,6 +118,98 @@ def test_dispatch_incoming_mail_failure(
     failed_msg_file = list(settings.FAILED_INCOMING_MSG_DIR.iterdir())[0]
     email_msg = json.loads(failed_msg_file.read_text())
     assert email_msg["message-id"] == message_id
+
+
+####################################################################
+#
+def test_retry_failed_incoming_email_failure(
+    caplog,
+    email_spool_dir,
+    email_factory,
+    settings,
+) -> None:
+    """
+    Setup `retry_failed_incoming_email` to attempt to redeliver several
+    messages and have it fail again. We exepct it to try 5 times and then give
+    up.
+    """
+    # Create 5 email messages, but do not create any EmailAccount's. This will
+    # result in the lookup failing.
+    #
+    settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
+    failed_email_files = []
+    for _ in range(5):
+        msg = email_factory()
+        now = datetime.now()
+        message_id = msg["Message-ID"]
+        msg_path = write_spooled_email(
+            msg["To"],
+            settings.FAILED_INCOMING_MSG_DIR,
+            msg,
+            str(now),
+            message_id,
+        )
+        failed_email_files.append(msg_path)
+
+    res = retry_failed_incoming_email()
+    res()
+
+    # Make sure our five failed retry messages were logged.
+    #
+    assert "Stopping redelivery attempts after" in caplog.text
+    for msg_path in failed_email_files:
+        assert f"Unable to deliver failed message '{msg_path}'" in caplog.text
+
+
+####################################################################
+#
+def test_retry_failed_incoming_email(
+    mocker,
+    email_spool_dir,
+    email_account_factory,
+    email_factory,
+    settings,
+) -> None:
+    """
+    Create several emails, and create several EmailAccount's to receive
+    those emails and make sure that `deliver_message` was called for each of
+    those EmailAccounts.
+    """
+    # Mock the `deliver_message` function so we can verify that it was called
+    # properly.
+    mock_deliver_message = mocker.Mock(return_value=None)
+    # mock_deliver_message(1, 2, 3)
+    mocker.patch("as_email.tasks.deliver_message", new=mock_deliver_message)
+    deliveries = []
+    for _ in range(6):
+        ea = email_account_factory()
+        msg = email_factory(to=ea.email_address)
+        now = datetime.now()
+        message_id = msg["Message-ID"]
+        write_spooled_email(
+            msg["To"],
+            settings.FAILED_INCOMING_MSG_DIR,
+            msg,
+            str(now),
+            message_id,
+        )
+        deliveries.append((ea.email_address, msg))
+
+    res = retry_failed_incoming_email()
+    res()
+
+    # And check to see that all messages were delivered.
+    #
+    expected = sorted(deliveries, key=lambda x: x[0])
+    mock_call_args = mock_deliver_message.call_args_list
+    assert mock_call_args
+    called = sorted(
+        [(x[0][0].email_address, x[0][1]) for x in mock_call_args],
+        key=lambda x: x[0],
+    )
+    for exp, call in zip(expected, called):
+        assert exp[0] == call[0]
+        assert_email_equal(exp[1], call[1])
 
 
 ####################################################################

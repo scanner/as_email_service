@@ -76,8 +76,8 @@ createadmin: migrate   ## Create django admin account `admin` with password `tes
 logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
 	@docker compose logs -f worker devweb devsmtpd mailhog
 
-test:	## Run all of the tests inside a `devweb` docker container.
-	@docker compose run --rm devweb pytest --disable-warnings
+test:	## Run all of the tests
+	@cd app/ && pytest
 
 release: build	## Make a release. Builds and then tags the latest docker image with most recent git tag. Then pushes it to ghcr.io/scanner/as_email_service_app
 	docker tag as_email_service_app:latest as_email_service_app:$(LATEST_TAG)

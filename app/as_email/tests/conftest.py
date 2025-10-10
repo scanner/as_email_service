@@ -17,6 +17,7 @@ from email.utils import parseaddr
 import pytest
 from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
 from django.core import mail
+from fakeredis import FakeConnection
 from pytest_factoryboy import register
 from requests import Response
 from rest_framework.test import APIClient, RequestsClient
@@ -40,6 +41,35 @@ from .factories import (
 register(UserFactory)
 register(ProviderFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+@pytest.fixture
+def redis_client(request):
+    """
+    Provide a `fakeredis` instance as a fixture.
+    """
+    import fakeredis
+
+    redis_client = fakeredis.FakeRedis()
+    return redis_client
+
+
+####################################################################
+#
+@pytest.fixture
+def fakeredis_cache(settings) -> None:
+    """
+    Configure django to use fakeredis for its cache
+    """
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": "redis://localhost:6379",
+            "OPTIONS": {"connection_class": FakeConnection},
+        }
+    }
 
 
 ####################################################################
