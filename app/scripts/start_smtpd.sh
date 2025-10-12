@@ -5,6 +5,7 @@ set -o pipefail
 set -o nounset
 
 wait-for-it --service redis:6379 -- echo "Redis available"
+wait-for-it --service spamassassin:783 -- echo "SpamAssassin available"
 
 # Set LISTEN_HOST to `0.0.0.0` if not already set.
 #
