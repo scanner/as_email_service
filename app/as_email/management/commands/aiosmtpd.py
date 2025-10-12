@@ -933,12 +933,14 @@ async def deliver_email_locally(
             msg_id=msg_id,
         )
 
-        # Dispatch the delivery task asynchronously (we need to sync_to_async
-        # this in case Huey is in immediate mode)
+        # Dispatch the delivery task to Huey queue
+        # Calling the task directly enqueues it (fast, non-blocking).
+        # Must wrap in sync_to_async because we're in async context and
+        # Huey's enqueue operation uses synchronous Redis client.
         #
-        await sync_to_async(dispatch_incoming_email)(
-            recipient_account.pk, str(fname)
-        )
+        await sync_to_async(
+            lambda: dispatch_incoming_email(recipient_account.pk, str(fname))
+        )()
 
         logger.info(
             "deliver_email_locally: Queued delivery for '%s', message %s, file %s",
@@ -1019,8 +1021,11 @@ async def relay_email_to_provider(
         msg_id=dsn["Message-ID"],
     )
 
-    # Fire off async huey task to dispatch the delivery status notification.
-    # (we need to sync_to_async this in case it is being called when Huey is in
-    # immediate mode.)
+    # Fire off Huey task to dispatch the delivery status notification.
+    # Calling the task directly enqueues it (fast, non-blocking).
+    # Must wrap in sync_to_async because we're in async context and
+    # Huey's enqueue operation uses synchronous Redis client.
     #
-    await sync_to_async(dispatch_incoming_email)(account.pk, str(fname))
+    await sync_to_async(
+        lambda: dispatch_incoming_email(account.pk, str(fname))
+    )()
