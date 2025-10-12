@@ -609,10 +609,10 @@ class Authenticator:
         except EmailAccount.DoesNotExist:
             return self._auth_fail(session, f"'{username}' not a valid account")
 
-        if account.deactivated:
-            return self._auth_fail(
-                session, f"'{account}' is deactivated", "Account deactivated"
-            )
+        # NOTE: We allow deactivated accounts to authenticate because:
+        # - They can send to local addresses (no auth required anyway)
+        # - They are blocked from relaying in handle_RCPT
+        # This way deactivated accounts can still receive and send local mail
 
         if not account.check_password(password):
             return self._auth_fail(session, f"'{account}' invalid password")
@@ -665,7 +665,7 @@ class RelayHandler:
         #
         if self.authenticator.check_deny(session.peer):
             logger.info(
-                "handle_EHLO: Denying %s due to too many failed auth attempts",
+                "Denying %s due to too many failed auth attempts",
                 session.peer[0],
             )
             await tarpit_delay()

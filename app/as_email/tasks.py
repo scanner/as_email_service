@@ -82,6 +82,10 @@ def retry_failed_incoming_email():
                 email_file,
                 email_addr,
             )
+            # Since we managed to successfully deliver the email, we can delete
+            # it from the FAILED_INCOMING_MSG_DIR.
+            #
+            email_file.unlink()
 
         except Exception as e:
             logger.exception(

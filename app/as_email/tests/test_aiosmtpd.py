@@ -439,7 +439,8 @@ class TestAuthentication:
         """
         Given valid credentials for a deactivated account
         When authenticating
-        Then authentication should fail
+        Then authentication should succeed
+        (Deactivated accounts are blocked from relaying in handle_RCPT, not here)
         """
         sess = aiosmtp_session
         password = faker.pystr(min_chars=8, max_chars=32)
@@ -455,7 +456,9 @@ class TestAuthentication:
             password=bytes(password, "utf-8"),
         )
         res = await auth(None, sess, None, "LOGIN", auth_data)
-        assert res.success is False
+        assert res.success is True
+        assert res.auth_data == ea
+        assert res.auth_data.deactivated is True
 
     ####################################################################
     #
