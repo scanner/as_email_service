@@ -588,49 +588,149 @@ class TestAuthentication:
 ########################################################################
 ########################################################################
 #
-class TestSMTPHandlers:
-    """Tests for SMTP protocol handlers."""
+class TestHandleMAIL:
+    """Tests for handle_MAIL SMTP command handler."""
 
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_handle_MAIL_authenticated(
-        self, email_account_factory, faker, aiosmtp_session, aiosmtp_envelope
+    @pytest.mark.parametrize(
+        "from_type,deactivated,case_transform,expected_account",
+        [
+            ("local", False, None, "same"),  # Local active account
+            (
+                "local",
+                True,
+                None,
+                "same",
+            ),  # Local deactivated account (cached for RCPT check)
+            ("local", False, str.upper, "same"),  # Case-insensitive lookup
+            ("remote", False, None, None),  # Remote address, no account
+        ],
+    )
+    async def test_handle_MAIL_caches_from_account(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        tmp_path,
+        from_type,
+        deactivated,
+        case_transform,
+        expected_account,
     ):
         """
-        Given an authenticated SMTP session
-        When handle_MAIL is called with any FROM address
-        Then the request should be accepted (validation happens in handle_DATA)
+        Given MAIL FROM with various address types
+        When handle_MAIL is called
+        Then the request should be accepted (250 OK)
+        And envelope.mail_from_account should be cached correctly
+        """
+        sess = aiosmtp_session
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        if from_type == "local":
+            ea = await sync_to_async(email_account_factory)()
+            if deactivated:
+                ea.deactivated = True
+            await ea.asave()
+            from_address = ea.email_address
+            if case_transform:
+                from_address = case_transform(from_address)
+        else:
+            ea = None
+            from_address = faker.email()
+
+        response = await handler.handle_MAIL(
+            smtp, sess, envelope, from_address, []
+        )
+
+        assert response.startswith("250 OK")
+        assert envelope.mail_from == from_address
+
+        if expected_account == "same":
+            assert envelope.mail_from_account == ea
+            if deactivated:
+                assert envelope.mail_from_account.deactivated is True
+        elif expected_account is None:
+            assert envelope.mail_from_account is None
+
+
+########################################################################
+########################################################################
+#
+class TestHandleRCPT:
+    """Tests for handle_RCPT SMTP command handler."""
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_RCPT_local_valid_recipient(
+        self, email_account_factory, aiosmtp_session, aiosmtp_envelope, tmp_path
+    ):
+        """
+        Given RCPT TO with a valid local EmailAccount
+        When handle_RCPT is called
+        Then the request should be accepted without authentication
+        And the recipient should be added to envelope.rcpt_tos
         """
         ea = await sync_to_async(email_account_factory)()
         await ea.asave()
 
         sess = aiosmtp_session
-        sess.authenticated = True
-        sess.auth_data = ea
+        sess.authenticated = False
         authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+        handler = RelayHandler(tmp_path, authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
-        # Any FROM is accepted (validation happens in handle_DATA)
-        from_address = ea.email_address
-        response = await handler.handle_MAIL(
-            smtp, sess, envelope, from_address, []
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, ea.email_address, []
         )
-        assert response.startswith("250 OK")
-        assert envelope.mail_from == from_address
+        assert response == "250 OK"
+        assert ea.email_address in envelope.rcpt_tos
 
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_handle_MAIL_unauthenticated(
+    async def test_handle_RCPT_local_invalid_recipient(
+        self, server_factory, faker, aiosmtp_session, aiosmtp_envelope, tmp_path
+    ):
+        """
+        Given RCPT TO with an address on our domain but no EmailAccount exists
+        When handle_RCPT is called
+        Then the request should be rejected with "550 5.1.1 User unknown"
+        """
+        server = await sync_to_async(server_factory)()
+        await server.asave()
+
+        sess = aiosmtp_session
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        invalid_addr = f"{faker.user_name()}@{server.domain_name}"
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, invalid_addr, []
+        )
+        assert response.startswith("550 5.1.1")
+        assert "User unknown" in response
+        assert invalid_addr in response
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_RCPT_remote_unauthenticated(
         self, faker, aiosmtp_session, aiosmtp_envelope, tmp_path
     ):
         """
-        Given an unauthenticated SMTP session
-        When handle_MAIL is called with any FROM address
-        Then the request should be accepted (needed for incoming mail)
+        Given RCPT TO with a remote address and no authentication
+        When handle_RCPT is called
+        Then the request should be rejected with "530 Authentication required"
         """
         sess = aiosmtp_session
         sess.authenticated = False
@@ -639,25 +739,185 @@ class TestSMTPHandlers:
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
-        # Any FROM is accepted (needed for incoming mail)
-        from_address = faker.email()
-        response = await handler.handle_MAIL(
-            smtp, sess, envelope, from_address, []
+        remote_addr = faker.email()
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, remote_addr, []
         )
-        assert response.startswith("250 OK")
-        assert envelope.mail_from == from_address
+        assert response.startswith("530")
+        assert "Authentication required" in response
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_RCPT_remote_authenticated(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        tmp_path,
+    ):
+        """
+        Given RCPT TO with a remote address and authenticated session
+        When handle_RCPT is called
+        Then the request should be accepted
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = True
+        sess.auth_data = ea
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        remote_addr = faker.email()
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, remote_addr, []
+        )
+        assert response == "250 OK"
+        assert remote_addr in envelope.rcpt_tos
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_RCPT_remote_from_deactivated_local_account(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        tmp_path,
+    ):
+        """
+        Given MAIL FROM is a deactivated local account
+        And RCPT TO is a remote address
+        When handle_RCPT is called
+        Then the request should be rejected with "550 Account is deactivated"
+        And no authentication is required to reject
+        """
+        ea = await sync_to_async(email_account_factory)()
+        ea.deactivated = True
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = False
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        # First set MAIL FROM to cache the account
+        await handler.handle_MAIL(smtp, sess, envelope, ea.email_address, [])
+
+        # Now try to relay
+        remote_addr = faker.email()
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, remote_addr, []
+        )
+        assert response.startswith("550")
+        assert "deactivated" in response
+        assert "cannot relay" in response
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_RCPT_remote_from_active_local_account_unauthenticated(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        tmp_path,
+    ):
+        """
+        Given MAIL FROM is an active local account but session is not authenticated
+        And RCPT TO is a remote address
+        When handle_RCPT is called
+        Then authentication should still be required
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = False
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        # Set MAIL FROM
+        await handler.handle_MAIL(smtp, sess, envelope, ea.email_address, [])
+
+        # Try to relay without authentication
+        remote_addr = faker.email()
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, remote_addr, []
+        )
+        assert response.startswith("530")
+        assert "Authentication required" in response
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_handle_RCPT_multiple_recipients(
+        self,
+        email_account_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        tmp_path,
+    ):
+        """
+        Given multiple RCPT TO commands (local and remote)
+        When handle_RCPT is called multiple times
+        Then each should be validated independently
+        And all valid recipients should be added to envelope
+        """
+        ea1 = await sync_to_async(email_account_factory)()
+        await ea1.asave()
+        ea2 = await sync_to_async(email_account_factory)()
+        await ea2.asave()
+
+        sess = aiosmtp_session
+        sess.authenticated = True
+        sess.auth_data = ea1
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        remote_addr = faker.email()
+
+        # Add local recipient
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, ea2.email_address, []
+        )
+        assert response == "250 OK"
+
+        # Add remote recipient
+        response = await handler.handle_RCPT(
+            smtp, sess, envelope, remote_addr, []
+        )
+        assert response == "250 OK"
+
+        assert len(envelope.rcpt_tos) == 2
+        assert ea2.email_address in envelope.rcpt_tos
+        assert remote_addr in envelope.rcpt_tos
 
 
 ########################################################################
 ########################################################################
 #
-class TestRecipientHandling:
-    """Tests for recipient categorization and delivery."""
+class TestHandleDATA:
+    """Tests for handle_DATA SMTP command handler."""
 
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_handle_DATA_unauthenticated_to_local(
+    async def test_handle_DATA_local_delivery(
         self,
         email_account_factory,
         faker,
@@ -665,9 +925,10 @@ class TestRecipientHandling:
         aiosmtp_envelope,
         mocker,
         mock_aiospamc_process,
+        tmp_path,
     ):
         """
-        Given an unauthenticated SMTP session sending to a local address
+        Given a valid SMTP transaction with local recipient
         When handle_DATA is called
         Then the message should be accepted and delivered locally
         """
@@ -684,11 +945,17 @@ class TestRecipientHandling:
         )
 
         authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
+        handler = RelayHandler(tmp_path, authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
-        envelope.rcpt_tos = [ea.email_address]
+
+        # Simulate proper SMTP flow: MAIL FROM -> RCPT TO -> DATA
+        await handler.handle_MAIL(
+            smtp_server, sess, envelope, faker.email(), []
+        )
+        await handler.handle_RCPT(
+            smtp_server, sess, envelope, ea.email_address, []
+        )
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
@@ -699,7 +966,7 @@ class TestRecipientHandling:
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_handle_DATA_unauthenticated_to_remote(
+    async def test_handle_DATA_no_valid_recipients(
         self,
         faker,
         aiosmtp_session,
@@ -709,64 +976,34 @@ class TestRecipientHandling:
         mock_aiospamc_process,
     ):
         """
-        Given an unauthenticated SMTP session sending to a remote address
+        Given an envelope with no valid recipients (all rejected in RCPT)
         When handle_DATA is called
-        Then the request should be rejected with "530 Authentication required"
+        Then the request should be rejected with "554 no valid recipients"
         """
         sess = aiosmtp_session
         sess.authenticated = False
 
         authenticator = Authenticator()
         handler = RelayHandler(tmp_path, authenticator)
-
         smtp_server = SMTP(handler, authenticator=authenticator)
-        remote_addr = faker.email()
-        envelope = aiosmtp_envelope(msg_from=faker.email(), to=remote_addr)
-        envelope.rcpt_tos = [remote_addr]
+        from_addr = faker.email()
+        envelope = aiosmtp_envelope(msg_from=from_addr, to=faker.email())
+
+        # Simulate MAIL FROM but no successful RCPT TO
+        # This means all recipients were rejected in RCPT
+        await handler.handle_MAIL(smtp_server, sess, envelope, from_addr, [])
+        # Don't call handle_RCPT - clear rcpt_tos to simulate all rejected
+        envelope.rcpt_tos = []
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
-        assert response.startswith("530 Authentication required")
+        assert response.startswith("554")
+        assert "no valid recipients" in response
 
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_handle_DATA_unauthenticated_mixed_recipients(
-        self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mocker,
-        mock_aiospamc_process,
-    ):
-        """
-        Given an unauthenticated session sending to local and remote addresses
-        When handle_DATA is called
-        Then the request should be rejected (authentication required for relay)
-        """
-        ea = await sync_to_async(email_account_factory)()
-        await ea.asave()
-
-        sess = aiosmtp_session
-        sess.authenticated = False
-
-        authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
-        smtp_server = SMTP(handler, authenticator=authenticator)
-        remote_addr = faker.email()
-        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
-        envelope.rcpt_tos = [ea.email_address, remote_addr]
-
-        response = await handler.handle_DATA(smtp_server, sess, envelope)
-
-        assert response.startswith("530 Authentication required")
-
-    ####################################################################
-    #
-    @pytest.mark.asyncio
-    async def test_handle_DATA_authenticated_to_remote(
+    async def test_handle_DATA_relay_to_remote(
         self,
         email_account_factory,
         faker,
@@ -775,6 +1012,7 @@ class TestRecipientHandling:
         smtp,
         mocker,
         mock_aiospamc_process,
+        tmp_path,
     ):
         """
         Given an authenticated session sending to a remote address
@@ -789,12 +1027,16 @@ class TestRecipientHandling:
         sess.auth_data = ea
 
         authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
+        handler = RelayHandler(tmp_path, authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
         envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
-        envelope.rcpt_tos = [to]
+
+        # Simulate proper SMTP flow
+        await handler.handle_MAIL(
+            smtp_server, sess, envelope, ea.email_address, []
+        )
+        await handler.handle_RCPT(smtp_server, sess, envelope, to, [])
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
@@ -805,7 +1047,7 @@ class TestRecipientHandling:
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_handle_DATA_authenticated_mixed_recipients(
+    async def test_handle_DATA_mixed_local_and_remote(
         self,
         email_account_factory,
         faker,
@@ -814,6 +1056,7 @@ class TestRecipientHandling:
         smtp,
         mocker,
         mock_aiospamc_process,
+        tmp_path,
     ):
         """
         Given an authenticated session sending to both local and remote addresses
@@ -836,12 +1079,19 @@ class TestRecipientHandling:
         )
 
         authenticator = Authenticator()
-        handler = RelayHandler(ea1.server.outgoing_spool_dir, authenticator)
-
+        handler = RelayHandler(tmp_path, authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         remote_to = faker.email()
         envelope = aiosmtp_envelope(msg_from=ea1.email_address, to=remote_to)
-        envelope.rcpt_tos = [ea2.email_address, remote_to]
+
+        # Simulate proper SMTP flow
+        await handler.handle_MAIL(
+            smtp_server, sess, envelope, ea1.email_address, []
+        )
+        await handler.handle_RCPT(
+            smtp_server, sess, envelope, ea2.email_address, []
+        )
+        await handler.handle_RCPT(smtp_server, sess, envelope, remote_to, [])
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
@@ -849,89 +1099,6 @@ class TestRecipientHandling:
         # Both local delivery and relay should be called
         mock_deliver_local.assert_called_once()
         smtp.return_value.sendmail.assert_called_once()
-
-    ####################################################################
-    #
-    @pytest.mark.asyncio
-    async def test_handle_DATA_invalid_local_addresses_only(
-        self,
-        server_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mocker,
-        mock_aiospamc_process,
-    ):
-        """
-        Given a message sent only to invalid local addresses (domain exists, no account)
-        When handle_DATA is called
-        Then the request should be rejected with "550 5.1.1 Recipient address rejected"
-        """
-        server = await sync_to_async(server_factory)()
-        await server.asave()
-
-        sess = aiosmtp_session
-        sess.authenticated = False
-
-        authenticator = Authenticator()
-        handler = RelayHandler(server.outgoing_spool_dir, authenticator)
-
-        smtp_server = SMTP(handler, authenticator=authenticator)
-        invalid_addr = f"{faker.user_name()}@{server.domain_name}"
-        envelope = aiosmtp_envelope(msg_from=faker.email(), to=invalid_addr)
-        envelope.rcpt_tos = [invalid_addr]
-
-        response = await handler.handle_DATA(smtp_server, sess, envelope)
-
-        assert response.startswith("550 5.1.1 Recipient address rejected")
-        assert invalid_addr.lower() in response
-
-    ####################################################################
-    #
-    @pytest.mark.asyncio
-    async def test_handle_DATA_some_invalid_local_addresses(
-        self,
-        email_account_factory,
-        server_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mocker,
-        mock_aiospamc_process,
-    ):
-        """
-        Given a message with both valid and invalid local addresses
-        When handle_DATA is called
-        Then the message should be delivered only to valid addresses
-        And a warning should be logged for invalid addresses
-        """
-        ea = await sync_to_async(email_account_factory)()
-        await ea.asave()
-
-        sess = aiosmtp_session
-        sess.authenticated = False
-
-        mock_deliver_local = mocker.patch(
-            "as_email.management.commands.aiosmtpd.deliver_email_locally",
-            new_callable=mocker.AsyncMock,
-        )
-
-        authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
-        smtp_server = SMTP(handler, authenticator=authenticator)
-        invalid_addr = f"{faker.user_name()}@{ea.server.domain_name}"
-        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
-        envelope.rcpt_tos = [ea.email_address, invalid_addr]
-
-        response = await handler.handle_DATA(smtp_server, sess, envelope)
-
-        # Should succeed but only deliver to valid address
-        assert response.startswith("250 OK")
-        mock_deliver_local.assert_called_once()
-        # Only valid address in delivery list
-        assert ea.email_address.lower() in mock_deliver_local.call_args[0][1]
-        assert len(mock_deliver_local.call_args[0][1]) == 1
 
 
 ########################################################################
@@ -952,6 +1119,7 @@ class TestFromHeaderValidation:
         smtp,
         mocker,
         mock_aiospamc_process,
+        tmp_path,
     ):
         """
         Given an authenticated session with correct FROM header
@@ -966,12 +1134,16 @@ class TestFromHeaderValidation:
         sess.auth_data = ea
 
         authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
+        handler = RelayHandler(tmp_path, authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
         envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
-        envelope.rcpt_tos = [to]
+
+        # Simulate proper SMTP flow
+        await handler.handle_MAIL(
+            smtp_server, sess, envelope, ea.email_address, []
+        )
+        await handler.handle_RCPT(smtp_server, sess, envelope, to, [])
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
@@ -989,6 +1161,7 @@ class TestFromHeaderValidation:
         smtp,
         mocker,
         mock_aiospamc_process,
+        tmp_path,
     ):
         """
         Given an authenticated session with wrong FROM header
@@ -1004,13 +1177,16 @@ class TestFromHeaderValidation:
         sess.auth_data = ea
 
         authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
-
+        handler = RelayHandler(tmp_path, authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
+        wrong_from = faker.email()
         # Envelope has wrong FROM address in message body
-        envelope = aiosmtp_envelope(msg_from=faker.email(), to=to)
-        envelope.rcpt_tos = [to]
+        envelope = aiosmtp_envelope(msg_from=wrong_from, to=to)
+
+        # Simulate proper SMTP flow
+        await handler.handle_MAIL(smtp_server, sess, envelope, wrong_from, [])
+        await handler.handle_RCPT(smtp_server, sess, envelope, to, [])
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
@@ -1111,6 +1287,7 @@ class TestSpamAssassinIntegration:
         aiosmtp_envelope,
         mocker,
         mock_aiospamc_process,
+        tmp_path,
     ):
         """
         Given a successful SpamAssassin check that adds headers
@@ -1129,7 +1306,7 @@ class TestSpamAssassinIntegration:
         )
 
         authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+        handler = RelayHandler(tmp_path, authenticator)
 
         # Mock successful spam check with headers
         spam_headers = b"X-Spam-Score: 5.0\r\nX-Spam-Status: Yes\r\n"
@@ -1138,8 +1315,14 @@ class TestSpamAssassinIntegration:
         mock_aiospamc_process.return_value = mock_result
 
         smtp_server = SMTP(handler, authenticator=authenticator)
-        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
-        envelope.rcpt_tos = [ea.email_address]
+        from_addr = faker.email()
+        envelope = aiosmtp_envelope(msg_from=from_addr, to=ea.email_address)
+
+        # Simulate proper SMTP flow
+        await handler.handle_MAIL(smtp_server, sess, envelope, from_addr, [])
+        await handler.handle_RCPT(
+            smtp_server, sess, envelope, ea.email_address, []
+        )
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
@@ -1159,6 +1342,7 @@ class TestSpamAssassinIntegration:
         aiosmtp_envelope,
         mocker,
         mock_aiospamc_process,
+        tmp_path,
     ):
         """
         Given a SpamAssassin check that fails with an exception
@@ -1178,7 +1362,7 @@ class TestSpamAssassinIntegration:
         )
 
         authenticator = Authenticator()
-        handler = RelayHandler(ea.server.outgoing_spool_dir, authenticator)
+        handler = RelayHandler(tmp_path, authenticator)
 
         # Mock spam check failure
         mock_aiospamc_process.side_effect = Exception(
@@ -1186,8 +1370,14 @@ class TestSpamAssassinIntegration:
         )
 
         smtp_server = SMTP(handler, authenticator=authenticator)
-        envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
-        envelope.rcpt_tos = [ea.email_address]
+        from_addr = faker.email()
+        envelope = aiosmtp_envelope(msg_from=from_addr, to=ea.email_address)
+
+        # Simulate proper SMTP flow
+        await handler.handle_MAIL(smtp_server, sess, envelope, from_addr, [])
+        await handler.handle_RCPT(
+            smtp_server, sess, envelope, ea.email_address, []
+        )
 
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
@@ -1196,6 +1386,230 @@ class TestSpamAssassinIntegration:
         # Should deliver original message
         mock_deliver_local.assert_called_once()
         assert mock_deliver_local.call_args[0][2] == envelope.original_content
+
+
+########################################################################
+########################################################################
+#
+class TestSMTPIntegration:
+    """Integration tests for complete SMTP transactions (MAIL → RCPT → DATA)."""
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "scenario,mail_from_type,rcpt_to_type,authenticated,from_deactivated,expected_rcpt_result,expected_data_result",
+        [
+            # Incoming mail scenarios (unauthenticated)
+            (
+                "incoming_to_valid_local",
+                "remote",
+                "local_valid",
+                False,
+                False,
+                "250 OK",
+                "250 OK",
+            ),
+            (
+                "incoming_to_invalid_local",
+                "remote",
+                "local_invalid",
+                False,
+                False,
+                "550 5.1.1",
+                None,
+            ),
+            (
+                "incoming_to_remote",
+                "remote",
+                "remote",
+                False,
+                False,
+                "530",
+                None,
+            ),
+            # Outgoing mail scenarios (authenticated)
+            (
+                "outgoing_to_remote",
+                "local",
+                "remote",
+                True,
+                False,
+                "250 OK",
+                "250 OK",
+            ),
+            (
+                "outgoing_to_local",
+                "local",
+                "local_valid",
+                True,
+                False,
+                "250 OK",
+                "250 OK",
+            ),
+            (
+                "outgoing_mixed",
+                "local",
+                "mixed",
+                True,
+                False,
+                "250 OK",
+                "250 OK",
+            ),
+            # Deactivated account scenarios
+            (
+                "deactivated_to_remote_unauth",
+                "local",
+                "remote",
+                False,
+                True,
+                "550",
+                None,
+            ),
+            (
+                "deactivated_to_local",
+                "local",
+                "local_valid",
+                False,
+                True,
+                "250 OK",
+                "250 OK",
+            ),
+            # Authentication failures
+            (
+                "local_to_remote_no_auth",
+                "local",
+                "remote",
+                False,
+                False,
+                "530",
+                None,
+            ),
+        ],
+    )
+    async def test_smtp_transaction_flow(
+        self,
+        scenario,
+        mail_from_type,
+        rcpt_to_type,
+        authenticated,
+        from_deactivated,
+        expected_rcpt_result,
+        expected_data_result,
+        email_account_factory,
+        server_factory,
+        faker,
+        aiosmtp_session,
+        aiosmtp_envelope,
+        mocker,
+        mock_aiospamc_process,
+        smtp,
+        tmp_path,
+    ):
+        """
+        Test complete SMTP transaction flows for various scenarios.
+
+        Scenarios tested:
+        - Incoming mail (unauthenticated) to valid/invalid local addresses
+        - Incoming mail attempting relay (should fail)
+        - Outgoing mail (authenticated) to remote/local/mixed addresses
+        - Deactivated accounts attempting to send
+        - Authentication requirements for relay
+        """
+        # Setup accounts
+        local_account = await sync_to_async(email_account_factory)()
+        if from_deactivated:
+            local_account.deactivated = True
+        await local_account.asave()
+
+        local_account2 = await sync_to_async(email_account_factory)()
+        await local_account2.asave()
+
+        # Setup session
+        sess = aiosmtp_session
+        sess.authenticated = authenticated
+        if authenticated:
+            sess.auth_data = local_account
+
+        # Setup MAIL FROM
+        if mail_from_type == "local":
+            mail_from = local_account.email_address
+        else:
+            mail_from = faker.email()
+
+        # Setup RCPT TO
+        rcpt_tos = []
+        if rcpt_to_type == "local_valid":
+            rcpt_tos = [local_account2.email_address]
+        elif rcpt_to_type == "local_invalid":
+            # Invalid local address (our domain, no account)
+            server = local_account.server
+            invalid_addr = f"{faker.user_name()}@{server.domain_name}"
+            rcpt_tos = [invalid_addr]
+        elif rcpt_to_type == "remote":
+            rcpt_tos = [faker.email()]
+        elif rcpt_to_type == "mixed":
+            rcpt_tos = [local_account2.email_address, faker.email()]
+
+        # Mock external services
+        mock_deliver_local = mocker.patch(
+            "as_email.management.commands.aiosmtpd.deliver_email_locally",
+            new_callable=mocker.AsyncMock,
+        )
+
+        # Setup handler
+        authenticator = Authenticator()
+        handler = RelayHandler(tmp_path, authenticator)
+        smtp_server = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope(
+            msg_from=mail_from, to=rcpt_tos[0] if rcpt_tos else faker.email()
+        )
+
+        # Execute SMTP transaction: MAIL FROM → RCPT TO → DATA
+
+        # Step 1: MAIL FROM
+        mail_response = await handler.handle_MAIL(
+            smtp_server, sess, envelope, mail_from, []
+        )
+        assert mail_response.startswith(
+            "250 OK"
+        ), f"MAIL FROM failed: {mail_response}"
+
+        # Step 2: RCPT TO (may be called multiple times for mixed)
+        rcpt_responses = []
+        for rcpt_to in rcpt_tos:
+            rcpt_response = await handler.handle_RCPT(
+                smtp_server, sess, envelope, rcpt_to, []
+            )
+            rcpt_responses.append(rcpt_response)
+
+        # Check RCPT TO response
+        if expected_rcpt_result:
+            # For mixed scenario, check that at least one succeeds
+            if rcpt_to_type == "mixed":
+                assert any(
+                    r.startswith("250 OK") for r in rcpt_responses
+                ), f"Expected at least one RCPT OK in mixed scenario, got: {rcpt_responses}"
+            else:
+                assert rcpt_responses[0].startswith(
+                    expected_rcpt_result
+                ), f"Scenario '{scenario}': Expected RCPT '{expected_rcpt_result}', got '{rcpt_responses[0]}'"
+
+        # Step 3: DATA (only if RCPT succeeded)
+        if expected_data_result:
+            data_response = await handler.handle_DATA(
+                smtp_server, sess, envelope
+            )
+            assert data_response.startswith(
+                expected_data_result
+            ), f"Scenario '{scenario}': Expected DATA '{expected_data_result}', got '{data_response}'"
+
+            # Verify appropriate delivery method was called
+            if "local" in rcpt_to_type or rcpt_to_type == "mixed":
+                mock_deliver_local.assert_called_once()
+
+            if rcpt_to_type == "remote" or rcpt_to_type == "mixed":
+                smtp.return_value.sendmail.assert_called_once()
 
 
 ########################################################################

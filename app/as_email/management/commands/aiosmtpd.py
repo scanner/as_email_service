@@ -721,9 +721,85 @@ class RelayHandler:
         - For unauthenticated sessions: we need to receive mail from the internet
         - For authenticated sessions: FROM validation happens in handle_DATA
           where we can check the actual message headers
+
+        We also cache the MAIL FROM account lookup for efficient use in handle_RCPT.
         """
         envelope.mail_from = address
         envelope.mail_options.extend(mail_options)
+
+        # Cache the MAIL FROM account lookup for use in handle_RCPT
+        _, from_addr = parseaddr(address)
+        try:
+            envelope.mail_from_account = await EmailAccount.objects.aget(
+                email_address=from_addr.lower()
+            )
+        except EmailAccount.DoesNotExist:
+            envelope.mail_from_account = None
+
+        return "250 OK"
+
+    ####################################################################
+    #
+    async def handle_RCPT(
+        self,
+        server: SMTP,
+        session: SMTPSession,
+        envelope: SMTPEnvelope,
+        address: str,
+        rcpt_options: List[str],
+    ) -> str:
+        """
+        Handle RCPT TO command. Enforce authentication and validation early.
+
+        Authentication/Authorization logic:
+        - Local delivery (our domains): No auth required, but EmailAccount must exist
+        - Remote delivery (relay):
+          - If MAIL FROM is a deactivated local account → reject immediately
+          - Otherwise → require authentication
+        """
+        _, email_addr = parseaddr(address)
+        domain = (
+            email_addr.split("@")[-1].lower() if "@" in email_addr else None
+        ).lower()
+
+        # Check if this domain is managed by us
+        is_local_domain = False
+        if domain:
+            is_local_domain = await Server.objects.filter(
+                domain_name=domain
+            ).aexists()
+
+        if is_local_domain:
+            # Domain is ours, verify EmailAccount exists
+            try:
+                await EmailAccount.objects.aget(
+                    email_address=email_addr.lower()
+                )
+                # Valid local account, accept it (no auth required)
+                envelope.rcpt_tos.append(address)
+                envelope.rcpt_options.extend(rcpt_options)
+                return "250 OK"
+            except EmailAccount.DoesNotExist:
+                # Domain is ours but no account exists
+                return f"550 5.1.1 <{email_addr}>: Recipient address rejected: User unknown in local recipient table"
+
+        # This is a relay to a remote address
+        # Check if MAIL FROM is a deactivated local account (cached from handle_MAIL)
+        if (
+            hasattr(envelope, "mail_from_account")
+            and envelope.mail_from_account
+            and envelope.mail_from_account.deactivated
+        ):
+            from_addr = envelope.mail_from_account.email_address
+            return f"550 5.7.1 <{from_addr}>: Sender address rejected: Account is deactivated and cannot relay"
+
+        # Require authentication for relay
+        if not session.authenticated:
+            return "530 5.7.1 Authentication required for relaying"
+
+        # Accept the recipient
+        envelope.rcpt_tos.append(address)
+        envelope.rcpt_options.extend(rcpt_options)
         return "250 OK"
 
     ####################################################################
@@ -731,40 +807,18 @@ class RelayHandler:
     async def handle_DATA(
         self, server: SMTP, session: SMTPSession, envelope: SMTPEnvelope
     ) -> str:
-        # Categorize recipients into local, remote, and invalid addresses
+        # Categorize recipients into local and remote addresses
+        # Note: Invalid local addresses are already rejected in handle_RCPT
+        # Note: Authentication for relay is already checked in handle_RCPT
         local_addrs, remote_addrs, invalid_local_addrs = (
             await categorize_recipients(envelope.rcpt_tos)
         )
 
-        # If there are invalid local addresses, report them
-        #
-        if invalid_local_addrs:
-            # If ALL addresses are invalid, reject the entire message
-            #
-            if not local_addrs and not remote_addrs:
-                invalid_list = ", ".join(invalid_local_addrs)
-                return f"550 5.1.1 Recipient address rejected: User unknown in local recipient table ({invalid_list})"
-            # If some addresses are valid, log the invalid ones but continue
-            # (the valid addresses will still receive the message)
-            #
-            logger.warning(
-                "Invalid local email addresses in RCPT TO list: %s (from %s)",
-                ", ".join(invalid_local_addrs),
-                session.peer[0],
-            )
+        # Defensive check: if no valid recipients, reject
+        if not local_addrs and not remote_addrs:
+            return "554 5.5.1 Error: no valid recipients"
 
-        if remote_addrs and not session.authenticated:
-            return "530 Authentication required for relaying"
-
-        # NOTE: If the sender (ie: 'From') is a valid local email account, but
-        #       is deactivated then they will have been denied authentication
-        #       so we do not need to check here if this is a locally
-        #       deactivated email account.
-
-        # XXX session.auth_data is only valid for authenticated smtp sessions
-        #     so we should check if authenticated has succeed before getting
-        #     the "account" object.
-        #
+        # Get the authenticated account if present
         account = session.auth_data if session.authenticated else None
         logger.debug(
             "handle_DATA: account: %s, envelope from: %s",
@@ -788,16 +842,16 @@ class RelayHandler:
                     account, local_addrs, msg_bytes_with_spam_headers
                 )
             except Exception as exc:
-                logger.error(f"Local delivery failed: {exc}")
-                return f"500 Local delivery error: {exc}"
+                logger.error(f"Local delivery failed: {exc!r}")
+                return f"500 Local delivery error: {exc!r}"
 
         # Relay to remote addresses if any
         if remote_addrs:
             try:
                 await relay_email_to_provider(account, remote_addrs, msg)
             except Exception as exc:
-                logger.error(f"Failed to relay: {exc}")
-                return f"500 Mail Provider error: {exc}"
+                logger.error(f"Failed to relay: {exc!r}")
+                return f"500 Mail Provider error: {exc!r}"
 
         return "250 OK"
 
