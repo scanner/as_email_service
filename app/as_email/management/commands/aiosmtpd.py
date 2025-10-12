@@ -605,7 +605,10 @@ class Authenticator:
         password = str(auth_data.password, "utf-8")
 
         try:
-            account = await EmailAccount.objects.aget(email_address=username)
+            # Preload server relation for relay operations
+            account = await EmailAccount.objects.select_related("server").aget(
+                email_address=username
+            )
         except EmailAccount.DoesNotExist:
             return self._auth_fail(session, f"'{username}' not a valid account")
 
@@ -730,6 +733,8 @@ class RelayHandler:
         envelope.mail_options.extend(mail_options)
 
         # Cache the MAIL FROM account lookup for use in handle_RCPT
+        # Note: We don't need to preload 'server' here since handle_RCPT
+        # only checks deactivated status, not server-related fields
         _, from_addr = parseaddr(address)
         try:
             envelope.mail_from_account = await EmailAccount.objects.aget(
@@ -905,10 +910,10 @@ async def deliver_email_locally(
 
     for rcpt_to in rcpt_tos:
         try:
-            # Get the EmailAccount for this recipient
-            recipient_account = await EmailAccount.objects.aget(
-                email_address__iexact=rcpt_to
-            )
+            # Get the EmailAccount for this recipient (with server for spool_dir)
+            recipient_account = await EmailAccount.objects.select_related(
+                "server"
+            ).aget(email_address=rcpt_to.lower())
         except EmailAccount.DoesNotExist:
             logger.warning(
                 "deliver_email_locally: Recipient '%s' does not exist, "
