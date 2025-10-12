@@ -544,18 +544,19 @@ class TestAuthentication:
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_relayhandler_handle_EHLO_denies_blacklisted(
+    async def test_relayhandler_handle_CONNECT_denies_blacklisted(
         self,
         tmp_path,
         faker,
         aiosmtp_session,
         aiosmtp_envelope,
         mock_tarpit_delay,
+        mocker,
     ):
         """
         Given a peer that has been blacklisted for auth failures
-        When handle_EHLO is called
-        Then the connection should be denied with a 550 error
+        When handle_CONNECT is called
+        Then the connection should be denied with a 554 error
         """
         sess = aiosmtp_session
         authenticator = Authenticator()
@@ -564,25 +565,29 @@ class TestAuthentication:
         envelope = aiosmtp_envelope()
         hostname = faker.hostname()
 
-        # First access is okay
-        responses = await handler.handle_EHLO(
-            smtp, sess, envelope, hostname, []
-        )
-        assert len(responses) == 0
-        assert sess.host_name == hostname
+        # Mock DNSBL check - not blacklisted
+        mock_result = mocker.Mock()
+        mock_result.blacklisted = False
+        handler.dnsbl = mocker.AsyncMock()
+        handler.dnsbl.check = mocker.AsyncMock(return_value=mock_result)
 
-        # Blacklist the peer
+        # First connection is okay (not blacklisted yet)
+        response = await handler.handle_CONNECT(
+            smtp, sess, envelope, hostname, 25
+        )
+        assert response == "220 OK"
+
+        # Blacklist the peer for auth failures
         authenticator.incr_fails(sess.peer)
         authenticator.blacklist[sess.peer[0]].num_fails = (
             Authenticator.MAX_NUM_AUTH_FAILURES + 1
         )
 
-        # Now they're denied
-        responses = await handler.handle_EHLO(
-            smtp, sess, envelope, hostname, []
+        # Now they're denied at connection time (auth failure blacklist)
+        response = await handler.handle_CONNECT(
+            smtp, sess, envelope, hostname, 25
         )
-        assert len(responses) == 1
-        assert responses[0].startswith("550 ")
+        assert response.startswith("554")
 
 
 ########################################################################

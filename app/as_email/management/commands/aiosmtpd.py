@@ -663,6 +663,14 @@ class RelayHandler:
         #     (But what if someone's credentaisl get stolen and suddenly they
         #     are used for spam?)
         #
+        if self.authenticator.check_deny(session.peer):
+            logger.info(
+                "handle_EHLO: Denying %s due to too many failed auth attempts",
+                session.peer[0],
+            )
+            await tarpit_delay()
+            return "554 Too many failed attempts"
+
         peer_ip, _ = session.peer
         result = await self.dnsbl.check(peer_ip)
         if result.blacklisted:
@@ -670,6 +678,7 @@ class RelayHandler:
             logger.info(f"IP {peer_ip} is blacklisted: {detected_by}")
             await tarpit_delay()
             return "554 Your IP is blacklisted. Connection refused."
+
         return "220 OK"
 
     ####################################################################
@@ -697,13 +706,6 @@ class RelayHandler:
         # NOTE: We have to at least set session.host_name
         #
         session.host_name = hostname
-        if self.authenticator.check_deny(session.peer):
-            logger.info(
-                "handle_EHLO: Denying %s due to too many failed auth attempts",
-                session.peer[0],
-            )
-            await tarpit_delay()
-            responses.append("550 Too many failed attempts")
         return responses
 
     ####################################################################
