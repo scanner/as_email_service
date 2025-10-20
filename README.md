@@ -68,6 +68,19 @@ RELEASE_VERSION=latest
 
 ## Administration
 
+### Training SpamAssassin on a corpus of spam and ham messages
+
+Assuming that you have mounted a directory as a volume in the "spamassassin" container which contains a directory of "ham" and a directory of "spam" you run the following commands to train the corpus. Assuming that you have mounted `/var/lib/spamassassin` in a volume that will be preserved across restarts of the "spamassassin" service:
+
+**NOTE**: These need to be run inside the "spamassassin" container
+
+```
+sa-update
+sa-learn --spam --username=debian-spamd <path to spam directory>
+sa-learn --ham --username=debian-spamd <path to ham directory>
+sa-learn --sync --username=debian-spamd
+```
+
 ## Design
 
 ## Local Development
