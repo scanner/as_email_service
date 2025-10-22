@@ -21,7 +21,6 @@ These views are for users. It needs to provide functions to:
 
 # System imports
 #
-import json
 import logging
 from collections import defaultdict
 
@@ -33,7 +32,6 @@ from django.http import (
     Http404,
     HttpResponse,
     HttpResponseBadRequest,
-    JsonResponse,
     QueryDict,
 )
 from django.shortcuts import render
@@ -66,12 +64,6 @@ from .serializers import (
     MoveOrderSerializer,
     PasswordSerializer,
 )
-from .tasks import (
-    dispatch_incoming_email,
-    process_email_bounce,
-    process_email_spam,
-)
-from .utils import split_email_mailbox_hash, write_spooled_email
 
 logger = logging.getLogger("as_email.views")
 
@@ -147,280 +139,142 @@ def index(request):
 
 ####################################################################
 #
-@csrf_exempt
-@require_POST
-def hook_postmark_incoming(request, domain_name):
+def _get_provider_for_webhook(server: Server, provider_name: str):
     """
-    Incoming email being POST'd to us by a postmark provider.
+    Get the provider backend for handling webhooks for the given server.
 
-    When emails come in, postmark will POST to this webhook once for each
-    address that it is delivering email for.
+    Args:
+        server: The Server instance
+        provider_name: The provider name from the URL (e.g., "postmark")
 
-    So if a message was "to" "cc" and "bcc" the same address one POST will be
-    made to this hook.
+    Returns:
+        The provider instance that matches the provider_name
 
-    If a message was to two different addresses, but each is served by
-    postmark, two POST's to this hook will be made.
-
-    In all cases the key `OriginalRecipient` will contain the email address a
-    specific POST is being made for.
+    Raises:
+        Http404: If the provider is not configured for this server
     """
-    server = _validate_server_api_key(request, domain_name)
-    try:
-        email = json.loads(request.body)
-    except json.JSONDecodeError as exc:
-        logger.warning("Incoming web hook for %s: %s", server.domain_name, exc)
-        return HttpResponseBadRequest(f"invalid json: {exc}")
-
-    message_id = email["MessageID"] if "MessageID" in email else None
-    from_addr = email["From"] if "From" in email else "<unknown>"
-
-    if "OriginalRecipient" not in email:
-        logger.warning(
-            "email received from postmark without `OriginalRecipient`, "
-            "message id: %s",
-            message_id,
-        )
-        return JsonResponse(
-            {
-                "status": "all good",
-                "message": "no original recipient",
-            }
-        )
-
-    # Find out who this email is being sent to, and validate that there is an
-    # EmailAccount for that address. If it is not one we serve, we need to
-    # log/record metrics about that but otherwise drop it on the floor.
+    # Check if this provider is in the server's receive_providers
     #
-    # This is wasteful but not wasteful.. we look up all the EmailAccounts that
-    # this email will be delivered to, and if it is zero we just stop right
-    # here. Wasteful in that we do this lookup again inside the huey task.. but
-    # that is probably still better than all the work to write the email to the
-    # spool dir and invoke the huey task only for it to do nothing.
-    #
-    addr, _ = split_email_mailbox_hash(email["OriginalRecipient"])
-    try:
-        email_account = EmailAccount.objects.get(email_address=addr)
-    except EmailAccount.DoesNotExist:
-        logger.info(
-            "Received email for EmailAccount that does not exist: %s, from: %s",
-            addr,
-            from_addr,
+    provider = server.receive_providers.filter(
+        backend_name=provider_name
+    ).first()
+    if not provider:
+        raise Http404(
+            f"Provider '{provider_name}' is not configured as a receive "
+            f"provider for server '{server.domain_name}'"
         )
-        # XXX here we would log metrics for getting email that no one is going
-        #     to receive.
-        #
-        return JsonResponse(
-            {
-                "status": "all good",
-                "message": f"no such email account '{addr}'",
-            },
-        )
-
-    spooled_msg_path = write_spooled_email(
-        email["OriginalRecipient"],
-        server.incoming_spool_dir,
-        email["RawEmail"],
-        msg_id=message_id,
-        msg_date=email["Date"],
-    )
-
-    # Fire off async huey task to dispatch the email we just wrote to the spool
-    # directory.
-    #
-    dispatch_incoming_email(email_account.pk, str(spooled_msg_path))
-    return JsonResponse(
-        {"status": "all good", "message": str(spooled_msg_path)}
-    )
+    return provider
 
 
 ####################################################################
 #
 @csrf_exempt
 @require_POST
-def hook_postmark_bounce(request, domain_name):
+def hook_incoming(request, provider_name: str, domain_name: str):
     """
-    Bounce notification POST'd to us by postmark. After doing some initial
-    validating and formatting the bulk of the work is handled in a huey task.
-    """
-    server = _validate_server_api_key(request, domain_name)
-    try:
-        bounce = json.loads(request.body.decode("utf-8"))
-    except json.decoder.JSONDecodeError as exc:
-        logger.warning(
-            f"Bad json from caller: {exc}", extra={"body": request.body}
-        )
-        return HttpResponseBadRequest(f"invalid json: {exc}")
+    Generic incoming email webhook handler.
 
-    # Make sure the json message from postmark contains at least the keys
-    # we expect.
-    #
-    if not all(
-        [x in bounce for x in ("From", "Type", "ID", "Email", "Description")]
-    ):
-        return HttpResponseBadRequest("submitted json missing expected keys")
+    Routes the webhook to the appropriate provider backend based on the
+    provider_name in the URL. The provider backend handles all
+    provider-specific logic.
 
-    logger.info(
-        "postmark bounce hook: message from %s to %s: %s",
-        bounce["From"],
-        bounce["Email"],
-        bounce["Description"],
-    )
+    Args:
+        request: The HTTP request containing the webhook payload
+        provider_name: The provider name from the URL (e.g., "postmark")
+        domain_name: The domain name of the server
 
-    try:
-        ea = EmailAccount.objects.get(email_address=bounce["From"])
-    except EmailAccount.DoesNotExist:
-        logger.warning(
-            "%s from email address that does not belong "
-            "to any EmailAccount: %s, server: %s, bounce id: %d, to: %s, "
-            "description: %s",
-            bounce["Type"],
-            bounce["From"],
-            server,
-            bounce["ID"],
-            bounce["Email"],
-            bounce["Description"],
-            extra=bounce,
-        )
-        # NOTE: This does not return an error. Not their fault unless they are
-        #       buggesed, but we should log it. Maybe we just deleted that
-        #       EmailAccount. Hmm.. maybe we should send the bounce message
-        #       to the django support email address.
-        #
-        return JsonResponse(
-            {
-                "status": "all good",
-                "message": f"`from` address '{bounce['From']}' is not an "
-                f"EmailAccount on server {server.domain_name}. "
-                "Bounce message ignored.",
-            }
-        )
-
-    # We do the rest of the processing in an async huey task (this will involve
-    # querying postmark's bounce API, and sending a notification email to the
-    # email account in question.)
-    #
-    process_email_bounce(ea.pk, bounce)
-
-    return JsonResponse(
-        {
-            "status": "all good",
-            "message": f"received bounce for {server}/{ea.email_address}",
-        }
-    )
-
-
-####################################################################
-#
-@csrf_exempt
-@require_POST
-def hook_postmark_spam(request, domain_name):
-    """
-    Spam notificaiton POST'd to us by the provider.  NOTE: When postmark
-    invokes this hook they are saying the associated email was marked as spam
-    by a remote user. When this happens the account that the email was sent to
-    is now "inactive" and can not be used to receive more email sent by us.
-
-    This view does some cursory work on the request and then tosses the rest of
-    the work to the huey task for dealing with spam.
+    Returns:
+        JsonResponse or HttpResponseBadRequest
     """
     server = _validate_server_api_key(request, domain_name)
-    try:
-        spam = json.loads(request.body.decode("utf-8"))
-    except json.decoder.JSONDecodeError as exc:
-        logger.warning(
-            f"Bad json from caller: {exc}", extra={"body": request.body}
-        )
-        return HttpResponseBadRequest(f"invalid json: {exc}")
-    # Make sure the json message from postmark contains at least the keys
-    # we expect.
-    #
-    if not all(
-        [
-            x in spam
-            for x in (
-                "From",
-                "Type",
-                "TypeCode",
-                "Details",
-                "Subject",
-                "ID",
-                "Email",
-                "Description",
-            )
-        ]
-    ):
-        logger.warning(
-            "submitted json missing expected keys, message: %r", spam
-        )
-        return HttpResponseBadRequest("submitted json missing expected keys")
+    provider = _get_provider_for_webhook(server, provider_name)
 
-    # Just to be safe, try to make sure that the TypeCode is an integer.
+    # Check if the provider backend supports this webhook
     #
-    try:
-        spam["TypeCode"] = int(spam["TypeCode"])
-    except ValueError:
+    if not hasattr(provider.backend, "handle_incoming_webhook"):
         logger.error(
-            "From: %s, to %s, ID: %s - TypeCode is not an integer: '%s'",
-            spam["From"],
-            spam["Email"],
-            spam["ID"],
-            spam["TypeCode"],
-            extra=spam,
+            "Provider '%s' does not support incoming webhook",
+            provider_name,
         )
-        spam["TypeCode"] = 2048  #  Mark it as 'unknown'
-
-    logger.warning(
-        "message from %s to %s. Message ID: %s, Postmark ID: %s: %s",
-        spam["From"],
-        spam["Email"],
-        spam["MessageID"],
-        spam["ID"],
-        spam["Description"],
-        extra=spam,
-    )
-
-    try:
-        ea = EmailAccount.objects.get(email_address=spam["From"])
-    except EmailAccount.DoesNotExist:
-        logger.warning(
-            "%s from email address that does not belong "
-            "to any EmailAccount: %s, server: %s, Postmark id: %d, to: %s, "
-            "description: %s",
-            spam["Type"],
-            spam["From"],
-            server,
-            spam["ID"],
-            spam["Email"],
-            spam["Description"],
-            extra=spam,
-        )
-        # NOTE: This does not return an error. Not their fault unless they are
-        #       buggesed, but we should log it. Maybe we just deleted that
-        #       EmailAccount. Hmm.. maybe we should send the spam message
-        #       to the django support email address.
-        #
-        return JsonResponse(
-            {
-                "status": "all good",
-                "message": f"`from` address '{spam['From']}' is not an "
-                f"EmailAccount on server {server.domain_name}. "
-                "Spam message ignored.",
-            }
+        return HttpResponseBadRequest(
+            f"Provider '{provider_name}' does not support incoming webhooks"
         )
 
-    # We do the rest of the processing in an async huey task (this will involve
-    # querying postmark's spam API, and sending a notification email to the
-    # email account in question.)
+    return provider.backend.handle_incoming_webhook(request, server)
+
+
+####################################################################
+#
+@csrf_exempt
+@require_POST
+def hook_bounce(request, provider_name: str, domain_name: str):
+    """
+    Generic bounce notification webhook handler.
+
+    Routes the webhook to the appropriate provider backend based on the
+    provider_name in the URL. The provider backend handles all
+    provider-specific logic.
+
+    Args:
+        request: The HTTP request containing the webhook payload
+        provider_name: The provider name from the URL (e.g., "postmark")
+        domain_name: The domain name of the server
+
+    Returns:
+        JsonResponse or HttpResponseBadRequest
+    """
+    server = _validate_server_api_key(request, domain_name)
+    provider = _get_provider_for_webhook(server, provider_name)
+
+    # Check if the provider backend supports this webhook
     #
-    process_email_spam(ea.pk, spam)
+    if not hasattr(provider.backend, "handle_bounce_webhook"):
+        logger.error(
+            "Provider '%s' does not support bounce webhook",
+            provider_name,
+        )
+        return HttpResponseBadRequest(
+            f"Provider '{provider_name}' does not support bounce webhooks"
+        )
 
-    return JsonResponse(
-        {
-            "status": "all good",
-            "message": f"received spam for {server.domain_name}/{ea.email_address}",
-        }
-    )
+    return provider.backend.handle_bounce_webhook(request, server)
+
+
+####################################################################
+#
+@csrf_exempt
+@require_POST
+def hook_spam(request, provider_name: str, domain_name: str):
+    """
+    Generic spam complaint webhook handler.
+
+    Routes the webhook to the appropriate provider backend based on the
+    provider_name in the URL. The provider backend handles all
+    provider-specific logic.
+
+    Args:
+        request: The HTTP request containing the webhook payload
+        provider_name: The provider name from the URL (e.g., "postmark")
+        domain_name: The domain name of the server
+
+    Returns:
+        JsonResponse or HttpResponseBadRequest
+    """
+    server = _validate_server_api_key(request, domain_name)
+    provider = _get_provider_for_webhook(server, provider_name)
+
+    # Check if the provider backend supports this webhook
+    #
+    if not hasattr(provider.backend, "handle_spam_webhook"):
+        logger.error(
+            "Provider '%s' does not support spam webhook",
+            provider_name,
+        )
+        return HttpResponseBadRequest(
+            f"Provider '{provider_name}' does not support spam webhooks"
+        )
+
+    return provider.backend.handle_spam_webhook(request, server)
 
 
 ####################################################################

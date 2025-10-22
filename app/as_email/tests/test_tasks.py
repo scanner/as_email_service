@@ -15,7 +15,7 @@ from dirty_equals import Contains
 
 # Project imports
 #
-from ..models import EmailAccount, InactiveEmail, spool_message
+from ..models import EmailAccount, InactiveEmail
 from ..tasks import (
     decrement_num_bounces_counter,
     dispatch_incoming_email,
@@ -24,7 +24,7 @@ from ..tasks import (
     process_email_spam,
     retry_failed_incoming_email,
 )
-from ..utils import read_emailaccount_pwfile, write_spooled_email
+from ..utils import read_emailaccount_pwfile, spool_message, write_spooled_email
 from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db

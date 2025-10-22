@@ -131,8 +131,11 @@ def test_incoming_webhook(
 
     url = (
         reverse(
-            "as_email:hook_postmark_incoming",
-            kwargs={"domain_name": server.domain_name},
+            "as_email:hook_incoming",
+            kwargs={
+                "provider_name": "postmark",
+                "domain_name": server.domain_name,
+            },
         )
         + "?"
         + urlencode({"api_key": server.api_key})
@@ -166,8 +169,11 @@ def test_incoming_webhook_bad_json(
 
     url = (
         reverse(
-            "as_email:hook_postmark_incoming",
-            kwargs={"domain_name": server.domain_name},
+            "as_email:hook_incoming",
+            kwargs={
+                "provider_name": "postmark",
+                "domain_name": server.domain_name,
+            },
         )
         + "?"
         + urlencode({"api_key": server.api_key})
@@ -200,8 +206,11 @@ def test_incoming_webhook_no_such_emailaccount(
 
     url = (
         reverse(
-            "as_email:hook_postmark_incoming",
-            kwargs={"domain_name": server.domain_name},
+            "as_email:hook_incoming",
+            kwargs={
+                "provider_name": "postmark",
+                "domain_name": server.domain_name,
+            },
         )
         + "?"
         + urlencode({"api_key": server.api_key})
@@ -235,8 +244,8 @@ def test_incoming_webhook_no_such_server(
 
     url = (
         reverse(
-            "as_email:hook_postmark_incoming",
-            kwargs={"domain_name": domain_name},
+            "as_email:hook_incoming",
+            kwargs={"provider_name": "postmark", "domain_name": domain_name},
         )
         + "?"
         + urlencode({"api_key": api_key})
@@ -290,8 +299,11 @@ def test_bounce_webhook(
 
     url = (
         reverse(
-            "as_email:hook_postmark_bounce",
-            kwargs={"domain_name": server.domain_name},
+            "as_email:hook_bounce",
+            kwargs={
+                "provider_name": "postmark",
+                "domain_name": server.domain_name,
+            },
         )
         + "?"
         + urlencode({"api_key": server.api_key})
@@ -341,8 +353,11 @@ def test_bounce_webhook(
     #
     url = (
         reverse(
-            "as_email:hook_postmark_bounce",
-            kwargs={"domain_name": faker.domain_name()},
+            "as_email:hook_bounce",
+            kwargs={
+                "provider_name": "postmark",
+                "domain_name": faker.domain_name(),
+            },
         )
         + "?"
         + urlencode({"api_key": server.api_key})
@@ -396,8 +411,11 @@ def test_postmark_spam_webhook(
 
     url = (
         reverse(
-            "as_email:hook_postmark_spam",
-            kwargs={"domain_name": server.domain_name},
+            "as_email:hook_spam",
+            kwargs={
+                "provider_name": "postmark",
+                "domain_name": server.domain_name,
+            },
         )
         + "?"
         + urlencode({"api_key": server.api_key})

@@ -153,6 +153,39 @@ BOUNCE_TYPES_BY_TYPE_CODE = {
 
 ####################################################################
 #
+def spool_message(spool_dir: Union[str, Path], message: bytes) -> None:
+    """
+    Write a message to the message spool for later dispatching.
+
+    Args:
+        spool_dir: Directory path to write the spooled message
+        message: The email message as bytes
+    """
+    import pytz
+    from django.conf import settings
+
+    fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
+        "%Y.%m.%d-%H.%M.%S.%f%z"
+    )
+    spool_dir = spool_dir if isinstance(spool_dir, Path) else Path(spool_dir)
+    spool_file = spool_dir / fname
+    # XXX we should create a db object for each email we
+    #     retry so that we can track number of retries and
+    #     how long we have been retrying for and how long
+    #     until the next retry. It is probably best to
+    #     actually make an ORM object for this metadata
+    #     instead of trying to stick it somewhere else.
+    #
+    #     also need to track bounces and deliver a bounce
+    #     email (and we do not retry on bounces)
+    #
+    #     This db object can also track re-send attempts?
+    #
+    spool_file.write_bytes(message)
+
+
+####################################################################
+#
 def split_email_mailbox_hash(email_address: str) -> Tuple[str, str | None]:
     """
     Split an email address in to the email address and its mailbox
