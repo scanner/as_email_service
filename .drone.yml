@@ -4,7 +4,7 @@ name: AS Email Django App Tests
 
 steps:
   - name: test
-    image: "python:3.12"
+    image: "python:3.13"
     environment:
       PYTHONUNBUFFERED: 1
       DEBUG: true
@@ -18,7 +18,11 @@ steps:
       - mkdir ./staticfiles
       - uv run python ./manage.py collectstatic --clear --no-input --verbosity 0
       - uv run python ./manage.py compress
-      - uv run pytest
+      # Run tests with coverage and timing reports
+      - uv run pytest --cov=as_email --cov-report=term-missing:skip-covered --durations=20
+      # Display detailed coverage summary
+      - echo "=== Coverage Summary ==="
+      - uv run coverage report
 
 ---
 kind: pipeline

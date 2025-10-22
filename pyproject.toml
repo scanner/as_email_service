@@ -1,8 +1,8 @@
 [project]
 name = "as-email-service"
-version = "0.2.5"
+version = "0.2.6"
 description = "Apricot Systematic Email Service"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "aiofiles",
     "aiologger",
@@ -12,6 +12,7 @@ dependencies = [
     "cryptography==42.0.8",
     "csscompressor",
     "django",
+    "docopt",
     "django-anymail",
     "django-crispy-forms",
     "django-cryptography",
@@ -62,6 +63,8 @@ dev = [
     "pytest-factoryboy",
     "pytest-mock",
     "pytest-sugar",
+    "pytest-timeout",
+    "pytest-xdist",
     "requests-mock",
     "trustme",
     "werkzeug",
@@ -157,3 +160,5 @@ markers = [
     "smoke: marks tests as smoke (deselect with '-m \"not smoke\"')",
     "integration",
 ]
+# Show slowest 10 tests
+addopts = "--durations=10 --durations-min=0.1"
