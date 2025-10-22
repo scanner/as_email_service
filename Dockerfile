@@ -3,7 +3,7 @@
 # Builder stage - Use slim image with build tools
 # This stage installs build dependencies temporarily to compile Python packages
 #
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -42,7 +42,7 @@ RUN find /venv -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null ||
 # Development stage - includes development requirements and debugging tools
 # This is a larger image with all the tools you need for development
 #
-FROM python:3.12-slim AS dev
+FROM python:3.13-slim AS dev
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
 LABEL org.opencontainers.image.description="Apricot Systematic Email Service (Development)"
@@ -104,7 +104,7 @@ CMD ["/app/scripts/start_app.sh"]
 # Production stage - smallest possible runtime image
 # Uses slim base and only copies runtime dependencies and the built venv
 #
-FROM python:3.12-slim AS prod
+FROM python:3.13-slim AS prod
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
 LABEL org.opencontainers.image.description="Apricot Systematic Email Service"
@@ -127,7 +127,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the cleaned venv from builder
-# This venv was built in python:3.12-slim so it's compatible
+# This venv was built in python:3.13-slim so it's compatible
 COPY --from=builder /venv /venv
 
 # Copy pyproject.toml for package metadata

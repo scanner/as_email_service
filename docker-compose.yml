@@ -30,6 +30,7 @@ services:
     image: as_email_service_app
     container_name: smtpd
     ports:
+      - "25:25"
       - "587:587"
     command: /app/scripts/start_smtpd.sh
     restart: unless-stopped
@@ -93,6 +94,7 @@ services:
       dockerfile: ./Dockerfile
       target: dev
     ports:
+      - "25:25"
       - "587:587"
     command: /app/scripts/start_smtpd.sh
     restart: unless-stopped

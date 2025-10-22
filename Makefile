@@ -99,7 +99,8 @@ logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
 	@docker compose logs -f worker devweb devsmtpd mailhog
 
 test: .venv	## Run all of the tests
-	@$(UV_RUN) pytest app/
+	@$(UV_RUN) pytest --cov=as_email --cov-report=html app/
+	@echo "HTML coverage report generated in htmlcov/index.html"
 
 release: build	## Make a release. Builds and then tags the latest docker image with most recent git tag. Then pushes it to ghcr.io/scanner/as_email_service_app
 	docker tag as_email_service_app:latest as_email_service_app:$(LATEST_TAG)

@@ -51,7 +51,8 @@ from as_email.models import EmailAccount, InactiveEmail, Server
 from as_email.tasks import dispatch_incoming_email
 from as_email.utils import write_spooled_email
 
-LISTEN_PORT = 19246
+SUBMISSION_PORT = 587
+SMTP_PORT = 25
 LISTEN_HOST = "0.0.0.0"
 
 logger = logging.getLogger("as_email.aiosmtpd")
@@ -274,10 +275,7 @@ class AsyncioAuthSMTP(SMTP):
                 )
             else:
                 logger.exception("%r SMTP session exception", self.session.peer)
-            status = "500 Error: ({}) {}".format(
-                error.__class__.__name__,
-                str(error),
-            )
+            status = f"500 Error: ({error.__class__.__name__}) {error!r}"
             return status
 
     ####################################################################
@@ -396,10 +394,16 @@ class Command(BaseCommand):
     #
     def add_arguments(self, parser):
         parser.add_argument(
-            "--listen_port",
+            "--submission_port",
             type=int,
             action="store",
-            default=LISTEN_PORT,
+            default=SUBMISSION_PORT,
+        )
+        parser.add_argument(
+            "--smtp_port",
+            type=int,
+            action="store",
+            default=SMTP_PORT,
         )
         parser.add_argument(
             "--listen_host",
@@ -412,15 +416,20 @@ class Command(BaseCommand):
     ####################################################################
     #
     def handle(self, *args, **options):
-        listen_port = options["listen_port"]
+        submission_port = options["submission_port"]
+        smtp_port = options["smtp_port"]
         listen_host = options["listen_host"]
         ssl_cert_file = options["ssl_cert"]
         ssl_key_file = options["ssl_key"]
         spool_dir = settings.EMAIL_SPOOL_DIR
 
         logger.info(
-            f"aiosmtpd: Listening on {listen_host}, {listen_port}, "
-            f"cert: '{ssl_cert_file}', key: '{ssl_key_file}'"
+            "aiosmtpd: Submission port: %d, SMTP port: %d, host: '%s', cert: '%s', key: '%s'",
+            submission_port,
+            smtp_port,
+            listen_host,
+            ssl_cert_file,
+            ssl_key_file,
         )
 
         # If `list_host` contains commas we are going to assume it is a set of
@@ -434,11 +443,13 @@ class Command(BaseCommand):
         tls_context.load_cert_chain(ssl_cert_file, ssl_key_file)
         authenticator = Authenticator()
         handler = RelayHandler(spool_dir=spool_dir, authenticator=authenticator)
-        controller = AsyncioAuthController(
+
+        # Submission port controller (port 587) - requires STARTTLS
+        submission_controller = AsyncioAuthController(
             handler,
             hostname=listen_host,
             server_hostname=settings.SITE_NAME,
-            port=listen_port,
+            port=submission_port,
             authenticator=authenticator,
             tls_context=tls_context,
             require_starttls=True,
@@ -448,21 +459,46 @@ class Command(BaseCommand):
             # service is not hosting.
             #
             auth_required=False,
-            # auth_required=True,
             # Commands RCPT and NOOP have their own limits; others have an
             # implicit limit of 20 (CALL_LIMIT_DEFAULT)
             #
             command_call_limit={"RCPT": 30, "NOOP": 5},
         )
-        logger.info("Starting controller")
-        controller.start()
+
+        # SMTP port controller (port 25) - optional STARTTLS for receiving mail
+        smtp_controller = AsyncioAuthController(
+            handler,
+            hostname=listen_host,
+            server_hostname=settings.SITE_NAME,
+            port=smtp_port,
+            authenticator=authenticator,
+            tls_context=tls_context,
+            require_starttls=False,
+            # During communication with the SMTP client we may require
+            # authentication, but we do not require it until we know that the
+            # SMTP client is trying to relay email to domains that the AS Email
+            # service is not hosting.
+            #
+            auth_required=False,
+            command_call_limit={"RCPT": 30, "NOOP": 5},
+        )
+
+        logger.info(
+            "Starting submission controller on port %d", submission_port
+        )
+        submission_controller.start()
+        logger.info("Starting SMTP controller on port %d", smtp_port)
+        smtp_controller.start()
+
         try:
             while True:
                 time.sleep(300)
         except KeyboardInterrupt:
             logger.warning("Keyboard interrupt, exiting")
         finally:
-            controller.stop()
+            logger.info("Stopping controllers")
+            submission_controller.stop()
+            smtp_controller.stop()
 
 
 ########################################################################
@@ -659,6 +695,14 @@ class RelayHandler:
         hostname: str,
         port: int,
     ):
+        logger.debug(
+            "handle_CONNECT: smtp: %r, session: %r, envelope: %r, hostname: %s",
+            smtp,
+            session,
+            envelope,
+            hostname,
+        )
+
         # XXX Should we add a configurable white list in case one of our ip
         #     addresses is black listed maliciously? probably not.. been fine
         #     for so many years as it is.  .  If we were maybe we should allow
@@ -678,7 +722,7 @@ class RelayHandler:
         result = await self.dnsbl.check(peer_ip)
         if result.blacklisted:
             detected_by = format_dnsbl_providers(result.detected_by)
-            logger.info(f"IP {peer_ip} is blacklisted: {detected_by}")
+            logger.info("IP %s is blacklisted: %s", peer_ip, detected_by)
             await tarpit_delay()
             return "554 Your IP is blacklisted. Connection refused."
 
@@ -788,17 +832,24 @@ class RelayHandler:
                 return "250 OK"
             except EmailAccount.DoesNotExist:
                 # Domain is ours but no account exists
-                return f"550 5.1.1 <{email_addr}>: Recipient address rejected: User unknown in local recipient table"
+                msg = (
+                    f"<{email_addr}>: Recipient address rejected: User unknown"
+                )
+                logger.info(msg)
+                return f"550 5.1.1 {msg}"
 
-        # This is a relay to a remote address
-        # Check if MAIL FROM is a deactivated local account (cached from handle_MAIL)
+        # This is a relay to a remote address. Check if MAIL FROM is a
+        # deactivated local account (cached from handle_MAIL)
+        #
         if (
             hasattr(envelope, "mail_from_account")
             and envelope.mail_from_account
             and envelope.mail_from_account.deactivated
         ):
             from_addr = envelope.mail_from_account.email_address
-            return f"550 5.7.1 <{from_addr}>: Sender address rejected: Account is deactivated and cannot relay"
+            msg = f"<{from_addr}>: Sender address rejected: Account is deactivated and cannot relay"
+            logger.warning(msg)
+            return f"550 5.7.1 {msg}"
 
         # Require authentication for relay
         if not session.authenticated:
@@ -823,6 +874,10 @@ class RelayHandler:
 
         # Defensive check: if no valid recipients, reject
         if not local_addrs and not remote_addrs:
+            logger.info(
+                "Error: No valid recipients. Envelope from: %s",
+                envelope.mail_from,
+            )
             return "554 5.5.1 Error: no valid recipients"
 
         # Get the authenticated account if present
@@ -849,7 +904,7 @@ class RelayHandler:
                     account, local_addrs, msg_bytes_with_spam_headers
                 )
             except Exception as exc:
-                logger.error(f"Local delivery failed: {exc!r}")
+                logger.error("Local delivery failed: %r", exc)
                 return f"500 Local delivery error: {exc!r}"
 
         # Relay to remote addresses if any
@@ -857,7 +912,7 @@ class RelayHandler:
             try:
                 await relay_email_to_provider(account, remote_addrs, msg)
             except Exception as exc:
-                logger.error(f"Failed to relay: {exc!r}")
+                logger.error("Failed to relay: %r", exc)
                 return f"500 Mail Provider error: {exc!r}"
 
         return "250 OK"
