@@ -16,9 +16,16 @@ from .models import (
 
 @admin.register(Provider)
 class ProviderAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "created_at", "modified_at")
-    list_filter = ("created_at", "modified_at")
-    search_fields = ("name",)
+    list_display = (
+        "id",
+        "name",
+        "backend_name",
+        "provider_type",
+        "created_at",
+        "modified_at",
+    )
+    list_filter = ("backend_name", "provider_type", "created_at", "modified_at")
+    search_fields = ("name", "backend_name")
     date_hierarchy = "created_at"
 
 
@@ -27,7 +34,7 @@ class ServerAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "domain_name",
-        "provider",
+        "send_provider",
         "api_key",
         "incoming_spool_dir",
         "outgoing_spool_dir",
@@ -36,7 +43,8 @@ class ServerAdmin(admin.ModelAdmin):
         "modified_at",
     )
     search_fields = ("domain_name",)
-    list_filter = ("provider", "created_at", "modified_at")
+    list_filter = ("send_provider", "created_at", "modified_at")
+    filter_horizontal = ("receive_providers",)
     date_hierarchy = "created_at"
 
 

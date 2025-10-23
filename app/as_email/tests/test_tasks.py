@@ -15,7 +15,7 @@ from dirty_equals import Contains
 
 # Project imports
 #
-from ..models import EmailAccount, InactiveEmail, spool_message
+from ..models import EmailAccount, InactiveEmail
 from ..tasks import (
     decrement_num_bounces_counter,
     dispatch_incoming_email,
@@ -24,7 +24,7 @@ from ..tasks import (
     process_email_spam,
     retry_failed_incoming_email,
 )
-from ..utils import read_emailaccount_pwfile, write_spooled_email
+from ..utils import read_emailaccount_pwfile, spool_message, write_spooled_email
 from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -47,9 +47,8 @@ def test_dispatch_spool_outgoing_email(
     spool_message(server.outgoing_spool_dir, msg.as_bytes())
     res = dispatch_spooled_outgoing_email()
     res()
-    send_message = smtp.return_value.sendmail
-    assert send_message.call_count == 1
-    assert send_message.call_args.args == Contains(
+    assert smtp.sendmail.call_count == 1
+    assert smtp.sendmail.call_args.args == Contains(
         from_addr,
         rcpt_tos,
     )

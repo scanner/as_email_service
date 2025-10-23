@@ -13,10 +13,10 @@ from rest_framework_nested import routers
 from .views import (
     EmailAccountViewSet,
     MessageFilterRuleViewSet,
+    hook_bounce,
     hook_forward_valid,
-    hook_postmark_bounce,
-    hook_postmark_incoming,
-    hook_postmark_spam,
+    hook_incoming,
+    hook_spam,
     index,
 )
 
@@ -53,20 +53,23 @@ app_name = "as_email"
 urlpatterns = [
     path("", index, name="index"),
     path("api/v1/", include(api_urls)),
+    # Generic webhook handlers - work with any provider
+    # Existing Postmark webhooks at hook/postmark/* will continue to work
+    #
     path(
-        "hook/postmark/incoming/<str:domain_name>/",
-        hook_postmark_incoming,
-        name="hook_postmark_incoming",
+        "hook/<str:provider_name>/incoming/<str:domain_name>/",
+        hook_incoming,
+        name="hook_incoming",
     ),
     path(
-        "hook/postmark/bounce/<str:domain_name>/",
-        hook_postmark_bounce,
-        name="hook_postmark_bounce",
+        "hook/<str:provider_name>/bounce/<str:domain_name>/",
+        hook_bounce,
+        name="hook_bounce",
     ),
     path(
-        "hook/postmark/spam/<str:domain_name>/",
-        hook_postmark_spam,
-        name="hook_postmark_spam",
+        "hook/<str:provider_name>/spam/<str:domain_name>/",
+        hook_spam,
+        name="hook_spam",
     ),
     # We want to have a way to validate forwarding addresses. When the user
     # tries to setup a forward we give an action that sends a test message to

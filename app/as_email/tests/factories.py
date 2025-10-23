@@ -56,6 +56,8 @@ class UserFactory(DjangoModelFactory):
 #
 class ProviderFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Provider {n}")
+    backend_name = "postmark"
+    provider_type = Provider.ProviderType.BOTH
     smtp_server = factory.Sequence(lambda n: f"smtp{n}.example.com:587")
 
     class Meta:
@@ -68,11 +70,31 @@ class ProviderFactory(DjangoModelFactory):
 #
 class ServerFactory(DjangoModelFactory):
     domain_name = factory.Sequence(lambda n: f"srvr{n}.example.com")
-    provider = factory.SubFactory(ProviderFactory)
+    send_provider = factory.SubFactory(ProviderFactory)
+
+    @post_generation
+    def receive_providers(
+        self, create: bool, extracted: Sequence[Any], **kwargs
+    ):
+        """
+        Add receive_providers to the server. By default, adds the send_provider
+        as a receive provider as well.
+        """
+        if not create:
+            return
+
+        if extracted:
+            # If a list of providers was passed, use those
+            for provider in extracted:
+                self.receive_providers.add(provider)
+        elif self.send_provider:
+            # By default, add send_provider as a receive provider
+            self.receive_providers.add(self.send_provider)
 
     class Meta:
         model = Server
-        django_get_or_create = ("domain_name", "provider")
+        django_get_or_create = ("domain_name",)
+        skip_postgeneration_save = True
 
 
 ########################################################################

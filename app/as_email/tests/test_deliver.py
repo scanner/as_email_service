@@ -254,18 +254,16 @@ def test_forwarding(email_account_factory, email_factory, smtp):
     deliver_message(ea_1, msg)
 
     # NOTE: in the models object we create a smtp_client. On the smtp_client
-    #       the only thing we care about is that the `send_message` method was
+    #       the only thing we care about is that the `sendmail` method was
     #       called with the appropriate values.
     #
-    send_message = smtp.return_value.send_message
-    send_message = smtp.return_value.sendmail
-    assert send_message.call_count == 1
-    assert send_message.call_args.args == Contains(
+    assert smtp.sendmail.call_count == 1
+    assert smtp.sendmail.call_args.args == Contains(
         ea_1.email_address,
         [ea_1.forward_to],
     )
 
-    sent_message_bytes = send_message.call_args.args[2]
+    sent_message_bytes = smtp.sendmail.call_args.args[2]
     sent_message = email.message_from_bytes(
         sent_message_bytes, policy=email.policy.default
     )

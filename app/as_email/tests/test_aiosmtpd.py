@@ -1049,8 +1049,7 @@ class TestHandleDATA:
         response = await handler.handle_DATA(smtp_server, sess, envelope)
 
         assert response.startswith("250 ")
-        send_message = smtp.return_value.sendmail
-        assert send_message.call_count == 1
+        assert smtp.sendmail.call_count == 1
 
     ####################################################################
     #
@@ -1106,7 +1105,7 @@ class TestHandleDATA:
         assert response.startswith("250 OK")
         # Both local delivery and relay should be called
         mock_deliver_local.assert_called_once()
-        smtp.return_value.sendmail.assert_called_once()
+        smtp.sendmail.assert_called_once()
 
 
 ########################################################################
@@ -1200,7 +1199,7 @@ class TestFromHeaderValidation:
 
         assert response.startswith("551 FROM must be")
         # Message should not be sent
-        assert smtp.return_value.sendmail.call_count == 0
+        assert smtp.sendmail.call_count == 0
 
 
 ########################################################################
@@ -1617,7 +1616,7 @@ class TestSMTPIntegration:
                 mock_deliver_local.assert_called_once()
 
             if rcpt_to_type == "remote" or rcpt_to_type == "mixed":
-                smtp.return_value.sendmail.assert_called_once()
+                smtp.sendmail.assert_called_once()
 
 
 ########################################################################
@@ -1662,8 +1661,7 @@ class TestRelayToProvider:
         await relay_email_to_provider(ea, [inactive], msg)
 
         # No email sent to provider
-        send_message = smtp.return_value.sendmail
-        assert send_message.call_count == 0
+        assert smtp.sendmail.call_count == 0
 
         # DSN delivered locally
         mh = ea.MH()
@@ -1707,9 +1705,8 @@ class TestRelayToProvider:
         await relay_email_to_provider(ea, [to, inactive], msg)
 
         # Message sent to valid address
-        send_message = smtp.return_value.sendmail
-        assert send_message.call_count == 1
-        assert send_message.call_args.args == Contains(
+        assert smtp.sendmail.call_count == 1
+        assert smtp.sendmail.call_args.args == Contains(
             ea.email_address,
             [to],
         )

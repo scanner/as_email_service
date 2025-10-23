@@ -13,15 +13,12 @@ import logging
 import mailbox
 import random
 import shlex
-import smtplib
 import string
-from datetime import datetime
 from pathlib import Path
-from typing import List, Union
+from typing import List
 
 # 3rd party imports
 #
-import pytz
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -33,12 +30,9 @@ from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
-from postmarker.exceptions import ClientError
-from requests import RequestException
 
 # project imports
 #
-from .utils import sendmail
 
 # Various models that belong to a specific user need the User object.
 #
@@ -46,68 +40,128 @@ User = get_user_model()
 logger = logging.getLogger("as_email.models")
 
 
-####################################################################
-#
-def spool_message(spool_dir: Union[str | Path], message: bytes):
-    """
-    Logic to write a message to the message spool for later dispatching.
-    """
-    fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
-        "%Y.%m.%d-%H.%M.%S.%f%z"
-    )
-    spool_dir = spool_dir if isinstance(spool_dir, Path) else Path(spool_dir)
-    spool_file = spool_dir / fname
-    # XXX we should create a db object for each email we
-    #     retry so that we can track number of retries and
-    #     how long we have been retrying for and how long
-    #     until the next retry. It is probably best to
-    #     actually makea n ORM object for this metadata
-    #     instead of trying to stick it somewhere else.
-    #
-    #     also need to track bounces and deliver a bounce
-    #     email (and we do not retry on bounces)
-    #
-    #     This db object can also track re-send attempts?
-    #
-    spool_file.write_bytes(message)
-
-
 ########################################################################
 ########################################################################
 #
 class Provider(models.Model):
+    """
+    Represents an email service provider (e.g., Postmark, ForwardEmail).
+
+    A Provider can be configured for sending email, receiving email, or both.
+    The backend_name determines which provider backend implementation handles
+    the actual sending and webhook processing.
+    """
+
+    ####################################################################
+    #
+    class ProviderType(models.TextChoices):
+        """
+        Choices for provider type indicating whether the provider is used
+        for sending, receiving, or both operations.
+        """
+
+        SEND = "SEND", _("Send Only")
+        RECEIVE = "RECEIVE", _("Receive Only")
+        BOTH = "BOTH", _("Send and Receive")
+
     name = models.CharField(unique=True, max_length=200)
+    backend_name = models.CharField(
+        max_length=50,
+        help_text=_(
+            "The name of the provider backend to use (e.g., 'postmark', "
+            "'forwardemail'). This determines which implementation handles "
+            "email sending and webhook processing."
+        ),
+        default="postmark",
+    )
+    provider_type = models.CharField(
+        max_length=10,
+        choices=ProviderType.choices,
+        default=ProviderType.BOTH,
+        help_text=_(
+            "Whether this provider is used for sending email, receiving email, "
+            "or both."
+        ),
+    )
     smtp_server = models.CharField(
         help_text=_(
             "The host:port for sending messages via SMTP for this provider "
             "(each server has its own unique login, but all the servers on "
-            "the same provider using the same hostname for SMTP.)"
+            "the same provider use the same hostname for SMTP). Only required "
+            "for providers that support sending email."
         ),
         max_length=200,
-        blank=False,
+        blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     ####################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
+
+    ####################################################################
+    #
+    @property
+    def backend(self):
+        """
+        Get the provider backend instance for this provider.
+
+        Returns:
+            An instance of the provider backend (e.g., PostmarkBackend)
+
+        Raises:
+            ImportError: If the backend module does not exist
+            AttributeError: If the backend class is not found
+        """
+        if not hasattr(self, "_backend"):
+            from .providers import get_backend
+
+            self._backend = get_backend(self.backend_name)
+        return self._backend
 
 
 ########################################################################
 ########################################################################
 #
 class Server(models.Model):
+    """
+    Represents a domain that sends and/or receives email.
+
+    A Server uses a send_provider for outgoing email and one or more
+    receive_providers for incoming email webhooks. The providers determine
+    which email service handles the actual email transmission and reception.
+    """
+
     domain_name = models.CharField(
         help_text=_(
-            "This is the 'server' within postmark to handle email for the "
-            "specified domain."
+            "The domain name this server handles email for (e.g., 'example.com'). "
+            "Email accounts on this server will have addresses ending with this domain."
         ),
         max_length=200,
         unique=True,
     )
-    provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
+    send_provider = models.ForeignKey(
+        Provider,
+        on_delete=models.SET_NULL,
+        related_name="sending_servers",
+        null=True,
+        blank=True,
+        help_text=_(
+            "The provider used for sending outgoing email from this domain. "
+            "If not set, this server can only receive email."
+        ),
+    )
+    receive_providers = models.ManyToManyField(
+        Provider,
+        related_name="receiving_servers",
+        blank=True,
+        help_text=_(
+            "The providers that can deliver incoming email to this domain. "
+            "Multiple providers can be configured to receive email from different sources."
+        ),
+    )
 
     # In the future we may want to move API keys in to a more generalized
     # framework but right now the only thing that can use the webhook's are the
@@ -253,7 +307,10 @@ class Server(models.Model):
     @property
     def client(self) -> PostmarkClient:
         """
-        Returns a postmark client for this server
+        Returns a postmark client for this server.
+
+        DEPRECATED: This property is deprecated and will be removed in a future
+        version. Use send_provider.backend instead.
         """
         if not hasattr(self, "_client"):
             if self.domain_name not in settings.EMAIL_SERVER_TOKENS:
@@ -276,109 +333,78 @@ class Server(models.Model):
         spool_on_retryable: bool = True,
     ) -> bool:
         """
-        send email via smtp. It is weird to have two different methods, but
-        they do have different purposes. One is for email that is being relayed
-        (via the aiosmptd daemon command) as well for retrying spooled
-        messages. The other is for directly sending a message for some
-        adminstrative purpose (like messages from mailer-daemon about
-        bounces). We likely could just get rid of the API method and rely
-        wholly on the SMTP method, but I feel that in the future when we
-        support sending batched emails and using templates it will make more
-        sense to keep it around.
+        Send email via SMTP using the configured send provider.
 
-        NOTE: the "email_from" must be from the same domain name as the server,
-              if not a ValueError exception is raised.
+        This method delegates to the send provider's backend to handle the
+        actual SMTP transmission. It's used for relaying email (via the
+        aiosmptd daemon) and for retrying spooled messages.
+
+        Args:
+            email_from: Email address to send from (must match server domain)
+            rcpt_tos: List of recipient email addresses
+            msg: The email message to send
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the email was sent successfully, False otherwise
+
+        Raises:
+            ValueError: If send_provider is not configured
+            ValueError: If email_from domain doesn't match server domain
         """
-        if self.domain_name != email_from.split("@")[-1]:
+        if not self.send_provider:
             raise ValueError(
-                f"Domain name of {email_from} is not the same "
-                f"as the server's: {self.domain_name}"
+                f"Server '{self.domain_name}' has no send_provider configured"
             )
-        if self.domain_name not in settings.EMAIL_SERVER_TOKENS:
-            raise KeyError(
-                f"The token for the server '{self.domain_name} is not "
-                "defined in `settings.EMAIL_SERVER_TOKENS`"
-            )
-        token = settings.EMAIL_SERVER_TOKENS[self.domain_name]
 
-        # Add `X-PM-Message-Stream: outbound` header for postmark. Make sure
-        # that there is only ONE `X-PM-Message-Stream` header.
-        #
-        # NOTE: In the future we might want to support other streams besides
-        #       "outbound" and this would likely be set on the Server object.
-        #
-        del msg["X-PM-Message-Stream"]
-        msg["X-PM-Message-Stream"] = "outbound"
-
-        smtp_server, port = self.provider.smtp_server.split(":")
-        smtp_client = smtplib.SMTP(smtp_server, int(port))
-        try:
-            smtp_client.starttls()
-            smtp_client.login(token, token)
-            sendmail(smtp_client, msg, from_addr=email_from, to_addrs=rcpt_tos)
-        except smtplib.SMTPException as exc:
-            logger.error(
-                f"Mail from {email_from}, to: {rcpt_tos}, failed with "
-                f"exception: {exc}"
-            )
-            if spool_on_retryable:
-                spool_message(self.outgoing_spool_dir, msg.as_bytes())
-            return False
-        return True
+        return self.send_provider.backend.send_email_smtp(
+            self, email_from, rcpt_tos, msg, spool_on_retryable
+        )
 
     ####################################################################
     #
     def send_email(self, message, spool_on_retryable=True) -> bool:
         """
-        Send the given email via this server using the server's web API.
+        Send email via the configured send provider's web API.
 
-        NOTE: This is different then sending the email via SMTP.
+        This method delegates to the send provider's backend to handle the
+        actual API transmission. It's used for administrative purposes like
+        mailer-daemon bounce notifications.
 
-        If we get a failure while trying to send the message and
-        `spool_on_retryable` is True and the failure is one of the "retryable"
-        failures such as rate limit exceeded, network failure, service is
-        temporarily down then we will write the message to the outgoing spool
-        directory to be automatically retried by a huey task.
+        Args:
+            message: The email message to send
+            spool_on_retryable: If True, spool message on retryable failures
 
-        XXX Be sure to record metrics when we send a message, and how large the
-            message was.
+        Returns:
+            True if the email was sent successfully, False otherwise
+
+        Raises:
+            ValueError: If send_provider is not configured
+
+        Note:
+            In the future, this method may support batched emails and templates.
         """
-        try:
-            self.client.emails.send(message)
-        except RequestException as exc:
-            logger.error(
-                f"Failed to send email: {exc}. Spooling for retransmission"
+        if not self.send_provider:
+            raise ValueError(
+                f"Server '{self.domain_name}' has no send_provider configured"
             )
-            if spool_on_retryable:
-                spool_message(self.outgoing_spool_dir, message.as_bytes())
-            return False
-        except ClientError as exc:
-            # For certain error codes we spool for retry. For everything else
-            # it will fail here and now.
-            #
-            if exc.error_code in (
-                100,  # Maintenance
-                405,  # Account has run out of credits
-                429,  # Rate limit exceeded
-            ):
-                if spool_on_retryable:
-                    spool_message(self.outgoing_spool_dir, message.as_bytes())
-                    logger.warn(f"Spooling message for retry ({exc})")
-                else:
-                    logger.warn(f"Message retry failed: ({exc})")
-                return False
-            else:
-                logger.error(
-                    f"Failed to send email: {exc}. Spooling for retransmission"
-                )
-                raise
-        return True
+
+        return self.send_provider.backend.send_email_api(
+            self, message, spool_on_retryable
+        )
 
     ####################################################################
     #
     async def asend_email(self, message, spool_on_retryable=True) -> bool:
         """
-        Send the given email via this server, asyncio version
+        Send the given email via this server's send provider (async version).
+
+        Args:
+            message: The email message to send
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the email was sent successfully, False otherwise
         """
         result = await sync_to_async(self.send_email)(
             message, spool_on_retryable=spool_on_retryable
