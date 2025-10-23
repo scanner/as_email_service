@@ -84,6 +84,7 @@ dev = [
     "types-requests",
     "types-setuptools",
     "yapf",
+    "django-test-migrations>=1.5.0",
 ]
 
 [build-system]

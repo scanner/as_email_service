@@ -49,7 +49,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from as_email.deliver import make_delivery_status_notification
 from as_email.models import EmailAccount, InactiveEmail, Server
 from as_email.tasks import dispatch_incoming_email
-from as_email.utils import write_spooled_email
+from as_email.utils import msg_froms, write_spooled_email
 
 SUBMISSION_PORT = 587
 SMTP_PORT = 25
@@ -963,6 +963,11 @@ async def deliver_email_locally(
     msg_id = msg.get("Message-ID", "unknown")
     msg_str = msg.as_string(policy=email.policy.default)
 
+    # Get the a formatted list of all the 'from's for this message. Almost
+    # always there will only be one from, but it is not specifically disallowed
+    # for there to be multiple from's.
+    #
+    msg_from = msg_froms(msg)
     for rcpt_to in rcpt_tos:
         try:
             # Get the EmailAccount for this recipient (with server for spool_dir)
@@ -998,10 +1003,10 @@ async def deliver_email_locally(
         )()
 
         logger.info(
-            "deliver_email_locally: Queued delivery for '%s', message %s, file %s",
+            "deliver_email_locally: Queued delivery for '%s', message %s, from %s",
             rcpt_to,
             msg_id,
-            fname,
+            msg_from,
         )
 
 

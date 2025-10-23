@@ -188,17 +188,16 @@ def test_email_account_email_via_smtp(
     ea.server.send_email_via_smtp(from_addr, rcpt_tos, msg)
 
     # NOTE: in the models object we create a smtp_client. On the smtp_client
-    #       the only thing we care about is that the `send_message` method was
+    #       the only thing we care about is that the `sendmail` method was
     #       called with the appropriate values.
     #
-    send_message = smtp.return_value.sendmail
-    assert send_message.call_count == 1
-    assert send_message.call_args.args == Contains(
+    assert smtp.sendmail.call_count == 1
+    assert smtp.sendmail.call_args.args == Contains(
         from_addr,
         rcpt_tos,
     )
 
-    sent_message_bytes = send_message.call_args.args[2]
+    sent_message_bytes = smtp.sendmail.call_args.args[2]
     sent_message = email.message_from_bytes(
         sent_message_bytes, policy=email.policy.default
     )

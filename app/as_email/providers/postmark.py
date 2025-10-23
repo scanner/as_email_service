@@ -31,6 +31,8 @@ from ..tasks import (
     process_email_spam,
 )
 from ..utils import (
+    get_smtp_client,
+    msg_froms,
     sendmail,
     split_email_mailbox_hash,
     spool_message,
@@ -135,7 +137,7 @@ class PostmarkBackend(ProviderBackend):
         msg["X-PM-Message-Stream"] = "outbound"
 
         smtp_server, port = server.send_provider.smtp_server.split(":")
-        smtp_client = smtplib.SMTP(smtp_server, int(port))
+        smtp_client = get_smtp_client(smtp_server, int(port))
         try:
             smtp_client.starttls()
             smtp_client.login(token, token)
@@ -227,17 +229,17 @@ class PostmarkBackend(ProviderBackend):
             JsonResponse indicating success or failure
         """
         try:
-            email = json.loads(request.body)
+            incoming_msg = json.loads(request.body)
         except json.JSONDecodeError as exc:
             logger.warning(
                 "Incoming web hook for %s: %r", server.domain_name, exc
             )
             return HttpResponseBadRequest(f"invalid json: {exc}")
 
-        message_id = email.get("MessageID")
-        from_addr = email.get("From", "<unknown>")
+        message_id = incoming_msg.get("MessageID")
+        from_addr = incoming_msg.get("From", "<unknown>")
 
-        if "OriginalRecipient" not in email:
+        if "OriginalRecipient" not in incoming_msg:
             logger.warning(
                 "email received from postmark without `OriginalRecipient`, "
                 "message id: %s",
@@ -250,17 +252,18 @@ class PostmarkBackend(ProviderBackend):
                 }
             )
 
-        # Find out who this email is being sent to, and validate that there is an
-        # EmailAccount for that address. If it is not one we serve, we need to
-        # log/record metrics about that but otherwise drop it on the floor.
+        # Find out who this email is being sent to, and validate that there is
+        # an EmailAccount for that address. If it is not one we serve, we need
+        # to log/record metrics about that but otherwise drop it on the floor.
         #
-        # This is wasteful but not wasteful.. we look up all the EmailAccounts that
-        # this email will be delivered to, and if it is zero we just stop right
-        # here. Wasteful in that we do this lookup again inside the huey task.. but
-        # that is probably still better than all the work to write the email to the
-        # spool dir and invoke the huey task only for it to do nothing.
+        # This is wasteful but not wasteful.. we look up all the EmailAccounts
+        # that this email will be delivered to, and if it is zero we just stop
+        # right here. Wasteful in that we do this lookup again inside the huey
+        # task.. but that is probably still better than all the work to write
+        # the email to the spool dir and invoke the huey task only for it to do
+        # nothing.
         #
-        addr, _ = split_email_mailbox_hash(email["OriginalRecipient"])
+        addr, _ = split_email_mailbox_hash(incoming_msg["OriginalRecipient"])
         try:
             email_account = EmailAccount.objects.get(email_address=addr)
         except EmailAccount.DoesNotExist:
@@ -269,8 +272,8 @@ class PostmarkBackend(ProviderBackend):
                 addr,
                 from_addr,
             )
-            # XXX here we would log metrics for getting email that no one is going
-            #     to receive.
+            # XXX here we would log metrics for getting email that no one is
+            #     going to receive.
             #
             return JsonResponse(
                 {
@@ -280,17 +283,30 @@ class PostmarkBackend(ProviderBackend):
             )
 
         spooled_msg_path = write_spooled_email(
-            email["OriginalRecipient"],
+            incoming_msg["OriginalRecipient"],
             server.incoming_spool_dir,
-            email["RawEmail"],
+            incoming_msg["RawEmail"],
             msg_id=message_id,
-            msg_date=email.get("Date"),
+            msg_date=incoming_msg.get("Date"),
         )
 
-        # Fire off async huey task to dispatch the email we just wrote to the spool
-        # directory.
+        # Fire off async huey task to dispatch the email we just wrote to the
+        # spool directory.
         #
         dispatch_incoming_email(email_account.pk, str(spooled_msg_path))
+
+        msg = email.message_from_string(
+            incoming_msg["RawEmail"], policy=email.policy.default
+        )
+        msg_id = msg.get("Message-ID", "unknown")
+        msg_from = msg_froms(msg)
+        logger.info(
+            "deliver_email_locally: Queued delivery for '%s', message %s, from %s",
+            incoming_msg["OriginalRecipient"],
+            msg_id,
+            msg_from,
+        )
+
         return JsonResponse(
             {"status": "all good", "message": str(spooled_msg_path)}
         )

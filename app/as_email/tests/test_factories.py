@@ -52,8 +52,20 @@ def test_server_factory(server_factory):
 
 ####################################################################
 #
-def test_server_factory_client(server_factory):
+def test_server_factory_client(
+    server_factory, settings, faker, postmark_client
+):
+    """
+    Test that server factory creates servers that can send email.
+
+    Given: A server is created via server_factory
+    When: send_email() is called on the server
+    Then: The email is sent via the provider backend
+    """
     server = server_factory()
+    # Set up EMAIL_SERVER_TOKENS for the provider backend
+    settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.uuid4()
+
     message = MIMEText("Test message")
     server.send_email(message)
 

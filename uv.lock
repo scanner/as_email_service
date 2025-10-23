@@ -139,6 +139,7 @@ dev = [
     { name = "coverage" },
     { name = "dirty-equals" },
     { name = "django-stubs", extra = ["compatible-mypy"] },
+    { name = "django-test-migrations" },
     { name = "fakeredis" },
     { name = "flake8" },
     { name = "ipython" },
@@ -221,6 +222,7 @@ dev = [
     { name = "coverage" },
     { name = "dirty-equals" },
     { name = "django-stubs", extras = ["compatible-mypy"] },
+    { name = "django-test-migrations", specifier = ">=1.5.0" },
     { name = "fakeredis" },
     { name = "flake8" },
     { name = "ipython" },
@@ -782,6 +784,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9b/6f/a0bab0e6a7676ab3ca02d51b459444e9bd6dd747e3a43b9c24cae6d0a1c6/django_stubs_ext-5.2.7.tar.gz", hash = "sha256:b690655bd4cb8a44ae57abb314e0995dc90414280db8f26fff0cb9fb367d1cac", size = 6524, upload-time = "2025-10-08T08:00:38.895Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/c9/60445606e26706d3fccadf3b80ee1a9f32c1012683ff2ada7580937b2da9/django_stubs_ext-5.2.7-py3-none-any.whl", hash = "sha256:0466a7132587d49c5bbe12082ac9824d117a0dedcad5d0ada75a6e0d3aca6f60", size = 9979, upload-time = "2025-10-08T08:00:37.499Z" },
+]
+
+[[package]]
+name = "django-test-migrations"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/be/ed/7fc6f8e89d83565fc4acb93ae0a2387d885ac83cda445cb6c570f302bf55/django_test_migrations-1.5.0.tar.gz", hash = "sha256:1cbff04b1e82c5564a6f635284907b381cc11a2ff883adff46776d9126824f07", size = 20143, upload-time = "2025-04-18T10:15:38.547Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/fe/38789c69f71adff9156bda7542d8fd05fcde1a109cf67bd7a1a139f8199f/django_test_migrations-1.5.0-py3-none-any.whl", hash = "sha256:96a08f085fc8bfaa53d44618341d82a2d22fd194c821cd81b147b66f0bec0da8", size = 25099, upload-time = "2025-04-18T10:15:37.16Z" },
 ]
 
 [[package]]

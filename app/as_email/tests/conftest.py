@@ -40,6 +40,7 @@ from .factories import (
 #
 register(UserFactory)
 register(ProviderFactory)
+register(ServerFactory)
 register(MessageFilterRuleFactory)
 
 
@@ -170,35 +171,23 @@ def email_factory(faker):
 ####################################################################
 #
 @pytest.fixture
-def server_factory(postmark_client, settings, faker):
+def email_account_factory(server_factory, settings, faker):
     """
-    A factory for creating server's that have the postmarker pytest
-    postmark_client factory returned when you call ".client"
-    This also sets makes sure that the API token for the server we create
-    is in the django settings.EMAIL_SERVER_TOKENS
-    """
+    Create EmailAccount instances with proper server setup.
 
-    def make_server(*args, **kwargs):
-        server = ServerFactory(*args, **kwargs)
-        settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.pystr()
-        server._client = postmark_client
-        return server
-
-    yield make_server
-
-
-####################################################################
-#
-@pytest.fixture
-def email_account_factory(server_factory):
-    """
-    Make sure our email account factory uses the fixtures setup by the
-    server_factory.
+    Ensures that if no server is provided, one is created using server_factory,
+    and that the EMAIL_SERVER_TOKENS setting is configured for the server.
     """
 
     def make_email_account(*args, **kwargs):
         if "server" not in kwargs:
             kwargs["server"] = server_factory()
+
+        server = kwargs["server"]
+        # Ensure the server's token is in settings for provider backend to use
+        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+            settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.uuid4()
+
         email_account = EmailAccountFactory(*args, **kwargs)
         return email_account
 
@@ -212,7 +201,7 @@ def inactive_email_factory():
     """
     in order to _not_ create and save the object to the db so we can call
     this from async as well as sync tests use the `.build()` method to create
-    thte object but not save it.
+    the object but not save it.
     """
 
     def make_inactive_email(*args, **kwargs):
@@ -294,18 +283,18 @@ def requests_client():
 
 ####################################################################
 #
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def smtp(mocker):
     """
-    We frequently need to test something that will send an email via SMTP.
-    This fixture encapsulates this and returns a mock object that can be
-    interrogated for the SMTP calls against it.
+    Mock the _smtp_client function in as_email.utils so that all SMTP
+    connections are mocked automatically in all tests.
 
-    NOTE: This only mocks the smtplib.SMTP module in the models module
+    This allows backend implementations to use get_smtp_client() and
+    _smtp_client() without needing to mock smtplib.SMTP in each module.
     """
-    mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
-    mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP)
-    return mock_SMTP
+    mock_smtp = mocker.MagicMock(name="SMTP")
+    mocker.patch("as_email.utils._smtp_client", return_value=mock_smtp)
+    return mock_smtp
 
 
 ####################################################################

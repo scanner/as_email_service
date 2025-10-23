@@ -375,6 +375,29 @@ class Latin1BytesGenerator(email.generator.BytesGenerator):
 
 ####################################################################
 #
+def _smtp_client(*args, **kwargs) -> smtplib.SMTP:
+    """
+    A module internal function for mocking in tests, and returning an
+    actual smtpclient otherwise.
+    """
+    return smtplib.SMTP(*args, **kwargs)
+
+
+####################################################################
+#
+def get_smtp_client(*args, **kwargs) -> smtplib.SMTP:
+    """
+    A wrapper for _smtp_client() which creates and returns a smptlib.SMTP
+    client. This provides an easy place for mocking `smtplib.SMTP` in one
+    location.
+
+    This will become more important as we add more backends.
+    """
+    return _smtp_client(*args, **kwargs)
+
+
+####################################################################
+#
 def sendmail(
     smtpclient: smtplib.SMTP,
     msg: EmailMessage,
@@ -406,3 +429,19 @@ def sendmail(
     return smtpclient.sendmail(
         from_addr, to_addrs, flatmsg, mail_options, rcpt_options
     )
+
+
+####################################################################
+#
+def msg_froms(msg: EmailMessage) -> str:
+    """
+    Given an email message return a string that is all the "from"s of the
+    message concatenated in to a single list. Almost always there will be a
+    single "from" but it is possible for there to be more than one so we want
+    to make sure that we display all from's so nothing is potentially hidden.
+    """
+    msg_from = [
+        f"'{addr.display_name} <{addr.addr_spec}>'"
+        for addr in msg["from"].addresses
+    ]
+    return msg_from

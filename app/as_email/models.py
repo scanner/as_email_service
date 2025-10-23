@@ -13,7 +13,6 @@ import logging
 import mailbox
 import random
 import shlex
-import smtplib  # noqa: F401 - used by test mocking
 import string
 from pathlib import Path
 from typing import List
