@@ -64,7 +64,12 @@ def test_server_factory_client(
     """
     server = server_factory()
     # Set up EMAIL_SERVER_TOKENS for the provider backend
-    settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.uuid4()
+    provider_name = "postmark"
+    if provider_name not in settings.EMAIL_SERVER_TOKENS:
+        settings.EMAIL_SERVER_TOKENS[provider_name] = {}
+    settings.EMAIL_SERVER_TOKENS[provider_name][
+        server.domain_name
+    ] = faker.uuid4()
 
     message = MIMEText("Test message")
     server.send_email(message)

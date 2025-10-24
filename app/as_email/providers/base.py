@@ -34,6 +34,10 @@ class ProviderBackend(ABC):
     handling for incoming email, bounces, and spam notifications.
     """
 
+    # Provider name constant - must be set by subclasses
+    # This is used to look up credentials in EMAIL_SERVER_TOKENS
+    PROVIDER_NAME: str = None
+
     ####################################################################
     #
     @abstractmethod

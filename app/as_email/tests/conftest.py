@@ -185,8 +185,17 @@ def email_account_factory(server_factory, settings, faker):
 
         server = kwargs["server"]
         # Ensure the server's token is in settings for provider backend to use
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
-            settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.uuid4()
+        # Default to postmark for backward compatibility
+        provider_name = "postmark"
+        if provider_name not in settings.EMAIL_SERVER_TOKENS:
+            settings.EMAIL_SERVER_TOKENS[provider_name] = {}
+        if (
+            server.domain_name
+            not in settings.EMAIL_SERVER_TOKENS[provider_name]
+        ):
+            settings.EMAIL_SERVER_TOKENS[provider_name][
+                server.domain_name
+            ] = faker.uuid4()
 
         email_account = EmailAccountFactory(*args, **kwargs)
         return email_account

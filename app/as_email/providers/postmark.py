@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, List
 
 # 3rd party imports
 #
-from django.conf import settings
 from django.http import HttpRequest, HttpResponseBadRequest, JsonResponse
 from postmarker.core import PostmarkClient
 from postmarker.exceptions import ClientError
@@ -25,6 +24,7 @@ from requests import RequestException
 # project imports
 #
 from ..models import EmailAccount
+from ..provider_tokens import get_provider_token
 from ..tasks import (
     dispatch_incoming_email,
     process_email_bounce,
@@ -59,6 +59,8 @@ class PostmarkBackend(ProviderBackend):
     processing webhooks for incoming email, bounces, and spam notifications.
     """
 
+    PROVIDER_NAME = "postmark"
+
     ####################################################################
     #
     def _get_client(self, server: "Server") -> PostmarkClient:
@@ -74,14 +76,13 @@ class PostmarkBackend(ProviderBackend):
         Raises:
             KeyError: If server token is not configured
         """
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+        token = get_provider_token(self.PROVIDER_NAME, server.domain_name)
+        if not token:
             raise KeyError(
-                f"The token for the server '{server.domain_name}' is not "
-                "defined in `settings.EMAIL_SERVER_TOKENS`"
+                f"The token for {self.PROVIDER_NAME} provider on server "
+                f"'{server.domain_name}' is not defined in `settings.EMAIL_SERVER_TOKENS`"
             )
-        return PostmarkClient(
-            server_token=settings.EMAIL_SERVER_TOKENS[server.domain_name]
-        )
+        return PostmarkClient(server_token=token)
 
     ####################################################################
     #
@@ -120,12 +121,12 @@ class PostmarkBackend(ProviderBackend):
                 f"as the server's: {server.domain_name}"
             )
 
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+        token = get_provider_token(self.PROVIDER_NAME, server.domain_name)
+        if not token:
             raise KeyError(
-                f"The token for the server '{server.domain_name}' is not "
-                "defined in `settings.EMAIL_SERVER_TOKENS`"
+                f"The token for {self.PROVIDER_NAME} provider on server "
+                f"'{server.domain_name}' is not defined in `settings.EMAIL_SERVER_TOKENS`"
             )
-        token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
 
         # Add `X-PM-Message-Stream: outbound` header for postmark. Make sure
         # that there is only ONE `X-PM-Message-Stream` header.

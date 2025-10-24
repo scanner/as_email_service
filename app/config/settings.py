@@ -42,7 +42,7 @@ env = environ.FileAwareEnv(
     DEBUG=(bool, False),
     DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
     DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
-    EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
+    EMAIL_SERVER_TOKENS=(dict, {"postmark": {"example.com": "foo"}}),
     # Email service accounts are email addresses that are widely expected to
     # exist for any domain that accepts email. This will be created, linked
     # together via alises, and owned by the earliest admin account on the

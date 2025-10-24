@@ -312,15 +312,16 @@ class Server(models.Model):
         DEPRECATED: This property is deprecated and will be removed in a future
         version. Use send_provider.backend instead.
         """
+        from .provider_tokens import get_provider_token
+
         if not hasattr(self, "_client"):
-            if self.domain_name not in settings.EMAIL_SERVER_TOKENS:
+            token = get_provider_token("postmark", self.domain_name)
+            if not token:
                 raise KeyError(
-                    f"The token for the server '{self.domain_name} is not "
-                    "defined in `settings.EMAIL_SERVER_TOKENS`"
+                    f"The token for postmark provider on server '{self.domain_name}' "
+                    "is not defined in `settings.EMAIL_SERVER_TOKENS`"
                 )
-            self._client = PostmarkClient(
-                server_token=settings.EMAIL_SERVER_TOKENS[self.domain_name]
-            )
+            self._client = PostmarkClient(server_token=token)
         return self._client
 
     ####################################################################
