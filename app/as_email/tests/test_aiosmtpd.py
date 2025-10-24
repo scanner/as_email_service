@@ -1622,6 +1622,276 @@ class TestSMTPIntegration:
 ########################################################################
 ########################################################################
 #
+class TestCommandArguments:
+    """Tests for Command argument parsing and controller management."""
+
+    ####################################################################
+    #
+    def test_port_or_off_accepts_valid_port(self):
+        """
+        Given a valid port number as a string
+        When port_or_off is called
+        Then it should return the port as an integer
+        """
+        from ..management.commands.aiosmtpd import Command
+
+        cmd = Command()
+        parser = cmd.create_parser("manage.py", "aiosmtpd")
+        # Extract the port_or_off function from the argument parser
+        port_or_off = parser._option_string_actions["--submission_port"].type
+
+        assert port_or_off("25") == 25
+        assert port_or_off("587") == 587
+        assert port_or_off("8025") == 8025
+
+    ####################################################################
+    #
+    def test_port_or_off_accepts_off_case_insensitive(self):
+        """
+        Given the string 'off' in any case
+        When port_or_off is called
+        Then it should return the string "off"
+        """
+        from ..management.commands.aiosmtpd import Command
+
+        cmd = Command()
+        parser = cmd.create_parser("manage.py", "aiosmtpd")
+        port_or_off = parser._option_string_actions["--submission_port"].type
+
+        assert port_or_off("off") == "off"
+        assert port_or_off("OFF") == "off"
+        assert port_or_off("Off") == "off"
+
+    ####################################################################
+    #
+    def test_port_or_off_rejects_invalid_port(self):
+        """
+        Given an invalid port number (out of range or non-numeric)
+        When port_or_off is called
+        Then it should raise ValueError
+        """
+        from ..management.commands.aiosmtpd import Command
+
+        cmd = Command()
+        parser = cmd.create_parser("manage.py", "aiosmtpd")
+        port_or_off = parser._option_string_actions["--submission_port"].type
+
+        with pytest.raises(
+            ValueError, match="Port must be an integer.*or 'off'"
+        ):
+            port_or_off("0")
+
+        with pytest.raises(
+            ValueError, match="Port must be an integer.*or 'off'"
+        ):
+            port_or_off("65536")
+
+        with pytest.raises(
+            ValueError, match="Port must be an integer.*or 'off'"
+        ):
+            port_or_off("invalid")
+
+    ####################################################################
+    #
+    def test_handle_with_both_ports_enabled(self, mocker, tmp_path, faker):
+        """
+        Given both submission_port and smtp_port are valid integers
+        When handle() is called
+        Then both controllers should be created and started
+        """
+        from ..management.commands.aiosmtpd import Command
+
+        # Mock the Controller class to prevent actual server startup
+        mock_controller_class = mocker.patch(
+            "as_email.management.commands.aiosmtpd.AsyncioAuthController"
+        )
+        mock_submission_controller = mocker.Mock()
+        mock_smtp_controller = mocker.Mock()
+        mock_controller_class.side_effect = [
+            mock_submission_controller,
+            mock_smtp_controller,
+        ]
+
+        # Mock time.sleep to prevent infinite loop
+        mock_sleep = mocker.patch(
+            "as_email.management.commands.aiosmtpd.time.sleep"
+        )
+        mock_sleep.side_effect = KeyboardInterrupt()
+
+        # Mock ssl context creation
+        mocker.patch(
+            "as_email.management.commands.aiosmtpd.ssl.create_default_context"
+        )
+
+        cmd = Command()
+        options = {
+            "submission_port": 587,
+            "smtp_port": 25,
+            "listen_host": "0.0.0.0",
+            "ssl_cert": str(tmp_path / "cert.pem"),
+            "ssl_key": str(tmp_path / "key.pem"),
+        }
+
+        cmd.handle(**options)
+
+        # Verify both controllers were created
+        assert mock_controller_class.call_count == 2
+
+        # Verify both controllers were started
+        mock_submission_controller.start.assert_called_once()
+        mock_smtp_controller.start.assert_called_once()
+
+        # Verify both controllers were stopped
+        mock_submission_controller.stop.assert_called_once()
+        mock_smtp_controller.stop.assert_called_once()
+
+    ####################################################################
+    #
+    def test_handle_with_submission_port_off(self, mocker, tmp_path):
+        """
+        Given submission_port is "off" and smtp_port is a valid integer
+        When handle() is called
+        Then only the SMTP controller should be created and started
+        """
+        from ..management.commands.aiosmtpd import Command
+
+        # Mock the Controller class
+        mock_controller_class = mocker.patch(
+            "as_email.management.commands.aiosmtpd.AsyncioAuthController"
+        )
+        mock_smtp_controller = mocker.Mock()
+        mock_controller_class.return_value = mock_smtp_controller
+
+        # Mock time.sleep to prevent infinite loop
+        mock_sleep = mocker.patch(
+            "as_email.management.commands.aiosmtpd.time.sleep"
+        )
+        mock_sleep.side_effect = KeyboardInterrupt()
+
+        # Mock ssl context creation
+        mocker.patch(
+            "as_email.management.commands.aiosmtpd.ssl.create_default_context"
+        )
+
+        cmd = Command()
+        options = {
+            "submission_port": "off",
+            "smtp_port": 25,
+            "listen_host": "0.0.0.0",
+            "ssl_cert": str(tmp_path / "cert.pem"),
+            "ssl_key": str(tmp_path / "key.pem"),
+        }
+
+        cmd.handle(**options)
+
+        # Verify only one controller was created (SMTP)
+        assert mock_controller_class.call_count == 1
+
+        # Verify the controller was created with port 25
+        call_kwargs = mock_controller_class.call_args.kwargs
+        assert call_kwargs["port"] == 25
+        assert call_kwargs["require_starttls"] is False
+
+        # Verify controller was started and stopped
+        mock_smtp_controller.start.assert_called_once()
+        mock_smtp_controller.stop.assert_called_once()
+
+    ####################################################################
+    #
+    def test_handle_with_smtp_port_off(self, mocker, tmp_path):
+        """
+        Given smtp_port is "off" and submission_port is a valid integer
+        When handle() is called
+        Then only the submission controller should be created and started
+        """
+        from ..management.commands.aiosmtpd import Command
+
+        # Mock the Controller class
+        mock_controller_class = mocker.patch(
+            "as_email.management.commands.aiosmtpd.AsyncioAuthController"
+        )
+        mock_submission_controller = mocker.Mock()
+        mock_controller_class.return_value = mock_submission_controller
+
+        # Mock time.sleep to prevent infinite loop
+        mock_sleep = mocker.patch(
+            "as_email.management.commands.aiosmtpd.time.sleep"
+        )
+        mock_sleep.side_effect = KeyboardInterrupt()
+
+        # Mock ssl context creation
+        mocker.patch(
+            "as_email.management.commands.aiosmtpd.ssl.create_default_context"
+        )
+
+        cmd = Command()
+        options = {
+            "submission_port": 587,
+            "smtp_port": "off",
+            "listen_host": "0.0.0.0",
+            "ssl_cert": str(tmp_path / "cert.pem"),
+            "ssl_key": str(tmp_path / "key.pem"),
+        }
+
+        cmd.handle(**options)
+
+        # Verify only one controller was created (submission)
+        assert mock_controller_class.call_count == 1
+
+        # Verify the controller was created with port 587
+        call_kwargs = mock_controller_class.call_args.kwargs
+        assert call_kwargs["port"] == 587
+        assert call_kwargs["require_starttls"] is True
+
+        # Verify controller was started and stopped
+        mock_submission_controller.start.assert_called_once()
+        mock_submission_controller.stop.assert_called_once()
+
+    ####################################################################
+    #
+    def test_handle_with_both_ports_off(self, mocker, tmp_path):
+        """
+        Given both submission_port and smtp_port are "off"
+        When handle() is called
+        Then no controllers should be created
+        And the daemon should still run (and be stoppable)
+        """
+        from ..management.commands.aiosmtpd import Command
+
+        # Mock the Controller class
+        mock_controller_class = mocker.patch(
+            "as_email.management.commands.aiosmtpd.AsyncioAuthController"
+        )
+
+        # Mock time.sleep to prevent infinite loop
+        mock_sleep = mocker.patch(
+            "as_email.management.commands.aiosmtpd.time.sleep"
+        )
+        mock_sleep.side_effect = KeyboardInterrupt()
+
+        # Mock ssl context creation
+        mocker.patch(
+            "as_email.management.commands.aiosmtpd.ssl.create_default_context"
+        )
+
+        cmd = Command()
+        options = {
+            "submission_port": "off",
+            "smtp_port": "off",
+            "listen_host": "0.0.0.0",
+            "ssl_cert": str(tmp_path / "cert.pem"),
+            "ssl_key": str(tmp_path / "key.pem"),
+        }
+
+        cmd.handle(**options)
+
+        # Verify no controllers were created
+        assert mock_controller_class.call_count == 0
+
+
+########################################################################
+########################################################################
+#
 class TestRelayToProvider:
     """Tests for relay_email_to_provider function."""
 

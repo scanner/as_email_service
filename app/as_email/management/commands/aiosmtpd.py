@@ -393,15 +393,31 @@ class Command(BaseCommand):
     ####################################################################
     #
     def add_arguments(self, parser):
+        def port_or_off(value):
+            """Parse port argument - either an integer port or 'off' to disable."""
+            if isinstance(value, str) and value.lower() == "off":
+                return "off"
+            try:
+                port = int(value)
+                if port < 1 or port > 65535:
+                    raise ValueError(
+                        f"Port must be between 1-65535, got {port}"
+                    )
+                return port
+            except ValueError as e:
+                raise ValueError(
+                    f"Port must be an integer (1-65535) or 'off', got '{value}'"
+                ) from e
+
         parser.add_argument(
             "--submission_port",
-            type=int,
+            type=port_or_off,
             action="store",
             default=SUBMISSION_PORT,
         )
         parser.add_argument(
             "--smtp_port",
-            type=int,
+            type=port_or_off,
             action="store",
             default=SMTP_PORT,
         )
@@ -424,7 +440,7 @@ class Command(BaseCommand):
         spool_dir = settings.EMAIL_SPOOL_DIR
 
         logger.info(
-            "aiosmtpd: Submission port: %d, SMTP port: %d, host: '%s', cert: '%s', key: '%s'",
+            "aiosmtpd: Submission port: %s, SMTP port: %s, host: '%s', cert: '%s', key: '%s'",
             submission_port,
             smtp_port,
             listen_host,
@@ -444,51 +460,62 @@ class Command(BaseCommand):
         authenticator = Authenticator()
         handler = RelayHandler(spool_dir=spool_dir, authenticator=authenticator)
 
+        controllers = []
+
         # Submission port controller (port 587) - requires STARTTLS
-        submission_controller = AsyncioAuthController(
-            handler,
-            hostname=listen_host,
-            server_hostname=settings.SITE_NAME,
-            port=submission_port,
-            authenticator=authenticator,
-            tls_context=tls_context,
-            require_starttls=True,
-            # During communication with the SMTP client we may require
-            # authentication, but we do not require it until we know that the
-            # SMTP client is trying to relay email to domains that the AS Email
-            # service is not hosting.
-            #
-            auth_required=False,
-            # Commands RCPT and NOOP have their own limits; others have an
-            # implicit limit of 20 (CALL_LIMIT_DEFAULT)
-            #
-            command_call_limit={"RCPT": 30, "NOOP": 5},
-        )
+        # Only create if submission_port is not "off"
+        if submission_port != "off":
+            submission_controller = AsyncioAuthController(
+                handler,
+                hostname=listen_host,
+                server_hostname=settings.SITE_NAME,
+                port=submission_port,
+                authenticator=authenticator,
+                tls_context=tls_context,
+                require_starttls=True,
+                # During communication with the SMTP client we may require
+                # authentication, but we do not require it until we know that the
+                # SMTP client is trying to relay email to domains that the AS Email
+                # service is not hosting.
+                #
+                auth_required=False,
+                # Commands RCPT and NOOP have their own limits; others have an
+                # implicit limit of 20 (CALL_LIMIT_DEFAULT)
+                #
+                command_call_limit={"RCPT": 30, "NOOP": 5},
+            )
+            controllers.append(("submission", submission_controller))
+            logger.info(
+                "Starting submission controller on port %d", submission_port
+            )
+            submission_controller.start()
+        else:
+            logger.info("Submission port is disabled (off)")
 
         # SMTP port controller (port 25) - optional STARTTLS for receiving mail
-        smtp_controller = AsyncioAuthController(
-            handler,
-            hostname=listen_host,
-            server_hostname=settings.SITE_NAME,
-            port=smtp_port,
-            authenticator=authenticator,
-            tls_context=tls_context,
-            require_starttls=False,
-            # During communication with the SMTP client we may require
-            # authentication, but we do not require it until we know that the
-            # SMTP client is trying to relay email to domains that the AS Email
-            # service is not hosting.
-            #
-            auth_required=False,
-            command_call_limit={"RCPT": 30, "NOOP": 5},
-        )
-
-        logger.info(
-            "Starting submission controller on port %d", submission_port
-        )
-        submission_controller.start()
-        logger.info("Starting SMTP controller on port %d", smtp_port)
-        smtp_controller.start()
+        # Only create if smtp_port is not "off"
+        if smtp_port != "off":
+            smtp_controller = AsyncioAuthController(
+                handler,
+                hostname=listen_host,
+                server_hostname=settings.SITE_NAME,
+                port=smtp_port,
+                authenticator=authenticator,
+                tls_context=tls_context,
+                require_starttls=False,
+                # During communication with the SMTP client we may require
+                # authentication, but we do not require it until we know that the
+                # SMTP client is trying to relay email to domains that the AS Email
+                # service is not hosting.
+                #
+                auth_required=False,
+                command_call_limit={"RCPT": 30, "NOOP": 5},
+            )
+            controllers.append(("smtp", smtp_controller))
+            logger.info("Starting SMTP controller on port %d", smtp_port)
+            smtp_controller.start()
+        else:
+            logger.info("SMTP port is disabled (off)")
 
         try:
             while True:
@@ -497,8 +524,9 @@ class Command(BaseCommand):
             logger.warning("Keyboard interrupt, exiting")
         finally:
             logger.info("Stopping controllers")
-            submission_controller.stop()
-            smtp_controller.stop()
+            for name, controller in controllers:
+                logger.info("Stopping %s controller", name)
+                controller.stop()
 
 
 ########################################################################

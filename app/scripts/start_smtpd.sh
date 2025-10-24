@@ -9,7 +9,7 @@ wait-for-it --service spamassassin:783 -- echo "SpamAssassin available"
 
 : "${SMTPD_LISTEN_HOST:=0.0.0.0}"
 : "${SMTPD_SUBMISSION_PORT:=587}"
-: "${SMTPD_SMTP_PORT:=25}"
+: "${SMTPD_SMTP_PORT:=off}"
 : "${SMTPD_CERT:=/mnt/ssl/ssl_crt.pem}"
 : "${SMTPD_KEY:=/mnt/ssl/ssl_key.pem}"
 

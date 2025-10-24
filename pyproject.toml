@@ -1,6 +1,6 @@
 [project]
 name = "as-email-service"
-version = "0.2.6"
+version = "0.2.7"
 description = "Apricot Systematic Email Service"
 requires-python = ">=3.13"
 dependencies = [

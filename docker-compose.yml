@@ -94,7 +94,6 @@ services:
       dockerfile: ./Dockerfile
       target: dev
     ports:
-      - "25:25"
       - "587:587"
     command: /app/scripts/start_smtpd.sh
     restart: unless-stopped
