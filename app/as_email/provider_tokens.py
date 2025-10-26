@@ -23,8 +23,13 @@ def get_provider_token(provider_name: str, domain_name: str) -> Optional[str]:
     """
     Get the API token for a specific provider and domain.
 
+    NOTE: Each provider also has an "account_api_key" token which is for
+          account level API access, not just domain level. This is stored under
+          the key "account_api_key" So use the value "account_api_key" instead
+          of the domain name to get the account api key.
+
     Args:
-        provider_name: The provider backend name (e.g., "postmark", "forwardemail")
+        provider_name: The provider backend name (e.g., "postmark")
         domain_name: The server's domain name
 
     Returns:
