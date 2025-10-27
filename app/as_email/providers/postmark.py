@@ -12,7 +12,7 @@ import email.message
 import json
 import logging
 import smtplib
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, List
 
 # 3rd party imports
 #
@@ -519,3 +519,121 @@ class PostmarkBackend(ProviderBackend):
                 "message": f"received spam for {server.domain_name}/{ea.email_address}",
             }
         )
+
+    ####################################################################
+    #
+    # Domain and Alias Management Methods (Stubs for future implementation)
+    #
+    ####################################################################
+
+    ####################################################################
+    #
+    def create_domain(self, server: "Server") -> None:
+        """
+        Create a domain (server) on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future GH-180 implementation. Currently, Postmark
+        servers must be created manually through their web interface.
+
+        Args:
+            server: The Server instance representing the domain
+        """
+        logger.info(
+            "Postmark domain creation not yet implemented for %s (GH-180)",
+            server.domain_name,
+        )
+
+    ####################################################################
+    #
+    def create_email_account(self, email_account: "EmailAccount") -> None:
+        """
+        Create an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_account: The EmailAccount to create an alias for
+        """
+        logger.debug(
+            "Postmark does not require alias creation for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
+    def delete_email_account(self, email_account: "EmailAccount") -> None:
+        """
+        Delete an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_account: The EmailAccount whose alias to delete
+        """
+        logger.debug(
+            "Postmark does not require alias deletion for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
+    def delete_email_account_by_address(
+        self, email_address: str, server: "Server"
+    ) -> None:
+        """
+        Delete an alias by email address on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_address: The email address of the alias to delete
+            server: The Server instance for this domain
+        """
+        logger.debug(
+            "Postmark does not require alias deletion for %s",
+            email_address,
+        )
+
+    ####################################################################
+    #
+    def enable_email_account(
+        self, email_account: "EmailAccount", is_enabled: bool = True
+    ) -> None:
+        """
+        Enable or disable an alias on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of enabling/disabling individual aliases.
+
+        Args:
+            email_account: The EmailAccount to enable/disable
+            is_enabled: True to enable, False to disable
+        """
+        logger.debug(
+            "Postmark does not support enable/disable for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
+    def list_email_accounts(self, server: "Server") -> list[dict[str, Any]]:
+        """
+        List all aliases for a server on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            server: The Server instance to list aliases for
+
+        Returns:
+            Empty list (no aliases to list)
+        """
+        logger.debug(
+            "Postmark does not have aliases to list for %s",
+            server.domain_name,
+        )
+        return []
