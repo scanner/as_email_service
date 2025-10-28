@@ -92,7 +92,7 @@ def patch_redis_client(
         `patch_str` is the module python path to the function we are going
         to patch so that it returns a FakeStrictRedis instance.
         """
-        mock_redis = FakeStrictRedis()
+        mock_redis = FakeStrictRedis(charset="utf-8", decode_responses=True)
         mocker.patch(patch_path, return_value=mock_redis)
         return mock_redis
 

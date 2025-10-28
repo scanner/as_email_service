@@ -385,30 +385,28 @@ class ForwardEmailBackend(ProviderBackend):
         one hour old or doesn't exist, calls list_domains() to refresh the
         domain-to-id mapping in Redis.
         """
-        redis = redis() if redis is None else redis
+        redis = redis_client() if redis is None else redis
+
+        # We store under the "all_domains" key the last timestamp, as a string
+        # of when we fetched the domains. So even if we have them loaded in to
+        # redis, if it has been more than an hour fetch them again.
+        #
         redis_key = cls._redis_key(ObjType.DOMAIN, "all_domains")
         last_update_str = redis.get(redis_key)
-
-        # If we've never fetched domains, fetch them now
-        #
         if last_update_str is None:
-            logger.info(
-                "Domain mapping not found in Redis, fetching from forwardemail.net"
-            )
             cls().list_domains()
+            logger.info("Fetching domains from forwardemail.net")
             return
 
         # Parse the timestamp and check if it's stale
         #
-        last_update = now_str_datetime(last_update_str.decode())
-        age = datetime.now(UTC) - last_update
-
+        age = datetime.now(UTC) - now_str_datetime(last_update_str)
         if age > timedelta(hours=1):
+            cls().list_domains()
             logger.info(
-                "Domain mapping is %s old (>1 hour), refreshing from forwardemail.net",
+                "Domain mapping is %s old, refreshing from forwardemail.net",
                 age,
             )
-            cls().list_domains()
         else:
             logger.debug(
                 "Domain mapping is %s old (<1 hour), skipping refresh", age
@@ -455,7 +453,45 @@ class ForwardEmailBackend(ProviderBackend):
     ####################################################################
     #
     def delete_domain(self, server: "Server") -> None:
-        pass
+        """
+        Delete a domain from forwardemail.net.
+
+        Args:
+            server: The Server instance whose domain should be deleted
+
+        Raises:
+            Exception: If the domain ID cannot be found or the deletion fails
+        """
+        redis = redis_client()
+
+        # Get the domain ID from Redis
+        domain_id = self._get_domain_id(server.domain_name, redis=redis)
+        if domain_id is None:
+            # Domain ID not in cache, refresh from forwardemail.net
+            self.list_domains(redis=redis)
+            domain_id = self._get_domain_id(server.domain_name, redis=redis)
+
+            if domain_id is None:
+                logger.warning(
+                    "Cannot delete domain '%s': domain does not exist on forwardemail.net",
+                    server.domain_name,
+                )
+                raise ValueError(
+                    f"Domain '{server.domain_name}' does not exist on forwardemail.net"
+                )
+
+        # Delete the domain via API
+        self._req(HTTPMethod.DEL, f"v1/domains/{domain_id}")
+
+        # Remove from Redis cache
+        redis_key = self._redis_key(ObjType.DOMAIN, server.domain_name)
+        redis.delete(redis_key)
+
+        logger.info(
+            "Deleted forwardemail.net domain '%s' (ID: %s)",
+            server.domain_name,
+            domain_id,
+        )
 
     ####################################################################
     #
@@ -475,7 +511,7 @@ class ForwardEmailBackend(ProviderBackend):
         redis = redis_client() if redis is None else redis
         redis_key = self._redis_key(ObjType.DOMAIN, domain_name)
         domain_id = redis.get(redis_key)
-        return domain_id.decode() if domain_id else None
+        return domain_id
 
     ####################################################################
     #
@@ -600,7 +636,7 @@ class ForwardEmailBackend(ProviderBackend):
         #
         alias_data = {
             "name": mailbox_name,
-            "recipients": webhook_url,
+            "recipients": [webhook_url],
             "description": "",
             "labels": "",
             "has_recipient_verification": False,
@@ -665,8 +701,6 @@ class ForwardEmailBackend(ProviderBackend):
             )
             return
 
-        alias_id = alias_id.decode()
-
         # Delete the alias
         #
         self._req(HTTPMethod.DEL, f"v1/domains/{domain_id}/aliases/{alias_id}")
@@ -720,8 +754,6 @@ class ForwardEmailBackend(ProviderBackend):
                 email_account.email_address,
             )
             return
-
-        alias_id = alias_id.decode()
 
         # Update the alias is_enabled field
         #
@@ -779,8 +811,6 @@ class ForwardEmailBackend(ProviderBackend):
                 email_address,
             )
             return
-
-        alias_id = alias_id.decode()
 
         # Delete the alias
         #
