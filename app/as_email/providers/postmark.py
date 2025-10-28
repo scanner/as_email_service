@@ -545,6 +545,23 @@ class PostmarkBackend(ProviderBackend):
 
     ####################################################################
     #
+    def delete_domain(self, server: "Server") -> None:
+        """
+        Delete a domain (server) from Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future GH-180 implementation. Currently, Postmark
+        servers must be deleted manually through their web interface.
+
+        Args:
+            server: The Server instance representing the domain
+        """
+        logger.info(
+            "Postmark domain deletion not yet implemented for %s (GH-180)",
+            server.domain_name,
+        )
+
+    ####################################################################
+    #
     def create_email_account(self, email_account: "EmailAccount") -> None:
         """
         Create an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
