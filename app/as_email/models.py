@@ -14,6 +14,7 @@ import mailbox
 import random
 import shlex
 import string
+from enum import StrEnum
 from pathlib import Path
 from typing import List
 
@@ -454,18 +455,14 @@ class EmailAccount(models.Model):
     DEACTIVATED_DUE_TO_BAD_FORWARD_TO = (
         "Deactivated due to bounce when sending email to `forward_to` address"
     )
+
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
-    LOCAL_DELIVERY = "LD"
-    IMAP_DELIVERY = "IM"
-    ALIAS = "AL"
-    FORWARDING = "FW"
-    DELIVERY_METHOD_CHOICES = [
-        (LOCAL_DELIVERY, "Local Delivery"),
-        # (IMAP_DELIVERY), "IMAP",   # XXX coming soon
-        (ALIAS, "Alias"),
-        (FORWARDING, "Forwarding"),
-    ]
+    class DeliveryMethods(StrEnum):
+        LOCAL_DELIVERY = "LD"
+        # IMAP_DELIVERY = "IM"  # XXX coming soon
+        ALIAS = "AL"
+        FORWARDING = "FW"
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
@@ -490,8 +487,8 @@ class EmailAccount(models.Model):
     )
     delivery_method = models.CharField(
         max_length=2,
-        choices=DELIVERY_METHOD_CHOICES,
-        default=LOCAL_DELIVERY,
+        choices=[(tag.value, tag.name) for tag in DeliveryMethods],
+        default=DeliveryMethods.LOCAL_DELIVERY,
         help_text=_(
             "Delivery method indicates how email for this account is "
             "delivered. This is either delivery to a local mailbox, delivery "

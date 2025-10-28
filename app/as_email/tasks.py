@@ -360,7 +360,7 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
     # deactivated.
     #
     if (
-        ea.delivery_method == ea.FORWARDING
+        ea.delivery_method == EmailAccount.DeliveryMethods.FORWARDING
         and not transient
         and bounce_details.Email == ea.forward_to
     ):
@@ -522,7 +522,7 @@ def process_email_spam(email_account_pk: int, spam: dict):
     # deactivated.
     #
     if (
-        ea.delivery_method == ea.FORWARDING
+        ea.delivery_method == EmailAccount.DeliveryMethods.FORWARDING
         and not transient
         and spam["Email"] == ea.forward_to
     ):
