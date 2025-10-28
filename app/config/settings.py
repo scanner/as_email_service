@@ -34,6 +34,7 @@ BASE_DIR = Path(__file__).parent.parent
 #
 random_chars = "abcdefghijklmnopqrstuvwxyz0123456789!@#%^&*(-_=+)"
 env = environ.FileAwareEnv(
+    ADMINISTRATIVE_EMAIL_ADDRESS=(str, "admin@example.com"),
     ALLOWED_HOSTS=(list, list()),
     CACHE_URL=(str, "dummycache://"),
     COMPRESS_ENABLED=(bool, True),
@@ -42,7 +43,7 @@ env = environ.FileAwareEnv(
     DEBUG=(bool, False),
     DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
     DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
-    EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
+    EMAIL_SERVER_TOKENS=(dict, {"postmark": {"example.com": "foo"}}),
     # Email service accounts are email addresses that are widely expected to
     # exist for any domain that accepts email. This will be created, linked
     # together via alises, and owned by the earliest admin account on the
@@ -278,6 +279,10 @@ else:
 # server token for that server.
 #
 EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
+
+# Email address for administrative notifications and reports
+#
+ADMINISTRATIVE_EMAIL_ADDRESS = env("ADMINISTRATIVE_EMAIL_ADDRESS")
 
 # The email spool dir is where incoming and outgoing emails are temporarily
 # stored. There should be a directory for every 'Server' and in that server's

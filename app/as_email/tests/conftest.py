@@ -11,14 +11,16 @@ from datetime import UTC, datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
+from typing import Callable
 
 # 3rd party imports
 #
 import pytest
 from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
 from django.core import mail
-from fakeredis import FakeConnection
+from fakeredis import FakeConnection, FakeRedis, FakeStrictRedis
 from pytest_factoryboy import register
+from pytest_mock import MockerFixture
 from requests import Response
 from rest_framework.test import APIClient, RequestsClient
 
@@ -51,9 +53,7 @@ def redis_client(request):
     """
     Provide a `fakeredis` instance as a fixture.
     """
-    import fakeredis
-
-    redis_client = fakeredis.FakeRedis()
+    redis_client = FakeRedis()
     return redis_client
 
 
@@ -71,6 +71,32 @@ def fakeredis_cache(settings) -> None:
             "OPTIONS": {"connection_class": FakeConnection},
         }
     }
+
+
+####################################################################
+#
+@pytest.fixture
+def patch_redis_client(
+    mocker: MockerFixture,
+) -> Callable[[str], FakeStrictRedis]:
+    """
+    This fixture returns a function. This function takes as a parameter a
+    function to patch so that it returns a FakeStrictRedis object.
+
+    The use is to patch in fakeredis in tests that use code that depends on a
+    redis server.
+    """
+
+    def _fn(patch_path: str) -> FakeStrictRedis:
+        """
+        `patch_str` is the module python path to the function we are going
+        to patch so that it returns a FakeStrictRedis instance.
+        """
+        mock_redis = FakeStrictRedis(charset="utf-8", decode_responses=True)
+        mocker.patch(patch_path, return_value=mock_redis)
+        return mock_redis
+
+    return _fn
 
 
 ####################################################################
@@ -185,8 +211,17 @@ def email_account_factory(server_factory, settings, faker):
 
         server = kwargs["server"]
         # Ensure the server's token is in settings for provider backend to use
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
-            settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.uuid4()
+        # Default to postmark for backward compatibility
+        provider_name = "postmark"
+        if provider_name not in settings.EMAIL_SERVER_TOKENS:
+            settings.EMAIL_SERVER_TOKENS[provider_name] = {}
+        if (
+            server.domain_name
+            not in settings.EMAIL_SERVER_TOKENS[provider_name]
+        ):
+            settings.EMAIL_SERVER_TOKENS[provider_name][
+                server.domain_name
+            ] = faker.uuid4()
 
         email_account = EmailAccountFactory(*args, **kwargs)
         return email_account
@@ -284,7 +319,7 @@ def requests_client():
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def smtp(mocker):
+def smtp(mocker: MockerFixture):
     """
     Mock the _smtp_client function in as_email.utils so that all SMTP
     connections are mocked automatically in all tests.
