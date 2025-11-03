@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 # System imports
 #
+import json
 from pathlib import Path
 
 # 3rd party imports
@@ -43,7 +44,7 @@ env = environ.FileAwareEnv(
     DEBUG=(bool, False),
     DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
     DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
-    EMAIL_SERVER_TOKENS=(dict, {"postmark": {"example.com": "foo"}}),
+    EMAIL_SERVER_TOKENS=(str, '{"postmark": {"example.com": "foo"}}'),
     # Email service accounts are email addresses that are widely expected to
     # exist for any domain that accepts email. This will be created, linked
     # together via alises, and owned by the earliest admin account on the
@@ -278,7 +279,7 @@ else:
 # key is the name of the server at postmark, and the value is the
 # server token for that server.
 #
-EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
+EMAIL_SERVER_TOKENS = json.loads(env("EMAIL_SERVER_TOKENS"))
 
 # Email address for administrative notifications and reports
 #
