@@ -85,6 +85,8 @@ dev = [
     "types-setuptools",
     "yapf",
     "django-test-migrations>=1.5.0",
+    "python-lsp-server>=1.13.1",
+    "python-lsp-ruff>=2.3.0",
 ]
 
 [build-system]
@@ -117,6 +119,10 @@ skip_gitignore = true
 filter_files = true
 skip_glob = ["*venv*","*/migrations/*",".*cache"]
 known_first_party = ["as_email"]
+
+[tool.pylsp-mypy]
+enabled = true
+live_mode = true
 
 [tool.ruff]
 line-length = 80
