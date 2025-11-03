@@ -12,6 +12,7 @@ from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
 from typing import Callable
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
@@ -287,7 +288,9 @@ def mailbox_dir(settings, tmp_path):
 def huey_immediate_mode(settings):
     """
     Huey tasks are invoked immediately inline. Can not think of a case
-    where we would not want this to happen automatically while running tests.
+    where we would not want this to happen automatically while running
+    tests. Especially since there is no easy to invoke a huey task directly
+    (ie: without it trying to run as a huey task.)
     """
     from huey.contrib.djhuey import HUEY as huey
 
@@ -319,7 +322,7 @@ def requests_client():
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def smtp(mocker: MockerFixture):
+def smtp(mocker: MockerFixture) -> MagicMock:
     """
     Mock the _smtp_client function in as_email.utils so that all SMTP
     connections are mocked automatically in all tests.
@@ -335,7 +338,7 @@ def smtp(mocker: MockerFixture):
 ####################################################################
 #
 @pytest.fixture
-def aiosmtp_session(faker):
+def aiosmtp_session(faker) -> SMTPSession:
     """
     When testing handlers and authenticators we need a aiosmtp.smtp.Session
 
@@ -507,3 +510,48 @@ def django_outbox():
     mail.outbox = []
     yield mail.outbox
     mail.outbox = old_outbox
+
+
+####################################################################
+#
+@pytest.fixture(autouse=True)
+def mock_provider_tasks(mocker: MockerFixture) -> dict[str, MagicMock]:
+    """
+    Automatically mock provider tasks called from signal handlers.
+
+    These tasks are called from signals when Server/EmailAccount objects are
+    created/deleted or when receive_providers are changed. By mocking
+    HUEY.enqueue in the signal handler, tests can focus on their specific
+    functionality without triggering the full provider task chain.
+
+    Tests that specifically want to test signal behavior can override this by
+    explicitly listing the fixture for the specific task they want to test.
+    """
+    # Mock HUEY.enqueue in signals module to prevent task execution during setup
+    mock_huey_enqueue = mocker.patch("as_email.signals.HUEY.enqueue")
+
+    # Mock the direct task calls as well
+    mocks = {
+        "huey_enqueue": mock_huey_enqueue,
+        "provider_create_alias": mocker.patch(
+            "as_email.signals.provider_create_alias",
+            side_effect=lambda *args, **kwargs: None,
+        ),
+        "provider_delete_alias": mocker.patch(
+            "as_email.signals.provider_delete_alias",
+            side_effect=lambda *args, **kwargs: None,
+        ),
+        "provider_enable_all_aliases": mocker.patch(
+            "as_email.signals.provider_enable_all_aliases",
+            side_effect=lambda *args, **kwargs: None,
+        ),
+        "check_update_pwfile_for_emailaccount": mocker.patch(
+            "as_email.signals.check_update_pwfile_for_emailaccount",
+            side_effect=lambda *args, **kwargs: None,
+        ),
+        "delete_emailaccount_from_pwfile": mocker.patch(
+            "as_email.signals.delete_emailaccount_from_pwfile",
+            side_effect=lambda *args, **kwargs: None,
+        ),
+    }
+    return mocks

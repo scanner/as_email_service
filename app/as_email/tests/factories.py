@@ -109,12 +109,13 @@ class EmailAccountFactory(DjangoModelFactory):
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):
-        password = extracted if extracted else fake.password(length=16)
-        self.set_password(password)
+        password = extracted if extracted else "XXX"
+        do_save = password != "XXX"
+        self.set_password(password, save=do_save)
 
     class Meta:
         model = EmailAccount
-        skip_postgeneration_save = True  # Saved when `set_password()` is called
+        skip_postgeneration_save = True
         django_get_or_create = ("owner", "email_address", "server")
 
 

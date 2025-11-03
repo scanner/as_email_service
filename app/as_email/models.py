@@ -29,6 +29,7 @@ from django.db import models
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
+from model_utils import FieldTracker
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
 
@@ -677,6 +678,11 @@ class EmailAccount(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
+    # We want to track when certain fields change so we can do additional
+    # operations that only need to happen when those fields change.
+    #
+    tracker = FieldTracker(fields=["password"])
+
     class Meta:
         # If an EmailAccount has the permission "can_have_foreign_aliases" then
         # when the EmailAccount is being modified via a view we will allow it
@@ -853,13 +859,14 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def set_password(self, raw_password: str):
+    def set_password(self, raw_password: str, save: bool = True) -> None:
         """
         Keyword Arguments:
         password --
         """
         self.password = make_password(raw_password)
-        self.save(update_fields=["password"])
+        if save:
+            self.save(update_fields=["password"])
 
     ####################################################################
     #

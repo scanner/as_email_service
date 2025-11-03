@@ -599,7 +599,7 @@ def process_email_spam(email_account_pk: int, spam: dict):
 #
 @db_task(retries=10, retry_delay=2)
 @lock_task("pwfile")
-def check_update_pwfile_for_emailaccount(ea_pk: int):
+def check_update_pwfile_for_emailaccount(ea_pk: int) -> None:
     """
     We are doing a manual retry because normal retries still log exceptions
     and there seem to be a problem with huey and the version of redis we are
@@ -683,7 +683,8 @@ def provider_create_domain(server_pk: int, provider_name: str) -> None:
 
     Args:
         server_pk: Primary key of the Server instance
-        provider_name: Name of the provider backend (e.g., 'forwardemail', 'postmark')
+        provider_name: Name of the provider backend
+                       (e.g., 'forwardemail', 'postmark')
     """
 
     server = Server.objects.get(pk=server_pk)

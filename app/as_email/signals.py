@@ -42,7 +42,17 @@ def fire_off_async_task_update_emailaccount_pwfile(
     password file with the email account object. If they are different, it will
     re-write the password file with the update info.
     """
-    check_update_pwfile_for_emailaccount(instance.pk)
+    # If the instance.password field has change, write it to our exported
+    # passwords file used by other services (like IMAP). However, if this
+    # EmailAccount is being created, and the password field is empty, do not
+    # set it.
+    #
+    if instance.tracker.has_changed("password"):
+        # Skip if the password is `XXX` (the default) and the EmailAccount is
+        # created.
+        #
+        if not (created and instance.password == "XXX"):
+            check_update_pwfile_for_emailaccount(instance.pk)
 
 
 ####################################################################

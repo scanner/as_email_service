@@ -3,6 +3,8 @@
 import email.message
 import mailbox
 from pathlib import Path
+from typing import Callable
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
@@ -15,7 +17,6 @@ from django.db import IntegrityError
 # Project imports
 #
 from ..models import EmailAccount, InactiveEmail, MessageFilterRule
-from ..utils import read_emailaccount_pwfile
 from .conftest import assert_email_equal
 
 User = get_user_model()
@@ -77,20 +78,23 @@ def test_server_creates_admin_emailaccounts(
 ####################################################################
 #
 def test_email_account_set_check_password(
-    faker, settings, email_account_factory
-):
+    faker,
+    settings,
+    email_account_factory: Callable[..., EmailAccount],
+    mock_provider_tasks: dict[str, MagicMock],
+) -> None:
     ea = email_account_factory()
-    ea.save()
     password = faker.pystr(min_chars=8, max_chars=32)
     assert ea.check_password(password) is False
     ea.set_password(password)
     assert ea.check_password(password)
 
-    # make sure that the password hash in the external pw file is updated
+    # The huey task `check_update_pwfile_for_emailaccount` should have been
+    # called once with the parameter the primary key of `ea`
     #
-    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    assert ea.email_address in accounts
-    assert accounts[ea.email_address].pw_hash == ea.password
+    mock_provider_tasks[
+        "check_update_pwfile_for_emailaccount"
+    ].assert_called_once_with(ea.pk)
 
 
 ####################################################################
@@ -138,15 +142,6 @@ def test_email_account_mail_dir(settings, email_account_factory):
             mh.get_folder(folder)
     except mailbox.NoSuchMailboxError as exc:
         assert False, exc
-
-    # make sure that the mail dir in the external pw file is set properly
-    # (relative to settings.MAIL_DIRS)
-    #
-    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    assert ea.email_address in accounts
-    assert settings.MAIL_DIRS / accounts[ea.email_address].maildir == Path(
-        ea.mail_dir
-    )
 
 
 ####################################################################
