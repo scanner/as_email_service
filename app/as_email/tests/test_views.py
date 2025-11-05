@@ -20,7 +20,6 @@ from django.urls import resolve, reverse
 # Project imports
 #
 from ..models import EmailAccount, MessageFilterRule
-from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db
 
@@ -65,7 +64,7 @@ def mock_webhook_provider(mocker):
         # Mock _get_provider_for_webhook to return our mock provider
         mocker.patch(
             "as_email.views._get_provider_for_webhook",
-            return_value=mock_provider
+            return_value=mock_provider,
         )
 
         return mock_provider
@@ -136,13 +135,16 @@ def _expected_for_message_filter_rule(mfr: MessageFilterRule) -> dict:
 ####################################################################
 #
 @pytest.mark.parametrize("provider_name", ["postmark"])
-def test_get_provider_for_webhook(provider_factory, server_factory, provider_name):
+def test_get_provider_for_webhook(
+    provider_factory, server_factory, provider_name
+):
     """
     Test that _get_provider_for_webhook correctly retrieves providers configured
     for a server's receive_providers.
     """
-    from ..views import _get_provider_for_webhook
     from django.http import Http404
+
+    from ..views import _get_provider_for_webhook
 
     # Create a provider with the specified backend name
     #
