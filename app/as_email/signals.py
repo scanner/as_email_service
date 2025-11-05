@@ -215,16 +215,6 @@ def emailaccount_pre_save(
     # Determine if this is a new instance
     is_new = instance.pk is None
 
-    # Check if mail_dir has changed (only for existing instances)
-    mail_dir_changed = False
-    if not is_new:
-        try:
-            old_instance = EmailAccount.objects.get(pk=instance.pk)
-            mail_dir_changed = old_instance.mail_dir != instance.mail_dir
-        except EmailAccount.DoesNotExist:
-            # Instance might have been deleted
-            is_new = True
-
     # Set mail_dir if not set and this is a new instance
     if is_new and not instance.mail_dir:
         md = Path(instance.server.mail_dir_parent) / instance.email_address
@@ -232,8 +222,8 @@ def emailaccount_pre_save(
 
     # Create the mail directory if:
     # - This is a new instance, OR
-    # - The mail_dir field has changed
-    if is_new or mail_dir_changed:
+    # - The mail_dir field has changed (using FieldTracker)
+    if is_new or instance.tracker.has_changed("mail_dir"):
         instance.MH()
 @receiver(m2m_changed, sender=Server.receive_providers.through)
 def handle_receive_providers_changed(
