@@ -11,7 +11,12 @@ from typing import Type
 #
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models.signals import m2m_changed, post_delete, post_save
+from django.db.models.signals import (
+    m2m_changed,
+    post_delete,
+    post_save,
+    pre_save,
+)
 from django.dispatch import receiver
 from huey.contrib.djhuey import HUEY
 
@@ -29,6 +34,17 @@ from .tasks import (
 
 User = get_user_model()
 logger = logging.getLogger("as_email.models")
+
+
+####################################################################
+#
+@receiver(pre_save, sender=EmailAccount)
+def email_account_pre_save() -> None:
+    """
+    Conduct pre-save EmailAccount actions, like creating the various
+    folders associated with this EmailAccount
+    """
+    pass
 
 
 ####################################################################
