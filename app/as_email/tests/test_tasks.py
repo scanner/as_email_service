@@ -9,13 +9,16 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+# Project imports
+#
+from unittest.mock import MagicMock
+
 # 3rd party imports
 #
 import pytest
 from dirty_equals import Contains
+from pytest_mock import MockerFixture
 
-# Project imports
-#
 from ..models import EmailAccount, InactiveEmail
 from ..tasks import (
     check_update_pwfile_for_emailaccount,
@@ -41,21 +44,22 @@ pytestmark = pytest.mark.django_db
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def enable_signal_huey_tasks():
+def mock_provider_tasks(mocker: MockerFixture) -> dict[str, MagicMock]:
     """
-    Ensure huey tasks invoked from signals.py execute properly.
+    Override the global mock_provider_tasks to NOT mock pwfile tasks.
 
-    This fixture ensures that when EmailAccount objects are saved or deleted,
-    the signal handlers fire and invoke the huey tasks that create/update/delete
-    the pwfile entries and spool directories.
-
-    With huey's immediate mode (set in conftest.py), these tasks execute
-    synchronously during tests, allowing us to verify their behavior.
+    The global mock_provider_tasks fixture (in conftest.py) mocks all
+    signal-triggered tasks. For test_tasks.py, we override it to only
+    mock the pwfile tasks so they don't execute, while allowing
+    pwfile tasks to run normally.
     """
-    # Since huey immediate mode is already set up in conftest.py,
-    # we just need to ensure signals aren't mocked. By default they aren't,
-    # but this fixture makes the intent explicit.
-    yield
+    # Mock the signal handler that creates provider tasks to do nothing
+    mocker.patch("as_email.signals.handle_receive_providers_changed")
+    mocker.patch("as_email.signals.create_provider_aliases")
+    mocker.patch("as_email.signals.delete_provider_aliases")
+
+    # Return empty dict to match interface
+    return {}
 
 
 ####################################################################
@@ -801,14 +805,15 @@ def test_process_spam_invalid_typecode(
 ####################################################################
 #
 def test_delete_email_account_removes_pwfile_entry(
-    settings, email_account_factory
+    settings, email_account_factory, faker
 ):
     """
     Given an email account exists in pwfile
     When the account is deleted
     Then its pwfile entry is removed
     """
-    ea = email_account_factory()
+    # Create account with a non-default password so signal fires
+    ea = email_account_factory(password=faker.password())
     ea.save()
 
     # It should exist in the pwfile after we save it.
@@ -817,7 +822,7 @@ def test_delete_email_account_removes_pwfile_entry(
     assert ea.email_address in accounts
 
     # And now if we delete the email address, it should be deleted from the
-    # external pw file.
+    # external pw file via the signal-triggered task.
     #
     ea.delete()
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
@@ -827,20 +832,15 @@ def test_delete_email_account_removes_pwfile_entry(
 ####################################################################
 #
 def test_check_update_pwfile_for_emailaccount_creates_new_entry(
-    settings, email_account_factory
+    settings, email_account_factory, faker
 ):
     """
-    Given a new email account
-    When check_update_pwfile_for_emailaccount is invoked
-    Then a new entry is added to the pwfile
+    Given a new email account with password
+    When the account is saved
+    Then a new entry is added to the pwfile via signal
     """
-    ea = email_account_factory()
-    # Don't save yet - we want to control when the signal fires
-
-    # Manually ensure the pwfile exists but is empty
-    settings.EXT_PW_FILE.write_text("")
-
-    # Now save, which triggers the signal and task
+    # Create account with a non-default password so signal fires
+    ea = email_account_factory(password=faker.password())
     ea.save()
 
     # Verify the account was added to pwfile
@@ -861,11 +861,12 @@ def test_check_update_pwfile_for_emailaccount_updates_password(
     settings, email_account_factory, faker
 ):
     """
-    Given an email account with changed password
-    When check_update_pwfile_for_emailaccount is invoked
-    Then the pwfile entry is updated with new password hash
+    Given an email account with password in pwfile
+    When the password is changed and saved
+    Then the pwfile entry is updated with new password hash via signal
     """
-    ea = email_account_factory()
+    # Create account with a non-default password so signal fires
+    ea = email_account_factory(password=faker.password())
     ea.save()
 
     # Verify initial state
@@ -875,26 +876,26 @@ def test_check_update_pwfile_for_emailaccount_updates_password(
 
     # Change the password
     new_password = faker.password()
-    ea.password = new_password
-    ea.save()
+    ea.set_password(new_password, save=True)
 
-    # Verify password was updated in pwfile
+    # Verify password was updated in pwfile via signal
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    assert accounts[ea.email_address].pw_hash == new_password
+    assert accounts[ea.email_address].pw_hash == ea.password
     assert accounts[ea.email_address].pw_hash != original_password
 
 
 ####################################################################
 #
 def test_check_update_pwfile_for_emailaccount_updates_maildir(
-    settings, email_account_factory, tmp_path
+    settings, email_account_factory, faker, tmp_path
 ):
     """
-    Given an email account with changed mail_dir
-    When check_update_pwfile_for_emailaccount is invoked
+    Given an email account with password in pwfile
+    When the mail_dir is changed and task is invoked
     Then the pwfile entry is updated with new mail_dir path
     """
-    ea = email_account_factory()
+    # Create account with a non-default password so it's in pwfile
+    ea = email_account_factory(password=faker.password())
     ea.save()
 
     # Verify initial state
@@ -906,6 +907,10 @@ def test_check_update_pwfile_for_emailaccount_updates_maildir(
     new_mail_dir.mkdir(parents=True, exist_ok=True)
     ea.mail_dir = str(new_mail_dir)
     ea.save()
+
+    # Call task directly (signal only fires on password change)
+    res = check_update_pwfile_for_emailaccount(ea.pk)
+    res()
 
     # Verify mail_dir was updated in pwfile
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
