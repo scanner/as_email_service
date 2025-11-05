@@ -40,7 +40,9 @@ logger = logging.getLogger("as_email.models")
 ####################################################################
 #
 @receiver(pre_save, sender=EmailAccount)
-def email_account_pre_save() -> None:
+def email_account_pre_save(
+    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
+) -> None:
     """
     Conduct pre-save EmailAccount actions, like creating the various
     folders associated with this EmailAccount
