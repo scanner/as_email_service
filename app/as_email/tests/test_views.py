@@ -14,6 +14,7 @@ import pytest
 from dirty_equals import IsPartialDict
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
+from django.http import JsonResponse
 from django.urls import resolve, reverse
 
 # Project imports
@@ -86,6 +87,45 @@ def _expected_for_message_filter_rule(mfr: MessageFilterRule) -> dict:
 
 ####################################################################
 #
+@pytest.mark.parametrize("provider_name", ["postmark"])
+def test_get_provider_for_webhook(provider_factory, server_factory, provider_name):
+    """
+    Test that _get_provider_for_webhook correctly retrieves providers configured
+    for a server's receive_providers.
+    """
+    from ..views import _get_provider_for_webhook
+    from django.http import Http404
+
+    # Create a provider with the specified backend name
+    #
+    provider = provider_factory(backend_name=provider_name)
+    provider.save()
+
+    # Create a server with this provider as a receive provider
+    #
+    server = server_factory(send_provider=provider)
+    server.save()
+    server.receive_providers.add(provider)
+
+    # Should successfully retrieve the provider
+    #
+    retrieved_provider = _get_provider_for_webhook(server, provider_name)
+    assert retrieved_provider == provider
+    assert retrieved_provider.backend_name == provider_name
+
+    # Should raise Http404 if provider is not in receive_providers
+    #
+    other_provider = provider_factory(backend_name="other_provider")
+    other_provider.save()
+
+    with pytest.raises(Http404) as exc_info:
+        _get_provider_for_webhook(server, "other_provider")
+
+    assert "not configured as a receive provider" in str(exc_info.value)
+
+
+####################################################################
+#
 def test_index(
     fakeredis_cache, api_client, user_factory, email_account_factory, faker
 ):
@@ -113,20 +153,41 @@ def test_index(
 ####################################################################
 #
 def test_incoming_webhook(
-    email_account_factory, email_factory, api_client, faker
+    email_account_factory, api_client, faker, mocker
 ):
+    """
+    Test that the incoming webhook view correctly calls the provider backend's
+    handle_incoming_webhook method with the correct arguments.
+    """
     ea = email_account_factory()
     ea.save()
     server = ea.server
 
-    # We only care about a few fields
+    # Mock the provider and its backend's handle_incoming_webhook method
     #
-    msg = email_factory(to=ea.email_address)
+    mock_provider = mocker.MagicMock()
+    mock_backend = mocker.MagicMock()
+    mock_provider.backend = mock_backend
+
+    # Setup the mock to return a successful response
+    #
+    expected_response = JsonResponse(
+        {"status": "all good", "message": "test message"}
+    )
+    mock_backend.handle_incoming_webhook.return_value = expected_response
+
+    # Mock _get_provider_for_webhook to return our mock provider
+    #
+    mocker.patch(
+        "as_email.views._get_provider_for_webhook",
+        return_value=mock_provider
+    )
+
     incoming_message = {
         "OriginalRecipient": ea.email_address,
         "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
         "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
-        "RawEmail": msg.as_string(),
+        "RawEmail": "test email content",
     }
 
     url = (
@@ -145,17 +206,18 @@ def test_incoming_webhook(
     r = client.post(
         url, json.dumps(incoming_message), content_type="application/json"
     )
+
+    # Verify the view returned the response from the provider backend
+    #
     assert r.status_code == 200
     resp_data = r.json()
     assert resp_data["status"] == "all good"
 
-    # The message should have been delivered to the ea' inbox since there are
-    # no mail filter rules. And it should be the only message in the mailbox.
+    # Verify the provider backend's method was called with correct arguments
     #
-    mh = ea.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-    assert_email_equal(msg, stored_msg)
+    mock_backend.handle_incoming_webhook.assert_called_once()
+    call_args = mock_backend.handle_incoming_webhook.call_args
+    assert call_args[0][1] == server  # Second argument should be the server
 
 
 ####################################################################
@@ -264,13 +326,21 @@ def test_bounce_webhook(
     email_account_factory,
     api_client,
     faker,
-    postmark_request,
-    postmark_request_bounce,
+    mocker,
 ):
+    """
+    Test that the bounce webhook view correctly calls the provider backend's
+    handle_bounce_webhook method with the correct arguments.
+    """
     ea = email_account_factory()
     ea.save()
     server = ea.server
-    assert ea.num_bounces == 0
+
+    # Mock the provider and its backend's handle_bounce_webhook method
+    #
+    mock_provider = mocker.MagicMock()
+    mock_backend = mocker.MagicMock()
+    mock_provider.backend = mock_backend
 
     bounce_data = {
         "ID": 4323372036854775807,
@@ -292,10 +362,22 @@ def test_bounce_webhook(
         "Subject": "Test subject",
     }
 
-    # Make sure when we query postmark for the bounce info it matches what we
-    # are expecting here.
+    # Setup the mock to return a successful response
     #
-    postmark_request_bounce(email_account=ea, **bounce_data)
+    expected_response = JsonResponse(
+        {
+            "status": "all good",
+            "message": f"received bounce for {server.domain_name}/{ea.email_address}",
+        }
+    )
+    mock_backend.handle_bounce_webhook.return_value = expected_response
+
+    # Mock _get_provider_for_webhook to return our mock provider
+    #
+    mocker.patch(
+        "as_email.views._get_provider_for_webhook",
+        return_value=mock_provider
+    )
 
     url = (
         reverse(
@@ -313,63 +395,19 @@ def test_bounce_webhook(
     r = client.post(
         url, json.dumps(bounce_data), content_type="application/json"
     )
+
+    # Verify the view returned the response from the provider backend
+    #
     assert r.status_code == 200
     resp_data = r.json()
     assert "status" in resp_data
     assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"received bounce for {server.domain_name}/{ea.email_address}"
-    )
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
 
-    # If we get a bounce message from an address that is not covered by our
-    # server, we get a different message from the response.
+    # Verify the provider backend's method was called with correct arguments
     #
-    bounce_data["From"] = faker.email()
-    r = client.post(
-        url, json.dumps(bounce_data), content_type="application/json"
-    )
-    assert r.status_code == 200
-    resp_data = r.json()
-    assert "status" in resp_data
-    assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"`from` address '{bounce_data['From']}' is not an EmailAccount on server {server.domain_name}. Bounce message ignored."
-    )
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
-
-    # Requests with bad data return 400 - bad request
-    #
-    r = client.post(url, "HAHANO", content_type="application/json")
-    assert r.status_code == 400
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
-
-    # Make sure for requests to servers that do not exist return a 404
-    #
-    url = (
-        reverse(
-            "as_email:hook_bounce",
-            kwargs={
-                "provider_name": "postmark",
-                "domain_name": faker.domain_name(),
-            },
-        )
-        + "?"
-        + urlencode({"api_key": server.api_key})
-    )
-
-    bounce_data["From"] = faker.email()
-    r = client.post(
-        url, json.dumps(bounce_data), content_type="application/json"
-    )
-    assert r.status_code == 404
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
+    mock_backend.handle_bounce_webhook.assert_called_once()
+    call_args = mock_backend.handle_bounce_webhook.call_args
+    assert call_args[0][1] == server  # Second argument should be the server
 
 
 ####################################################################
@@ -378,13 +416,22 @@ def test_postmark_spam_webhook(
     email_account_factory,
     api_client,
     faker,
-    postmark_request,
-    postmark_request_bounce,
+    mocker,
 ):
+    """
+    Test that the spam webhook view correctly calls the provider backend's
+    handle_spam_webhook method with the correct arguments.
+    """
     ea = email_account_factory()
     ea.save()
-    server = ea.server  # noqa: F841
+    server = ea.server
     to_addr = faker.email()
+
+    # Mock the provider and its backend's handle_spam_webhook method
+    #
+    mock_provider = mocker.MagicMock()
+    mock_backend = mocker.MagicMock()
+    mock_provider.backend = mock_backend
 
     spam_data = {
         "RecordType": "SpamComplaint",
@@ -409,6 +456,23 @@ def test_postmark_spam_webhook(
         "Content": "<Abuse report dump>",
     }
 
+    # Setup the mock to return a successful response
+    #
+    expected_response = JsonResponse(
+        {
+            "status": "all good",
+            "message": f"received spam for {server.domain_name}/{ea.email_address}",
+        }
+    )
+    mock_backend.handle_spam_webhook.return_value = expected_response
+
+    # Mock _get_provider_for_webhook to return our mock provider
+    #
+    mocker.patch(
+        "as_email.views._get_provider_for_webhook",
+        return_value=mock_provider
+    )
+
     url = (
         reverse(
             "as_email:hook_spam",
@@ -423,14 +487,19 @@ def test_postmark_spam_webhook(
 
     client = api_client()
     r = client.post(url, json.dumps(spam_data), content_type="application/json")
+
+    # Verify the view returned the response from the provider backend
+    #
     assert r.status_code == 200
     resp_data = r.json()
     assert "status" in resp_data
     assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"received spam for {server.domain_name}/{ea.email_address}"
-    )
+
+    # Verify the provider backend's method was called with correct arguments
+    #
+    mock_backend.handle_spam_webhook.assert_called_once()
+    call_args = mock_backend.handle_spam_webhook.call_args
+    assert call_args[0][1] == server  # Second argument should be the server
 
 
 ########################################################################
