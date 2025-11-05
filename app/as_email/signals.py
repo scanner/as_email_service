@@ -199,6 +199,54 @@ def check_create_maintenance_email_accounts(
 
 ####################################################################
 #
+@receiver(pre_save, sender=Server)
+def server_pre_save(sender: Type[Server], instance: Server, **kwargs):
+    """
+    Pre-save signal handler for Server that:
+    1. Sets initial values for spool directories, mail_dir_parent, and api_key
+       if not set on new instances
+    2. Creates the directories when the object is being created (new instance)
+
+    This replaces the previous _set_initial_values method and directory creation
+    logic from Server.save() and Server.asave().
+    """
+    import random
+    import string
+
+    # Determine if this is a new instance
+    is_new = instance.pk is None
+
+    # Set initial values if not set and this is a new instance
+    if is_new:
+        if not instance.incoming_spool_dir:
+            instance.incoming_spool_dir = str(
+                settings.EMAIL_SPOOL_DIR / instance.domain_name / "incoming"
+            )
+        if not instance.outgoing_spool_dir:
+            instance.outgoing_spool_dir = str(
+                settings.EMAIL_SPOOL_DIR / instance.domain_name / "outgoing"
+            )
+        if not instance.mail_dir_parent:
+            instance.mail_dir_parent = str(
+                settings.MAIL_DIRS / instance.domain_name
+            )
+
+        # API Key is created when the object is saved for the first time
+        if not instance.api_key:
+            instance.api_key = "".join(
+                random.choice(string.ascii_letters + string.digits)
+                for x in range(40)
+            )
+
+    # Create directories if this is a new instance
+    if is_new:
+        Path(instance.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(instance.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
+        Path(instance.mail_dir_parent).mkdir(parents=True, exist_ok=True)
+
+
+####################################################################
+#
 @receiver(pre_save, sender=EmailAccount)
 def emailaccount_pre_save(
     sender: Type[EmailAccount], instance: EmailAccount, **kwargs
@@ -225,6 +273,8 @@ def emailaccount_pre_save(
     # - The mail_dir field has changed (using FieldTracker)
     if is_new or instance.tracker.has_changed("mail_dir"):
         instance.MH()
+
+
 @receiver(m2m_changed, sender=Server.receive_providers.through)
 def handle_receive_providers_changed(
     sender, instance: Server, action: str, pk_set, **kwargs
