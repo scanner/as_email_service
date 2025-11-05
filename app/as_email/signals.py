@@ -235,6 +235,8 @@ def emailaccount_pre_save(
     # - The mail_dir field has changed
     if is_new or mail_dir_changed:
         instance.MH()
+
+
 @receiver(m2m_changed, sender=Server.receive_providers.through)
 def handle_receive_providers_changed(
     sender, instance: Server, action: str, pk_set, **kwargs
