@@ -12,19 +12,40 @@ from typing import Type
 #
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import (
+    m2m_changed,
+    post_delete,
+    post_save,
+    pre_save,
+)
 from django.dispatch import receiver
+from huey.contrib.djhuey import HUEY
 
 # Project imports
 #
-from .models import EmailAccount, Server
+from .models import EmailAccount, Provider, Server
 from .tasks import (
     check_update_pwfile_for_emailaccount,
     delete_emailaccount_from_pwfile,
+    provider_create_alias,
+    provider_create_domain,
+    provider_delete_alias,
+    provider_enable_all_aliases,
 )
 
 User = get_user_model()
 logger = logging.getLogger("as_email.models")
+
+
+####################################################################
+#
+@receiver(pre_save, sender=EmailAccount)
+def email_account_pre_save() -> None:
+    """
+    Conduct pre-save EmailAccount actions, like creating the various
+    folders associated with this EmailAccount
+    """
+    pass
 
 
 ####################################################################
@@ -38,7 +59,35 @@ def fire_off_async_task_update_emailaccount_pwfile(
     password file with the email account object. If they are different, it will
     re-write the password file with the update info.
     """
-    check_update_pwfile_for_emailaccount(instance.pk)
+    # If the instance.password field has change, write it to our exported
+    # passwords file used by other services (like IMAP). However, if this
+    # EmailAccount is being created, and the password field is empty, do not
+    # set it.
+    #
+    if instance.tracker.has_changed("password"):
+        # Skip if the password is `XXX` (the default) and the EmailAccount is
+        # created.
+        #
+        if not (created and instance.password == "XXX"):
+            check_update_pwfile_for_emailaccount(instance.pk)
+
+
+####################################################################
+#
+@receiver(post_save, sender=EmailAccount)
+def create_provider_aliases(
+    sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
+):
+    """
+    When an EmailAccount is created, create corresponding aliases on all
+    receive providers configured for the account's server.
+    """
+    if not created:
+        return
+
+    server = instance.server
+    for provider in server.receive_providers.all():
+        provider_create_alias(instance.pk, provider.backend_name)
 
 
 ####################################################################
@@ -52,6 +101,23 @@ def fire_off_async_task_delete_emailaccount_pwfile(
     the generated pwfile is also removed.
     """
     delete_emailaccount_from_pwfile(instance.email_address)
+
+
+####################################################################
+#
+@receiver(post_delete, sender=EmailAccount)
+def delete_provider_aliases(
+    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
+):
+    """
+    When an EmailAccount is deleted, delete corresponding aliases from all
+    receive providers configured for the account's server.
+    """
+    server = instance.server
+    for provider in server.receive_providers.all():
+        provider_delete_alias(
+            instance.email_address, server.domain_name, provider.backend_name
+        )
 
 
 ####################################################################
@@ -167,3 +233,41 @@ def emailaccount_pre_save(
     # - The mail_dir field has changed
     if is_new or mail_dir_changed:
         instance.MH()
+@receiver(m2m_changed, sender=Server.receive_providers.through)
+def handle_receive_providers_changed(
+    sender, instance: Server, action: str, pk_set, **kwargs
+):
+    """
+    When receive_providers are added or removed from a Server:
+    - post_add: Create domain on provider, then enable all aliases
+    - post_remove: Disable all aliases (but don't delete domain)
+
+    Args:
+        sender: The through model class
+        instance: The Server instance
+        action: The m2m action ('post_add', 'post_remove', etc.)
+        pk_set: Set of primary keys being added/removed
+    """
+    if action == "post_add":
+        # Provider(s) added to server - create domain then enable aliases
+        for provider_pk in pk_set:
+            provider = Provider.objects.get(pk=provider_pk)
+            # Chain tasks: create domain first, then enable aliases
+            pipeline = provider_create_domain.s(
+                instance.pk, provider.backend_name
+            ).then(
+                provider_enable_all_aliases,
+                instance.pk,
+                provider.backend_name,
+                True,
+            )
+            HUEY.enqueue(pipeline)
+
+    elif action == "post_remove":
+        # Provider(s) removed from server - disable aliases
+        for provider_pk in pk_set:
+            provider = Provider.objects.get(pk=provider_pk)
+            # Disable all aliases for this server on the provider
+            provider_enable_all_aliases(
+                instance.pk, provider.backend_name, is_enabled=False
+            )

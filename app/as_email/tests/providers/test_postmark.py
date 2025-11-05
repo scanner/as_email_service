@@ -98,8 +98,12 @@ def test_postmark_backend_send_email_smtp_missing_token(
     """
     server = server_factory()
     # Ensure token doesn't exist
-    if server.domain_name in settings.EMAIL_SERVER_TOKENS:
-        del settings.EMAIL_SERVER_TOKENS[server.domain_name]
+    provider_name = "postmark"
+    if (
+        provider_name in settings.EMAIL_SERVER_TOKENS
+        and server.domain_name in settings.EMAIL_SERVER_TOKENS[provider_name]
+    ):
+        del settings.EMAIL_SERVER_TOKENS[provider_name][server.domain_name]
 
     backend = PostmarkBackend()
     message = MIMEText("Test message")
@@ -694,8 +698,12 @@ def test_postmark_backend_get_client_missing_token(server_factory, settings):
     """
     server = server_factory()
     # Ensure token doesn't exist
-    if server.domain_name in settings.EMAIL_SERVER_TOKENS:
-        del settings.EMAIL_SERVER_TOKENS[server.domain_name]
+    provider_name = "postmark"
+    if (
+        provider_name in settings.EMAIL_SERVER_TOKENS
+        and server.domain_name in settings.EMAIL_SERVER_TOKENS[provider_name]
+    ):
+        del settings.EMAIL_SERVER_TOKENS[provider_name][server.domain_name]
 
     backend = PostmarkBackend()
 

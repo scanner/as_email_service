@@ -14,6 +14,7 @@ import mailbox
 import random
 import shlex
 import string
+from enum import StrEnum
 from pathlib import Path
 from typing import List
 
@@ -28,6 +29,7 @@ from django.db import models
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
+from model_utils import FieldTracker
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
 
@@ -312,15 +314,16 @@ class Server(models.Model):
         DEPRECATED: This property is deprecated and will be removed in a future
         version. Use send_provider.backend instead.
         """
+        from .provider_tokens import get_provider_token
+
         if not hasattr(self, "_client"):
-            if self.domain_name not in settings.EMAIL_SERVER_TOKENS:
+            token = get_provider_token("postmark", self.domain_name)
+            if not token:
                 raise KeyError(
-                    f"The token for the server '{self.domain_name} is not "
-                    "defined in `settings.EMAIL_SERVER_TOKENS`"
+                    f"The token for postmark provider on server '{self.domain_name}' "
+                    "is not defined in `settings.EMAIL_SERVER_TOKENS`"
                 )
-            self._client = PostmarkClient(
-                server_token=settings.EMAIL_SERVER_TOKENS[self.domain_name]
-            )
+            self._client = PostmarkClient(server_token=token)
         return self._client
 
     ####################################################################
@@ -453,18 +456,14 @@ class EmailAccount(models.Model):
     DEACTIVATED_DUE_TO_BAD_FORWARD_TO = (
         "Deactivated due to bounce when sending email to `forward_to` address"
     )
+
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
-    LOCAL_DELIVERY = "LD"
-    IMAP_DELIVERY = "IM"
-    ALIAS = "AL"
-    FORWARDING = "FW"
-    DELIVERY_METHOD_CHOICES = [
-        (LOCAL_DELIVERY, "Local Delivery"),
-        # (IMAP_DELIVERY), "IMAP",   # XXX coming soon
-        (ALIAS, "Alias"),
-        (FORWARDING, "Forwarding"),
-    ]
+    class DeliveryMethods(StrEnum):
+        LOCAL_DELIVERY = "LD"
+        # IMAP_DELIVERY = "IM"  # XXX coming soon
+        ALIAS = "AL"
+        FORWARDING = "FW"
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
@@ -489,8 +488,8 @@ class EmailAccount(models.Model):
     )
     delivery_method = models.CharField(
         max_length=2,
-        choices=DELIVERY_METHOD_CHOICES,
-        default=LOCAL_DELIVERY,
+        choices=[(tag.value, tag.name) for tag in DeliveryMethods],
+        default=DeliveryMethods.LOCAL_DELIVERY,
         help_text=_(
             "Delivery method indicates how email for this account is "
             "delivered. This is either delivery to a local mailbox, delivery "
@@ -679,6 +678,11 @@ class EmailAccount(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
+    # We want to track when certain fields change so we can do additional
+    # operations that only need to happen when those fields change.
+    #
+    tracker = FieldTracker(fields=["password"])
+
     class Meta:
         # If an EmailAccount has the permission "can_have_foreign_aliases" then
         # when the EmailAccount is being modified via a view we will allow it
@@ -836,13 +840,14 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def set_password(self, raw_password: str):
+    def set_password(self, raw_password: str, save: bool = True) -> None:
         """
         Keyword Arguments:
         password --
         """
         self.password = make_password(raw_password)
-        self.save(update_fields=["password"])
+        if save:
+            self.save(update_fields=["password"])
 
     ####################################################################
     #
