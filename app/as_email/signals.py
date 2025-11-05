@@ -5,13 +5,14 @@ Where we define our signal receivers
 # system imports
 #
 import logging
+from pathlib import Path
 from typing import Type
 
 # 3rd party imports
 #
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 # Project imports
@@ -126,3 +127,43 @@ def check_create_maintenance_email_accounts(
         ea.delivery_method = "AL"
         ea.save()
         ea.alias_for.add(first)
+
+
+####################################################################
+#
+@receiver(pre_save, sender=EmailAccount)
+def emailaccount_pre_save(
+    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
+):
+    """
+    Pre-save signal handler for EmailAccount that:
+    1. Sets the mail_dir if not set on new instances
+    2. Creates the mail directory when:
+       - The object is being created (new instance)
+       - OR the mail_dir field has been changed
+
+    This replaces the previous _pre_save_logic method.
+    """
+    # Determine if this is a new instance
+    is_new = instance.pk is None
+
+    # Check if mail_dir has changed (only for existing instances)
+    mail_dir_changed = False
+    if not is_new:
+        try:
+            old_instance = EmailAccount.objects.get(pk=instance.pk)
+            mail_dir_changed = old_instance.mail_dir != instance.mail_dir
+        except EmailAccount.DoesNotExist:
+            # Instance might have been deleted
+            is_new = True
+
+    # Set mail_dir if not set and this is a new instance
+    if is_new and not instance.mail_dir:
+        md = Path(instance.server.mail_dir_parent) / instance.email_address
+        instance.mail_dir = str(md)
+
+    # Create the mail directory if:
+    # - This is a new instance, OR
+    # - The mail_dir field has changed
+    if is_new or mail_dir_changed:
+        instance.MH()
