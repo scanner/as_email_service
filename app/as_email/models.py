@@ -229,30 +229,6 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def save(self, *args, **kwargs):
-        """
-        Save the Server instance.
-
-        Note: Pre-save logic (setting spool directories, mail_dir_parent, api_key,
-        and creating directories) is now handled by the server_pre_save signal
-        in signals.py.
-        """
-        super().save(*args, **kwargs)
-
-    ####################################################################
-    #
-    async def asave(self, *args, **kwargs):
-        """
-        Async save for the Server instance.
-
-        Note: Pre-save logic (setting spool directories, mail_dir_parent, api_key,
-        and creating directories) is now handled by the server_pre_save signal
-        in signals.py.
-        """
-        await super().asave(*args, **kwargs)
-
-    ####################################################################
-    #
     @property
     def client(self) -> PostmarkClient:
         """
@@ -737,28 +713,6 @@ class EmailAccount(models.Model):
         password if they are the owner.
         """
         return request.user == self.owner
-
-    ####################################################################
-    #
-    def save(self, *args, **kwargs):
-        """
-        Save the EmailAccount instance.
-
-        Note: Pre-save logic (setting mail_dir and creating directories) is
-        now handled by the emailaccount_pre_save signal in signals.py.
-        """
-        super().save(*args, **kwargs)
-
-    ####################################################################
-    #
-    async def asave(self, *args, **kwargs):
-        """
-        Async save for the EmailAccount instance.
-
-        Note: Pre-save logic (setting mail_dir and creating directories) is
-        now handled by the emailaccount_pre_save signal in signals.py.
-        """
-        await super().asave(*args, **kwargs)
 
     ####################################################################
     #
