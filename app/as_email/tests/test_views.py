@@ -27,6 +27,54 @@ pytestmark = pytest.mark.django_db
 
 ####################################################################
 #
+@pytest.fixture
+def mock_webhook_provider(mocker):
+    """
+    Factory fixture for mocking webhook provider backends.
+
+    Returns a function that creates a mocked provider with a specified
+    webhook handler method and mocks _get_provider_for_webhook to return it.
+
+    Usage:
+        mock_provider = mock_webhook_provider(
+            "handle_incoming_webhook",
+            JsonResponse({"status": "all good"})
+        )
+        # mock_provider.backend.handle_incoming_webhook is now set up
+    """
+
+    def _mock_provider(webhook_method: str, response):
+        """
+        Create a mocked provider with the specified webhook handler method.
+
+        Args:
+            webhook_method: Name of the webhook handler method to mock
+                           (e.g., "handle_incoming_webhook")
+            response: The response object to return from the mocked method
+
+        Returns:
+            The mock provider object with backend already configured
+        """
+        mock_provider = mocker.MagicMock()
+        mock_backend = mocker.MagicMock()
+        mock_provider.backend = mock_backend
+
+        # Set the return value for the specified method
+        getattr(mock_backend, webhook_method).return_value = response
+
+        # Mock _get_provider_for_webhook to return our mock provider
+        mocker.patch(
+            "as_email.views._get_provider_for_webhook",
+            return_value=mock_provider
+        )
+
+        return mock_provider
+
+    return _mock_provider
+
+
+####################################################################
+#
 def _expected_for_email_account(ea: EmailAccount) -> dict:
     """
     Our tests need to compare a dict retrieved from the REST API with an
@@ -153,7 +201,7 @@ def test_index(
 ####################################################################
 #
 def test_incoming_webhook(
-    email_account_factory, api_client, faker, mocker
+    email_account_factory, api_client, faker, mock_webhook_provider
 ):
     """
     Test that the incoming webhook view correctly calls the provider backend's
@@ -163,24 +211,13 @@ def test_incoming_webhook(
     ea.save()
     server = ea.server
 
-    # Mock the provider and its backend's handle_incoming_webhook method
-    #
-    mock_provider = mocker.MagicMock()
-    mock_backend = mocker.MagicMock()
-    mock_provider.backend = mock_backend
-
-    # Setup the mock to return a successful response
+    # Mock the provider backend
     #
     expected_response = JsonResponse(
         {"status": "all good", "message": "test message"}
     )
-    mock_backend.handle_incoming_webhook.return_value = expected_response
-
-    # Mock _get_provider_for_webhook to return our mock provider
-    #
-    mocker.patch(
-        "as_email.views._get_provider_for_webhook",
-        return_value=mock_provider
+    mock_provider = mock_webhook_provider(
+        "handle_incoming_webhook", expected_response
     )
 
     incoming_message = {
@@ -215,8 +252,8 @@ def test_incoming_webhook(
 
     # Verify the provider backend's method was called with correct arguments
     #
-    mock_backend.handle_incoming_webhook.assert_called_once()
-    call_args = mock_backend.handle_incoming_webhook.call_args
+    mock_provider.backend.handle_incoming_webhook.assert_called_once()
+    call_args = mock_provider.backend.handle_incoming_webhook.call_args
     assert call_args[0][1] == server  # Second argument should be the server
 
 
@@ -326,7 +363,7 @@ def test_bounce_webhook(
     email_account_factory,
     api_client,
     faker,
-    mocker,
+    mock_webhook_provider,
 ):
     """
     Test that the bounce webhook view correctly calls the provider backend's
@@ -335,12 +372,6 @@ def test_bounce_webhook(
     ea = email_account_factory()
     ea.save()
     server = ea.server
-
-    # Mock the provider and its backend's handle_bounce_webhook method
-    #
-    mock_provider = mocker.MagicMock()
-    mock_backend = mocker.MagicMock()
-    mock_provider.backend = mock_backend
 
     bounce_data = {
         "ID": 4323372036854775807,
@@ -362,7 +393,7 @@ def test_bounce_webhook(
         "Subject": "Test subject",
     }
 
-    # Setup the mock to return a successful response
+    # Mock the provider backend
     #
     expected_response = JsonResponse(
         {
@@ -370,13 +401,8 @@ def test_bounce_webhook(
             "message": f"received bounce for {server.domain_name}/{ea.email_address}",
         }
     )
-    mock_backend.handle_bounce_webhook.return_value = expected_response
-
-    # Mock _get_provider_for_webhook to return our mock provider
-    #
-    mocker.patch(
-        "as_email.views._get_provider_for_webhook",
-        return_value=mock_provider
+    mock_provider = mock_webhook_provider(
+        "handle_bounce_webhook", expected_response
     )
 
     url = (
@@ -405,8 +431,8 @@ def test_bounce_webhook(
 
     # Verify the provider backend's method was called with correct arguments
     #
-    mock_backend.handle_bounce_webhook.assert_called_once()
-    call_args = mock_backend.handle_bounce_webhook.call_args
+    mock_provider.backend.handle_bounce_webhook.assert_called_once()
+    call_args = mock_provider.backend.handle_bounce_webhook.call_args
     assert call_args[0][1] == server  # Second argument should be the server
 
 
@@ -416,7 +442,7 @@ def test_postmark_spam_webhook(
     email_account_factory,
     api_client,
     faker,
-    mocker,
+    mock_webhook_provider,
 ):
     """
     Test that the spam webhook view correctly calls the provider backend's
@@ -426,12 +452,6 @@ def test_postmark_spam_webhook(
     ea.save()
     server = ea.server
     to_addr = faker.email()
-
-    # Mock the provider and its backend's handle_spam_webhook method
-    #
-    mock_provider = mocker.MagicMock()
-    mock_backend = mocker.MagicMock()
-    mock_provider.backend = mock_backend
 
     spam_data = {
         "RecordType": "SpamComplaint",
@@ -456,7 +476,7 @@ def test_postmark_spam_webhook(
         "Content": "<Abuse report dump>",
     }
 
-    # Setup the mock to return a successful response
+    # Mock the provider backend
     #
     expected_response = JsonResponse(
         {
@@ -464,13 +484,8 @@ def test_postmark_spam_webhook(
             "message": f"received spam for {server.domain_name}/{ea.email_address}",
         }
     )
-    mock_backend.handle_spam_webhook.return_value = expected_response
-
-    # Mock _get_provider_for_webhook to return our mock provider
-    #
-    mocker.patch(
-        "as_email.views._get_provider_for_webhook",
-        return_value=mock_provider
+    mock_provider = mock_webhook_provider(
+        "handle_spam_webhook", expected_response
     )
 
     url = (
@@ -497,8 +512,8 @@ def test_postmark_spam_webhook(
 
     # Verify the provider backend's method was called with correct arguments
     #
-    mock_backend.handle_spam_webhook.assert_called_once()
-    call_args = mock_backend.handle_spam_webhook.call_args
+    mock_provider.backend.handle_spam_webhook.assert_called_once()
+    call_args = mock_provider.backend.handle_spam_webhook.call_args
     assert call_args[0][1] == server  # Second argument should be the server
 
 
