@@ -11,11 +11,8 @@ import email
 import email.message
 import logging
 import mailbox
-import random
 import shlex
-import string
 from enum import StrEnum
-from pathlib import Path
 from typing import List
 
 # 3rd party imports
@@ -232,76 +229,26 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def _set_initial_values(self):
-        """
-        A helper method that sets initial values on object creation.
-        """
-        # If the object has not been created yet then if the various file
-        # fields have not been set, set them based on django settings and the
-        # domain name.
-        #
-        # XXX We should also check to see if the path exists and if it does it
-        #     must be a directory.
-        #
-        if not self.id:
-            if not self.incoming_spool_dir:
-                self.incoming_spool_dir = str(
-                    settings.EMAIL_SPOOL_DIR / self.domain_name / "incoming"
-                )
-            if not self.outgoing_spool_dir:
-                self.outgoing_spool_dir = str(
-                    settings.EMAIL_SPOOL_DIR / self.domain_name / "outgoing"
-                )
-            if not self.mail_dir_parent:
-                self.mail_dir_parent = str(
-                    settings.MAIL_DIRS / self.domain_name
-                )
-
-            # API Key is created when the object is saved for the first time.
-            #
-            if not self.api_key:
-                self.api_key = "".join(
-                    random.choice(string.ascii_letters + string.digits)
-                    for x in range(40)
-                )
-
-    ####################################################################
-    #
     def save(self, *args, **kwargs):
         """
-        On pre-save of the Server instance if this is when it is being
-        created pre-fill the incoming spool dir, outgoing spool dir, and
-        mail_dir_parent based on the domain_name of the server.
+        Save the Server instance.
 
-        This lets the default creation automatically set where these
-        directories are without requiring input if they are not set on create.
+        Note: Pre-save logic (setting spool directories, mail_dir_parent, api_key,
+        and creating directories) is now handled by the server_pre_save signal
+        in signals.py.
         """
-        self._set_initial_values()
-        Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
-
         super().save(*args, **kwargs)
 
     ####################################################################
     #
     async def asave(self, *args, **kwargs):
         """
-        On pre-save of the Server instance if this is when it is being
-        created pre-fill the incoming spool dir, outgoing spool dir, and
-        mail_dir_parent based on the domain_name of the server.
+        Async save for the Server instance.
 
-        This lets the default creation automatically set where these
-        directories are without requiring input if they are not set on create.
-
-        After we have called the parent save method we make sure that the
-        directory specified exists.
+        Note: Pre-save logic (setting spool directories, mail_dir_parent, api_key,
+        and creating directories) is now handled by the server_pre_save signal
+        in signals.py.
         """
-        self._set_initial_values()
-        Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
-
         await super().asave(*args, **kwargs)
 
     ####################################################################
