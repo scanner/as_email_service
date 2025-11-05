@@ -793,43 +793,24 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def _pre_save_logic(self):
-        """
-        Common function for doing any pre-save processing of the email
-        account setting the mail_dir attribute and creating the associated
-        mailbox.MH.
-        """
-        # If the object has not been created yet and if the mail_dir
-        # is not set set it based on the associated Server's parent
-        # mail dir and email address.
-        #
-        if not self.id:
-            if not self.mail_dir:
-                md = Path(self.server.mail_dir_parent) / self.email_address
-                self.mail_dir = str(md)
-
-        # Create the mail dir if it does not already exist. We do this
-        # even if self.id is set because the mail dir may have been
-        # changed and we want this process to ensure that it exists.
-        #
-        self.MH()
-
-    ####################################################################
-    #
     def save(self, *args, **kwargs):
         """
-        Make sure the mail_dir field is set (and if not fill it in)
+        Save the EmailAccount instance.
+
+        Note: Pre-save logic (setting mail_dir and creating directories) is
+        now handled by the emailaccount_pre_save signal in signals.py.
         """
-        self._pre_save_logic()
         super().save(*args, **kwargs)
 
     ####################################################################
     #
     async def asave(self, *args, **kwargs):
         """
-        Make sure the mail_dir field is set (and if not fill it in)
+        Async save for the EmailAccount instance.
+
+        Note: Pre-save logic (setting mail_dir and creating directories) is
+        now handled by the emailaccount_pre_save signal in signals.py.
         """
-        self._pre_save_logic()
         await super().asave(*args, **kwargs)
 
     ####################################################################
