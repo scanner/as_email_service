@@ -951,9 +951,6 @@ def provider_report_unused_domains() -> None:
     Sends an email report to ADMINISTRATIVE_EMAIL_ADDRESS with details of any
     unused domains.
     """
-    from django.conf import settings
-    from django.core.mail import send_mail
-
     all_unused = []
 
     # Process each provider that supports domain management
@@ -979,7 +976,9 @@ def provider_report_unused_domains() -> None:
             if alias_count == 0:
                 unused_domains.append((server.domain_name, 0))
             else:
-                # Even if there are EmailAccounts, check if any are actually enabled
+                # Even if there are EmailAccounts, check if any are actually
+                # enabled
+                #
                 try:
                     backend = get_backend(provider.backend_name)
                     aliases = backend.list_email_accounts(server)

@@ -16,10 +16,11 @@ References:
 import email.message
 import json
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Iterator, Optional
 from urllib.error import HTTPError
 from urllib.parse import urljoin
 
@@ -47,7 +48,7 @@ from .base import ProviderBackend
 if TYPE_CHECKING:
     from redis import StrictRedis
 
-    from ..models import EmailAccount, Server
+    from ..models import Server
 
 logger = logging.getLogger("as_email.providers.forwardemail")
 
@@ -324,12 +325,50 @@ class ForwardEmailBackend(ProviderBackend):
     ####################################################################
     #
     @classmethod
+    def paginated_request(cls, url: str) -> Iterator[dict]:
+        """
+        Get all the results from a paginated endpoint in forwardemail.net's API
+
+        Pagination is determined by these headers:
+          X-Page-Count: Total page count.
+          X-Page-Current: Current page number.
+          X-Page-Size: Number of items on the current page.
+          X-Item-Count: Total number of items across all pages.
+          Link: Navigation links (prev, next, first, last).
+
+        For the purposes of this method we only pay attention to the "Link"
+        header, and its format is:
+
+          '<https://api.forwardemail.net/v1/domains?page=2>; rel="next",
+           <https://api.forwardemail.net/v1/domains?page=2)>; rel="last",
+           <https://api.forwardemail.net/v1/domains?page=1)>; rel="first"'
+
+        """
+        next_url: str | None = url
+
+        while next_url:
+            response = cls._req(HTTPMethod.GET, next_url)
+            response.raise_for_status()
+
+            for item in response.json():
+                yield item
+
+            # The header 'Link' gets the next page of results.
+            #
+            link_header = response.headers.get("Link", "")
+            match = re.search(r'<([^>]+)>\s*;\s*rel="next"', link_header)
+            next_url = match.group(1) if match else None
+
+    ####################################################################
+    #
+    @classmethod
     def _req(cls, method: HTTPMethod, url: str, data=None) -> requests.Response:
         """
         Construct the url from the api endpoint + relative URL provided.
         """
         u = urljoin(cls.API_ENDPOINT, url)
         token = get_provider_token(cls.PROVIDER_NAME, "account_api_key")
+        assert token
         r = requests.request(str(method), u, auth=(token, ""), data=data)
         if r.status_code != 200:
             raw = BytesIO(r.content)
@@ -353,14 +392,9 @@ class ForwardEmailBackend(ProviderBackend):
         domain name info from forwardemail.net. We also store a key in redis
         based on the domain name that stores as its value the id.
         """
-        # XXX when we hit 1,000 domain names we will need to support paging
-        #     through the results.
-        #
-        r = self._req(HTTPMethod.GET, "v1/domains")
         redis = redis_client()
-        domains = r.json()
         result = {}
-        for domain_info in domains:
+        for domain_info in self.paginated_request("v1/domains"):
             domain_name = domain_info["name"]
             domain_id = domain_info["id"]
             result[domain_name] = domain_info
@@ -574,13 +608,10 @@ class ForwardEmailBackend(ProviderBackend):
             )
             return {}
 
-        # XXX when we hit 1,000 aliases we will need to support paging
-        #
-        r = self._req(HTTPMethod.GET, f"v1/domains/{domain_id}/aliases")
-        aliases = r.json()
         result = {}
-
-        for alias_info in aliases:
+        for alias_info in self.paginated_request(
+            f"v1/domains/{domain_id}/aliases"
+        ):
             alias_name = alias_info["name"]
             alias_id = alias_info["id"]
             email_address = f"{alias_name}@{server.domain_name}"

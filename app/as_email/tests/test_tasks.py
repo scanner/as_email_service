@@ -28,6 +28,7 @@ from ..tasks import (
     process_email_bounce,
     process_email_spam,
     provider_enable_all_aliases,
+    provider_report_unused_domains,
     provider_sync_aliases,
     retry_failed_incoming_email,
 )
@@ -1653,9 +1654,6 @@ class TestProviderReportUnusedDomains:
             "as_email.tasks.get_backend",
             return_value=mock_backend,
         )
-
-        # Call the task
-        from ..tasks import provider_report_unused_domains
 
         res = provider_report_unused_domains()
         res()
