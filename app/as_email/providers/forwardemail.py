@@ -332,7 +332,7 @@ class ForwardEmailBackend(ProviderBackend):
         token = get_provider_token(cls.PROVIDER_NAME, "account_api_key")
         r = requests.request(str(method), u, auth=(token, ""), data=data)
         if r.status_code != 200:
-            raw = BytesIO(r.text)
+            raw = BytesIO(r.content)
             raise HTTPError(u, r.status_code, r.reason, r.headers, raw)
         return r
 
