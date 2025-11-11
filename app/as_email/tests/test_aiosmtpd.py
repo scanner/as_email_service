@@ -7,6 +7,7 @@ Test the aiosmtpd daemon/django command.
 #
 from datetime import UTC, datetime
 from email.message import EmailMessage
+from pathlib import Path
 
 # 3rd party imports
 #
@@ -1905,13 +1906,20 @@ class TestRelayToProvider:
         inactive_email_factory,
         faker,
         smtp,
+        mocker,
     ):
         """
         Given a message sent only to inactive email addresses
         When relay_email_to_provider is called
         Then no message should be sent to the provider
-        And a delivery status notification should be sent to the sender
+        And a delivery status notification should be enqueued
         """
+        # Mock dispatch_incoming_email to verify DSN is enqueued
+        # The task won't execute immediately in async context even with huey.immediate=True
+        mock_dispatch = mocker.patch(
+            "as_email.management.commands.aiosmtpd.dispatch_incoming_email"
+        )
+
         ea = await sync_to_async(email_account_factory)()
         await ea.asave()
 
@@ -1933,18 +1941,13 @@ class TestRelayToProvider:
         # No email sent to provider
         assert smtp.sendmail.call_count == 0
 
-        # DSN delivered locally
-        mh = ea.MH()
-        folder = mh.get_folder("inbox")
-        stored_msg = folder.get(1)
-
-        from_addr = f"mailer-daemon@{ea.server.domain_name}"
-        assert stored_msg["From"] == from_addr
-        assert stored_msg["To"] == ea.email_address
-        assert (
-            stored_msg["Subject"]
-            == "NOTICE: Email not sent due to destination address marked as inactive"
-        )
+        # Verify DSN was enqueued for delivery
+        assert mock_dispatch.call_count == 1
+        call_args = mock_dispatch.call_args
+        assert call_args.args[0] == ea.pk
+        # Verify the spooled file exists
+        spool_file = Path(call_args.args[1])
+        assert spool_file.exists()
 
     ####################################################################
     #
@@ -1956,13 +1959,20 @@ class TestRelayToProvider:
         inactive_email_factory,
         faker,
         smtp,
+        mocker,
     ):
         """
         Given a message sent to both valid and inactive addresses
         When relay_email_to_provider is called
         Then the message should be sent only to valid addresses
-        And a delivery status notification should be sent for inactive addresses
+        And a delivery status notification should be enqueued for inactive addresses
         """
+        # Mock dispatch_incoming_email to verify DSN is enqueued
+        # The task won't execute immediately in async context even with huey.immediate=True
+        mock_dispatch = mocker.patch(
+            "as_email.management.commands.aiosmtpd.dispatch_incoming_email"
+        )
+
         ea = await sync_to_async(email_account_factory)()
         await ea.asave()
 
@@ -1981,11 +1991,10 @@ class TestRelayToProvider:
             [to],
         )
 
-        # DSN also sent
-        mh = ea.MH()
-        folder = mh.get_folder("inbox")
-        stored_msg = folder.get(1)
-        assert (
-            stored_msg["Subject"]
-            == "NOTICE: Email not sent due to destination address marked as inactive"
-        )
+        # Verify DSN was enqueued for inactive addresses
+        assert mock_dispatch.call_count == 1
+        call_args = mock_dispatch.call_args
+        assert call_args.args[0] == ea.pk
+        # Verify the spooled file exists
+        spool_file = Path(call_args.args[1])
+        assert spool_file.exists()

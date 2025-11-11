@@ -15,6 +15,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import ProviderBackend
 
+# Mapping of provider backend names to their class name prefixes
+# Used to handle multi-word backend class names
+#
+PROVIDER_NAME_TO_BACKEND_MAPPING = {
+    "forwardemail": "ForwardEmail",
+    "postmark": "Postmark",
+}
+
 
 ########################################################################
 #
@@ -53,9 +61,13 @@ def get_backend(backend_name: str) -> "ProviderBackend":
             f"Failed to import provider backend '{backend_name}': {exc}"
         )
 
-    # Construct the expected class name (e.g., "postmark" -> "PostmarkBackend")
+    # Construct the expected class name using the mapping
+    # e.g., "forwardemail" -> "ForwardEmailBackend"
     #
-    class_name = f"{backend_name.capitalize()}Backend"
+    class_prefix = PROVIDER_NAME_TO_BACKEND_MAPPING.get(
+        backend_name, backend_name.capitalize()
+    )
+    class_name = f"{class_prefix}Backend"
 
     # Get the backend class from the module
     #
