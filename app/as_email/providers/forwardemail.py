@@ -696,6 +696,107 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
+    def create_update_email_account(
+        self,
+        email_account: "EmailAccount",
+        redis: Optional["StrictRedis"] = None,
+    ) -> None:
+        """
+        Create or update a domain alias on forwardemail.net for an EmailAccount.
+
+        This method intelligently handles both create and update operations:
+        - If the alias doesn't exist, it creates a new one using POST
+        - If the alias already exists, it updates it using PUT
+
+        Args:
+            email_account: The EmailAccount to create or update an alias for
+            redis: Optional Redis client to reuse
+        """
+        redis = redis_client() if redis is None else redis
+
+        # Ensure domain exists and mapping is up to date
+        #
+        self.update_domains(redis=redis)
+
+        domain_id = self._get_domain_id(
+            email_account.server.domain_name, redis=redis
+        )
+        if domain_id is None:
+            logger.error(
+                "Cannot create/update alias for %s: domain ID not found for %s",
+                email_account.email_address,
+                email_account.server.domain_name,
+            )
+            return
+
+        # Extract mailbox name from email address
+        #
+        mailbox_name = email_account.email_address.split("@")[0]
+
+        # Construct webhook URL for this email account
+        #
+        webhook_url = self._get_webhook_url(email_account)
+
+        # Prepare alias data
+        #
+        alias_data = {
+            "name": mailbox_name,
+            "recipients": [webhook_url],
+            "description": "",
+            "labels": "",
+            "has_recipient_verification": False,
+            "is_enabled": True,
+            "has_imap": False,
+            "has_pgp": False,
+        }
+
+        # Check if alias already exists by looking up its ID in Redis
+        #
+        redis_key = self._redis_key(ObjType.ALIAS, email_account.email_address)
+        alias_id = redis.get(redis_key)
+
+        # If not in Redis, refresh the alias list to make sure we have current data
+        #
+        if alias_id is None:
+            self.list_email_accounts(email_account.server, redis=redis)
+            alias_id = redis.get(redis_key)
+
+        if alias_id is None:
+            # Alias doesn't exist - create it using POST
+            #
+            r = self._req(
+                HTTPMethod.POST,
+                f"v1/domains/{domain_id}/aliases",
+                data=alias_data,
+            )
+            alias_info = r.json()
+
+            # Store alias ID in Redis
+            #
+            redis.set(redis_key, alias_info["id"])
+
+            logger.info(
+                "Created forwardemail.net alias for %s (ID: %s)",
+                email_account.email_address,
+                alias_info["id"],
+            )
+        else:
+            # Alias exists - update it using PUT
+            #
+            self._req(
+                HTTPMethod.PUT,
+                f"v1/domains/{domain_id}/aliases/{alias_id}",
+                data=alias_data,
+            )
+
+            logger.info(
+                "Updated forwardemail.net alias for %s (ID: %s)",
+                email_account.email_address,
+                alias_id,
+            )
+
+    ####################################################################
+    #
     def delete_email_account(
         self,
         email_account: "EmailAccount",
