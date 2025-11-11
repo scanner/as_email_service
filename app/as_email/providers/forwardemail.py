@@ -303,7 +303,7 @@ class ForwardEmailBackend(ProviderBackend):
     ####################################################################
     #
     def __init__(self, *args, **kwargs) -> None:
-        super(self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.api = APIClient()
         self.r = redis_client()
 
