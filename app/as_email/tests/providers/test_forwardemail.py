@@ -486,7 +486,7 @@ class TestForwardEmailAPIMethods:
             "name": server.domain_name,
         }
         mock_req = mocker.patch.object(
-            backend, "_req", return_value=mock_response
+            backend.api, "req", return_value=mock_response
         )
 
         # Mock update_domains
@@ -532,7 +532,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call create_domain
         backend.create_domain(server)
@@ -562,7 +562,7 @@ class TestForwardEmailAPIMethods:
         mock_redis.set(redis_key, domain_id)
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call delete_domain
         backend.delete_domain(server)
@@ -604,7 +604,7 @@ class TestForwardEmailAPIMethods:
         )
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call delete_domain
         backend.delete_domain(server)
@@ -665,7 +665,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock _get_domain_id
-        mocker.patch.object(backend, "_get_domain_id", return_value=domain_id)
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
 
         # Mock _get_webhook_url
         webhook_url = (
@@ -679,7 +679,7 @@ class TestForwardEmailAPIMethods:
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = {"id": alias_id}
         mock_req = mocker.patch.object(
-            backend, "_req", return_value=mock_response
+            backend.api, "req", return_value=mock_response
         )
 
         # Call create_email_account
@@ -723,7 +723,7 @@ class TestForwardEmailAPIMethods:
         mock_redis.set(f"forwardemail:alias:{email_address}", alias_id)
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call delete_email_account_by_address
         backend.delete_email_account_by_address(email_address, server)
@@ -762,10 +762,10 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock _get_domain_id
-        mocker.patch.object(backend, "_get_domain_id", return_value=domain_id)
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call enable_email_account
         backend.enable_email_account(email_account, enable=True)
@@ -797,7 +797,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock _get_domain_id
-        mocker.patch.object(backend, "_get_domain_id", return_value=domain_id)
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
 
         # Mock API response
         aliases_list = [
@@ -807,7 +807,7 @@ class TestForwardEmailAPIMethods:
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = aliases_list
         mock_req = mocker.patch.object(
-            backend, "_req", return_value=mock_response
+            backend.api, "req", return_value=mock_response
         )
 
         # Call list_email_accounts

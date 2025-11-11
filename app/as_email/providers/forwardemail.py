@@ -116,6 +116,7 @@ class APIClient:
     #
     def __init__(
         self,
+        provider_name: str,
         rate_limit_threshold_percent: float = 10.0,
         min_requests_reserved: int = 5,
     ):
@@ -123,6 +124,7 @@ class APIClient:
         self._rate_limit: Optional[RateLimitInfo] = None
         self._lock = Lock()  # Thread safety
 
+        self.provider_name = provider_name
         self.rate_limit_threshold_percent = rate_limit_threshold_percent
         # Always keep some requests in reserve
         #
@@ -237,7 +239,7 @@ class APIClient:
         self._wait_if_needed()
 
         u = urljoin(self.API_ENDPOINT, url)
-        token = get_provider_token(self.PROVIDER_NAME, "account_api_key")
+        token = get_provider_token(self.provider_name, "account_api_key")
         assert token
 
         # Make the request
@@ -304,7 +306,7 @@ class ForwardEmailBackend(ProviderBackend):
     #
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.api = APIClient()
+        self.api = APIClient(self.PROVIDER_NAME)
         self.r = redis_client()
 
     ####################################################################
