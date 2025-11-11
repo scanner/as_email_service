@@ -702,7 +702,7 @@ class ForwardEmailBackend(ProviderBackend):
             # exception. Otherwise fall through to the create because this
             # means it does not exist.
             #
-            if e.status_code != 404:
+            if e.code != 404:
                 raise
 
         # The domain does not exist, create it.
@@ -947,7 +947,7 @@ class ForwardEmailBackend(ProviderBackend):
             # If it fails with anything but a 404, raise the exception.
             # Otherwise fall through to create because it doesn't exist.
             #
-            if e.status_code != 404:
+            if e.code != 404:
                 raise
 
             # Alias doesn't exist - create it using POST
