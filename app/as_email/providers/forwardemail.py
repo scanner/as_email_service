@@ -865,6 +865,20 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
+    def create_email_account(self, email_account: "EmailAccount") -> None:
+        """
+        Create a domain alias on forwardemail.net for an EmailAccount.
+
+        This method delegates to create_update_email_account which will
+        create the alias if it doesn't exist or update it if it does.
+
+        Args:
+            email_account: The EmailAccount to create an alias for
+        """
+        self.create_update_email_account(email_account)
+
+    ####################################################################
+    #
     def create_update_email_account(
         self,
         email_account: "EmailAccount",
