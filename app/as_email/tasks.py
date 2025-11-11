@@ -720,7 +720,8 @@ def provider_create_alias(email_account_pk: int, provider_name: str) -> None:
 
     Args:
         email_account_pk: Primary key of the EmailAccount instance
-        provider_name: Name of the provider backend (e.g., 'forwardemail', 'postmark')
+        provider_name: Name of the provider backend (e.g., 'forwardemail',
+                      'postmark')
     """
     email_account = EmailAccount.objects.get(pk=email_account_pk)
     backend = get_backend(provider_name)

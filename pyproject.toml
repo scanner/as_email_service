@@ -130,7 +130,7 @@ line-length = 80
 exclude = [
     'migrations/.+\.py$',
 ]
-ignore = [
+lint.ignore = [
        "E501",   # Ignore lines that are too long
 ]
 

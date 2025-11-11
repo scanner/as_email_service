@@ -1321,9 +1321,8 @@ class TestProviderEnableAllAliases:
         self, mocker, server_factory, email_account_factory, provider_factory
     ) -> None:
         """
-        Given aliases already in correct is_enabled state
-        When provider_enable_all_aliases is called
-        Then aliases should be skipped
+        Given aliases already in correct is_enabled state When
+        provider_enable_all_aliases is called Then aliases should be skipped
         """
         provider = provider_factory(backend_name="forwardemail")
         server = server_factory()

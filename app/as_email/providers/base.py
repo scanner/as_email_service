@@ -36,7 +36,7 @@ class ProviderBackend(ABC):
 
     # Provider name constant - must be set by subclasses
     # This is used to look up credentials in EMAIL_SERVER_TOKENS
-    PROVIDER_NAME: str = None
+    PROVIDER_NAME: str | None = None
 
     ####################################################################
     #
