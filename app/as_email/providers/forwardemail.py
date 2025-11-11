@@ -591,6 +591,22 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
+    def set_alias_info(self, alias_info: dict, domain_name: str) -> None:
+        """
+        Store alias information in Redis.
+
+        Args:
+            alias_info: The alias info dict from forwardemail.net API
+            domain_name: The domain name the alias belongs to
+        """
+        alias_name = alias_info["name"]
+        alias_id = alias_info["id"]
+        email_address = f"{alias_name}@{domain_name}"
+        redis_key = self._redis_key(ObjType.ALIAS, email_address)
+        self.r.set(redis_key, alias_id)
+
+    ####################################################################
+    #
     def list_domains(self) -> dict[str, dict[str, Any]]:
         """
         List all the domains we have configured on our forwardemail.net
@@ -673,14 +689,12 @@ class ForwardEmailBackend(ProviderBackend):
             what we have paid for. We should add suport for at least "free" as
             well.
         """
-        redis = redis_client()
-
         # See if the domain already exists. If it does, return its info.
         #
         try:
             r = self.api.req(HTTPMethod.GET, f"v1/domains/{server.domain_name}")
             domain_info = r.json()
-            self._set_domain_info(domain_info, redis)
+            self.set_domain_info(domain_info)
             return domain_info
 
         except HTTPError as e:
@@ -704,7 +718,7 @@ class ForwardEmailBackend(ProviderBackend):
         }
         r = self.api.req(HTTPMethod.POST, "v1/domains", data=data)
         domain_info = r.json()
-        self._set_domain_info(domain_info, redis)
+        self.set_domain_info(domain_info)
         return domain_info
 
     ####################################################################
@@ -775,10 +789,11 @@ class ForwardEmailBackend(ProviderBackend):
         alias_id = self.r.get(redis_key)
         if alias_id is None:
             mailbox = email_address.split("@")[0]
+            domain_name = email_address.split("@")[1]
             url = f"v1/domains/{domain_id}/{mailbox}"
             res = self.api.req(HTTPMethod.GET, url)
             alias_info = res.json()
-            self.set_alias_info(alias_info)
+            self.set_alias_info(alias_info, domain_name)
             alias_id = alias_info["id"]
 
         return alias_id
@@ -862,7 +877,7 @@ class ForwardEmailBackend(ProviderBackend):
         update it with our settings if it already exists.
 
         Args:
-            email_account: The EmailAccount to create an alias for
+            email_account: The EmailAccount to create or update an alias for
         """
         # This will raise an error if the domain does not exist
         #
@@ -889,24 +904,59 @@ class ForwardEmailBackend(ProviderBackend):
             "has_pgp": False,
         }
 
-        # Create the alias
+        # Check if the alias already exists by trying to get it
         #
-        r = self.api.req(
-            HTTPMethod.POST, f"v1/domains/{domain_id}/aliases", data=alias_data
-        )
-        alias_info = r.json()
+        try:
+            r = self.api.req(
+                HTTPMethod.GET, f"v1/domains/{domain_id}/aliases/{mailbox_name}"
+            )
+            alias_info = r.json()
+            alias_id = alias_info["id"]
 
-        # Store alias ID in Redis
-        #
-        redis_key = self._redis_key(ObjType.ALIAS, email_account.email_address)
-        self.r.set(redis_key, alias_info["id"])
+            # Alias exists - update it using PUT
+            #
+            r = self.api.req(
+                HTTPMethod.PUT,
+                f"v1/domains/{domain_id}/aliases/{alias_id}",
+                data=alias_data,
+            )
+            alias_info = r.json()
 
-        logger.info(
-            "Created forwardemail.net alias for %s (ID: %s), webhook: %s",
-            email_account.email_address,
-            alias_info["id"],
-            webhook_url,
-        )
+            # Store alias ID in Redis
+            #
+            self.set_alias_info(alias_info, email_account.server.domain_name)
+
+            logger.info(
+                "Updated forwardemail.net alias for %s (ID: %s), webhook: %s",
+                email_account.email_address,
+                alias_id,
+                webhook_url,
+            )
+
+        except HTTPError as e:
+            # If it fails with anything but a 404, raise the exception.
+            # Otherwise fall through to create because it doesn't exist.
+            #
+            if e.status_code != 404:
+                raise
+
+            # Alias doesn't exist - create it using POST
+            #
+            r = self.api.req(
+                HTTPMethod.POST, f"v1/domains/{domain_id}/aliases", data=alias_data
+            )
+            alias_info = r.json()
+
+            # Store alias ID in Redis
+            #
+            self.set_alias_info(alias_info, email_account.server.domain_name)
+
+            logger.info(
+                "Created forwardemail.net alias for %s (ID: %s), webhook: %s",
+                email_account.email_address,
+                alias_info["id"],
+                webhook_url,
+            )
 
     ####################################################################
     #
