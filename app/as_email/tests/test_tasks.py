@@ -1075,7 +1075,9 @@ class TestProviderCreateAlias:
         res()
 
         # Verify backend.create_update_email_account was called
-        mock_backend.create_update_email_account.assert_called_once_with(email_account)
+        mock_backend.create_update_email_account.assert_called_once_with(
+            email_account
+        )
 
     ####################################################################
     #
@@ -1093,7 +1095,9 @@ class TestProviderCreateAlias:
 
         # Mock get_backend to raise exception
         mock_backend = mocker.Mock()
-        mock_backend.create_update_email_account.side_effect = Exception("API error")
+        mock_backend.create_update_email_account.side_effect = Exception(
+            "API error"
+        )
         mocker.patch(
             "as_email.tasks.get_backend",
             return_value=mock_backend,

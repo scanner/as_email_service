@@ -847,11 +847,13 @@ class TestForwardEmailAPIMethods:
         webhook_url = (
             f"https://example.com/webhook/{email_account.email_address}"
         )
-        mocker.patch.object(backend, "get_webhook_url", return_value=webhook_url)
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
 
         # Mock get_alias_id to raise 404 (alias doesn't exist)
-        from urllib.error import HTTPError
         from io import BytesIO
+        from urllib.error import HTTPError
 
         mock_error = HTTPError(
             url="http://test.com",
@@ -924,7 +926,9 @@ class TestForwardEmailAPIMethods:
         webhook_url = (
             f"https://example.com/webhook/{email_account.email_address}"
         )
-        mocker.patch.object(backend, "get_webhook_url", return_value=webhook_url)
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
 
         # Mock get_alias_id to return existing alias ID
         mocker.patch.object(backend, "get_alias_id", return_value=alias_id)
@@ -991,11 +995,13 @@ class TestForwardEmailAPIMethods:
         webhook_url = (
             f"https://example.com/webhook/{email_account.email_address}"
         )
-        mocker.patch.object(backend, "get_webhook_url", return_value=webhook_url)
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
 
         # Mock get_alias_id to raise 500 error (server error)
-        from urllib.error import HTTPError
         from io import BytesIO
+        from urllib.error import HTTPError
 
         mock_error = HTTPError(
             url="http://test.com",
@@ -1034,7 +1040,9 @@ class TestForwardEmailAPIMethods:
         webhook_url = (
             f"https://example.com/webhook/{email_account.email_address}"
         )
-        mocker.patch.object(backend, "get_webhook_url", return_value=webhook_url)
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
 
         # Mock get_alias_id to return existing alias ID
         mocker.patch.object(backend, "get_alias_id", return_value=alias_id)
@@ -1061,7 +1069,10 @@ class TestForwardEmailAPIMethods:
 
         assert alias_data["name"] == email_account.email_address.split("@")[0]
         assert alias_data["recipients"] == [webhook_url]
-        assert alias_data["description"] == f"Email account for {email_account.owner.name}"
+        assert (
+            alias_data["description"]
+            == f"Email account for {email_account.owner.name}"
+        )
         assert alias_data["labels"] == ""
         assert alias_data["has_recipient_verification"] is False
         assert alias_data["is_enabled"] is True

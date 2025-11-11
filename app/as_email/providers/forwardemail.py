@@ -939,7 +939,9 @@ class ForwardEmailBackend(ProviderBackend):
             # Alias doesn't exist - create it using POST
             #
             r = self.api.req(
-                HTTPMethod.POST, f"v1/domains/{domain_id}/aliases", data=alias_data
+                HTTPMethod.POST,
+                f"v1/domains/{domain_id}/aliases",
+                data=alias_data,
             )
             alias_info = r.json()
 

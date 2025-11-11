@@ -579,7 +579,9 @@ class PostmarkBackend(ProviderBackend):
 
     ####################################################################
     #
-    def create_update_email_account(self, email_account: "EmailAccount") -> None:
+    def create_update_email_account(
+        self, email_account: "EmailAccount"
+    ) -> None:
         """
         Create or update an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
 
