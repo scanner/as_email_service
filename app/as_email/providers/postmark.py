@@ -579,6 +579,25 @@ class PostmarkBackend(ProviderBackend):
 
     ####################################################################
     #
+    def create_update_email_account(
+        self, email_account: "EmailAccount"
+    ) -> None:
+        """
+        Create or update an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_account: The EmailAccount to create or update an alias for
+        """
+        logger.debug(
+            "Postmark does not require alias creation/update for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
     def delete_email_account(self, email_account: "EmailAccount") -> None:
         """
         Delete an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.

@@ -486,7 +486,7 @@ class TestForwardEmailAPIMethods:
             "name": server.domain_name,
         }
         mock_req = mocker.patch.object(
-            backend, "_req", return_value=mock_response
+            backend.api, "req", return_value=mock_response
         )
 
         # Mock update_domains
@@ -532,7 +532,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call create_domain
         backend.create_domain(server)
@@ -562,7 +562,7 @@ class TestForwardEmailAPIMethods:
         mock_redis.set(redis_key, domain_id)
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call delete_domain
         backend.delete_domain(server)
@@ -604,7 +604,7 @@ class TestForwardEmailAPIMethods:
         )
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call delete_domain
         backend.delete_domain(server)
@@ -665,7 +665,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock _get_domain_id
-        mocker.patch.object(backend, "_get_domain_id", return_value=domain_id)
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
 
         # Mock _get_webhook_url
         webhook_url = (
@@ -679,7 +679,7 @@ class TestForwardEmailAPIMethods:
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = {"id": alias_id}
         mock_req = mocker.patch.object(
-            backend, "_req", return_value=mock_response
+            backend.api, "req", return_value=mock_response
         )
 
         # Call create_email_account
@@ -723,7 +723,7 @@ class TestForwardEmailAPIMethods:
         mock_redis.set(f"forwardemail:alias:{email_address}", alias_id)
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call delete_email_account_by_address
         backend.delete_email_account_by_address(email_address, server)
@@ -762,10 +762,10 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock _get_domain_id
-        mocker.patch.object(backend, "_get_domain_id", return_value=domain_id)
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
 
         # Mock API request
-        mock_req = mocker.patch.object(backend, "_req")
+        mock_req = mocker.patch.object(backend.api, "req")
 
         # Call enable_email_account
         backend.enable_email_account(email_account, enable=True)
@@ -797,7 +797,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(backend, "update_domains")
 
         # Mock _get_domain_id
-        mocker.patch.object(backend, "_get_domain_id", return_value=domain_id)
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
 
         # Mock API response
         aliases_list = [
@@ -807,7 +807,7 @@ class TestForwardEmailAPIMethods:
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = aliases_list
         mock_req = mocker.patch.object(
-            backend, "_req", return_value=mock_response
+            backend.api, "req", return_value=mock_response
         )
 
         # Call list_email_accounts
@@ -824,3 +824,257 @@ class TestForwardEmailAPIMethods:
         assert f"user2@{server.domain_name}" in result
         assert result[f"user1@{server.domain_name}"]["name"] == "user1"
         assert result[f"user2@{server.domain_name}"]["name"] == "user2"
+
+    ####################################################################
+    #
+    def test_create_update_email_account_creates_new_alias(
+        self, email_account_factory, mocker, faker, caplog
+    ) -> None:
+        """
+        Given an EmailAccount that doesn't exist on forwardemail.net
+        When create_update_email_account is called
+        Then it should create a new alias via POST
+        """
+        backend = ForwardEmailBackend()
+        email_account = email_account_factory()
+        domain_id = faker.uuid4()
+        alias_id = faker.uuid4()
+
+        # Mock get_domain_id
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+
+        # Mock get_webhook_url
+        webhook_url = (
+            f"https://example.com/webhook/{email_account.email_address}"
+        )
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
+
+        # Mock get_alias_id to raise 404 (alias doesn't exist)
+        from io import BytesIO
+        from urllib.error import HTTPError
+
+        mock_error = HTTPError(
+            url="http://test.com",
+            code=404,
+            msg="Not Found",
+            hdrs={},
+            fp=BytesIO(b""),
+        )
+        mocker.patch.object(backend, "get_alias_id", side_effect=mock_error)
+
+        # Mock API request for POST (create)
+        mock_response = mocker.MagicMock()
+        mock_response.json.return_value = {
+            "id": alias_id,
+            "name": email_account.email_address.split("@")[0],
+        }
+        mock_api_req = mocker.patch.object(
+            backend.api, "req", return_value=mock_response
+        )
+
+        # Mock set_alias_info
+        mock_set_alias_info = mocker.patch.object(backend, "set_alias_info")
+
+        # Call create_update_email_account
+        backend.create_update_email_account(email_account)
+
+        # Verify get_alias_id was called
+        backend.get_alias_id.assert_called_once_with(
+            domain_id, email_account.email_address
+        )
+
+        # Verify POST was called with correct data
+        mock_api_req.assert_called_once()
+        call_args = mock_api_req.call_args
+        assert call_args[0][0].value == "post"  # HTTPMethod.POST
+        assert f"v1/domains/{domain_id}/aliases" in call_args[0][1]
+        assert call_args[1]["data"] == IsPartialDict(
+            name=email_account.email_address.split("@")[0],
+            recipients=[webhook_url],
+            is_enabled=True,
+            description=f"Email account for {email_account.owner.username}",
+        )
+
+        # Verify set_alias_info was called
+        mock_set_alias_info.assert_called_once()
+
+        # Verify logging
+        assert "Created forwardemail.net alias for" in caplog.text
+        assert email_account.email_address in caplog.text
+
+    ####################################################################
+    #
+    def test_create_update_email_account_updates_existing_alias(
+        self, email_account_factory, mocker, faker, caplog
+    ) -> None:
+        """
+        Given an EmailAccount that already exists on forwardemail.net
+        When create_update_email_account is called
+        Then it should update the existing alias via PUT
+        """
+        backend = ForwardEmailBackend()
+        email_account = email_account_factory()
+        domain_id = faker.uuid4()
+        alias_id = faker.uuid4()
+
+        # Mock get_domain_id
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+
+        # Mock get_webhook_url
+        webhook_url = (
+            f"https://example.com/webhook/{email_account.email_address}"
+        )
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
+
+        # Mock get_alias_id to return existing alias ID
+        mocker.patch.object(backend, "get_alias_id", return_value=alias_id)
+
+        # Mock API request for PUT (update)
+        mock_response = mocker.MagicMock()
+        mock_response.json.return_value = {
+            "id": alias_id,
+            "name": email_account.email_address.split("@")[0],
+        }
+        mock_api_req = mocker.patch.object(
+            backend.api, "req", return_value=mock_response
+        )
+
+        # Mock set_alias_info
+        mock_set_alias_info = mocker.patch.object(backend, "set_alias_info")
+
+        # Call create_update_email_account
+        backend.create_update_email_account(email_account)
+
+        # Verify get_alias_id was called
+        backend.get_alias_id.assert_called_once_with(
+            domain_id, email_account.email_address
+        )
+
+        # Verify PUT was called with correct data
+        mock_api_req.assert_called_once()
+        call_args = mock_api_req.call_args
+        assert call_args[0][0].value == "put"  # HTTPMethod.PUT
+        assert f"v1/domains/{domain_id}/aliases/{alias_id}" in call_args[0][1]
+        assert call_args[1]["data"] == IsPartialDict(
+            name=email_account.email_address.split("@")[0],
+            recipients=[webhook_url],
+            is_enabled=True,
+            description=f"Email account for {email_account.owner.username}",
+        )
+
+        # Verify set_alias_info was called
+        mock_set_alias_info.assert_called_once()
+
+        # Verify logging
+        assert "Updated forwardemail.net alias for" in caplog.text
+        assert email_account.email_address in caplog.text
+        assert alias_id in caplog.text
+
+    ####################################################################
+    #
+    def test_create_update_email_account_raises_on_non_404_error(
+        self, email_account_factory, mocker, faker
+    ) -> None:
+        """
+        Given an EmailAccount
+        When create_update_email_account is called and get_alias_id raises non-404 error
+        Then it should re-raise the error
+        """
+        backend = ForwardEmailBackend()
+        email_account = email_account_factory()
+        domain_id = faker.uuid4()
+
+        # Mock get_domain_id
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+
+        # Mock get_webhook_url
+        webhook_url = (
+            f"https://example.com/webhook/{email_account.email_address}"
+        )
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
+
+        # Mock get_alias_id to raise 500 error (server error)
+        from io import BytesIO
+        from urllib.error import HTTPError
+
+        mock_error = HTTPError(
+            url="http://test.com",
+            code=500,
+            msg="Internal Server Error",
+            hdrs={},
+            fp=BytesIO(b""),
+        )
+        mocker.patch.object(backend, "get_alias_id", side_effect=mock_error)
+
+        # Call should raise the HTTPError
+        with pytest.raises(HTTPError) as exc_info:
+            backend.create_update_email_account(email_account)
+
+        assert exc_info.value.code == 500
+
+    ####################################################################
+    #
+    def test_create_update_email_account_constructs_correct_alias_data(
+        self, email_account_factory, mocker, faker
+    ) -> None:
+        """
+        Given an EmailAccount
+        When create_update_email_account is called
+        Then it should construct alias data with correct fields
+        """
+        backend = ForwardEmailBackend()
+        email_account = email_account_factory()
+        domain_id = faker.uuid4()
+        alias_id = faker.uuid4()
+
+        # Mock get_domain_id
+        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+
+        # Mock get_webhook_url
+        webhook_url = (
+            f"https://example.com/webhook/{email_account.email_address}"
+        )
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
+
+        # Mock get_alias_id to return existing alias ID
+        mocker.patch.object(backend, "get_alias_id", return_value=alias_id)
+
+        # Mock API request
+        mock_response = mocker.MagicMock()
+        mock_response.json.return_value = {
+            "id": alias_id,
+            "name": email_account.email_address.split("@")[0],
+        }
+        mock_api_req = mocker.patch.object(
+            backend.api, "req", return_value=mock_response
+        )
+
+        # Mock set_alias_info
+        mocker.patch.object(backend, "set_alias_info")
+
+        # Call create_update_email_account
+        backend.create_update_email_account(email_account)
+
+        # Verify alias data structure
+        call_args = mock_api_req.call_args
+        alias_data = call_args[1]["data"]
+
+        assert alias_data["name"] == email_account.email_address.split("@")[0]
+        assert alias_data["recipients"] == [webhook_url]
+        assert (
+            alias_data["description"]
+            == f"Email account for {email_account.owner.username}"
+        )
+        assert alias_data["labels"] == ""
+        assert alias_data["has_recipient_verification"] is False
+        assert alias_data["is_enabled"] is True
+        assert alias_data["has_imap"] is False
+        assert alias_data["has_pgp"] is False
