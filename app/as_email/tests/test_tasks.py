@@ -1111,7 +1111,7 @@ class TestProviderCreateAlias:
             res()
 
         # Verify error was logged
-        assert "Failed to create alias" in caplog.text
+        assert "Failed to create/update alias" in caplog.text
 
 
 ########################################################################
