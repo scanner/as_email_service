@@ -190,6 +190,22 @@ class ProviderBackend(ABC):
     ####################################################################
     #
     @abstractmethod
+    def create_update_email_account(self, email_account: "EmailAccount") -> None:
+        """
+        Create or update an email account (alias) on the provider's service.
+
+        This method should check if the alias already exists and update it if so,
+        or create it if it doesn't exist. This is useful for ensuring idempotency
+        when syncing email accounts with the provider.
+
+        Args:
+            email_account: The EmailAccount instance to create or update
+        """
+        ...
+
+    ####################################################################
+    #
+    @abstractmethod
     def delete_email_account(self, email_account: "EmailAccount") -> None:
         """
         Delete an email account (alias) from the provider's service.
