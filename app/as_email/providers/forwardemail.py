@@ -910,7 +910,7 @@ class ForwardEmailBackend(ProviderBackend):
         alias_data = {
             "name": mailbox_name,
             "recipients": [webhook_url],
-            "description": f"Email account for {email_account.owner.name}",
+            "description": f"Email account for {email_account.owner.username}",
             "labels": "",
             "has_recipient_verification": False,
             "is_enabled": True,

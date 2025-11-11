@@ -894,7 +894,7 @@ class TestForwardEmailAPIMethods:
             name=email_account.email_address.split("@")[0],
             recipients=[webhook_url],
             is_enabled=True,
-            description=f"Email account for {email_account.owner.name}",
+            description=f"Email account for {email_account.owner.username}",
         )
 
         # Verify set_alias_info was called
@@ -963,7 +963,7 @@ class TestForwardEmailAPIMethods:
             name=email_account.email_address.split("@")[0],
             recipients=[webhook_url],
             is_enabled=True,
-            description=f"Email account for {email_account.owner.name}",
+            description=f"Email account for {email_account.owner.username}",
         )
 
         # Verify set_alias_info was called
@@ -1071,7 +1071,7 @@ class TestForwardEmailAPIMethods:
         assert alias_data["recipients"] == [webhook_url]
         assert (
             alias_data["description"]
-            == f"Email account for {email_account.owner.name}"
+            == f"Email account for {email_account.owner.username}"
         )
         assert alias_data["labels"] == ""
         assert alias_data["has_recipient_verification"] is False
