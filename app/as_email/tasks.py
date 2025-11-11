@@ -713,10 +713,11 @@ def provider_create_domain(server_pk: int, provider_name: str) -> None:
 @db_task(retries=3, retry_delay=10)
 def provider_create_alias(email_account_pk: int, provider_name: str) -> None:
     """
-    Create a domain alias on the specified provider for an EmailAccount.
+    Create or update a domain alias on the specified provider for an EmailAccount.
 
-    This task is triggered when an EmailAccount is created and its server
-    has the specified provider configured.
+    This task is triggered when an EmailAccount is created or updated and its
+    server has the specified provider configured. It will create the alias if it
+    doesn't exist, or update it if it does.
 
     Args:
         email_account_pk: Primary key of the EmailAccount instance
@@ -727,15 +728,15 @@ def provider_create_alias(email_account_pk: int, provider_name: str) -> None:
     backend = get_backend(provider_name)
 
     try:
-        backend.create_email_account(email_account)
+        backend.create_update_email_account(email_account)
         logger.info(
-            "Created alias for '%s' on provider '%s'",
+            "Created/updated alias for '%s' on provider '%s'",
             email_account.email_address,
             provider_name,
         )
     except Exception as e:
         logger.exception(
-            "Failed to create alias for '%s' on provider '%s': %r",
+            "Failed to create/update alias for '%s' on provider '%s': %r",
             email_account.email_address,
             provider_name,
             e,

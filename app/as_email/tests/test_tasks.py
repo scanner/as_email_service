@@ -1055,7 +1055,7 @@ class TestProviderCreateAlias:
         """
         Given an email account
         When provider_create_alias is called
-        Then the backend's create_email_account method should be called
+        Then the backend's create_update_email_account method should be called
         """
         provider = provider_factory(backend_name="forwardemail")
         email_account = email_account_factory()
@@ -1074,8 +1074,8 @@ class TestProviderCreateAlias:
         res = provider_create_alias(email_account.pk, provider.backend_name)
         res()
 
-        # Verify backend.create_email_account was called
-        mock_backend.create_email_account.assert_called_once_with(email_account)
+        # Verify backend.create_update_email_account was called
+        mock_backend.create_update_email_account.assert_called_once_with(email_account)
 
     ####################################################################
     #
@@ -1093,7 +1093,7 @@ class TestProviderCreateAlias:
 
         # Mock get_backend to raise exception
         mock_backend = mocker.Mock()
-        mock_backend.create_email_account.side_effect = Exception("API error")
+        mock_backend.create_update_email_account.side_effect = Exception("API error")
         mocker.patch(
             "as_email.tasks.get_backend",
             return_value=mock_backend,
@@ -1267,10 +1267,10 @@ class TestProviderEnableAllAliases:
         )
         res()
 
-        # Verify both aliases were created
-        assert mock_backend.create_email_account.call_count == 2
+        # Verify both aliases were created/updated
+        assert mock_backend.create_update_email_account.call_count == 2
         # Check the calls included both email accounts
-        calls = mock_backend.create_email_account.call_args_list
+        calls = mock_backend.create_update_email_account.call_args_list
         created_emails = {call[0][0].email_address for call in calls}
         assert created_emails == {ea1.email_address, ea2.email_address}
 
@@ -1310,7 +1310,7 @@ class TestProviderEnableAllAliases:
         res()
 
         # Verify alias was updated, not created
-        mock_backend.create_email_account.assert_not_called()
+        mock_backend.create_update_email_account.assert_not_called()
         mock_backend.enable_email_account.assert_called_once_with(
             ea1, is_enabled=True
         )
@@ -1350,7 +1350,7 @@ class TestProviderEnableAllAliases:
         res()
 
         # Verify no changes were made
-        mock_backend.create_email_account.assert_not_called()
+        mock_backend.create_update_email_account.assert_not_called()
         mock_backend.enable_email_account.assert_not_called()
 
     ####################################################################
@@ -1400,14 +1400,14 @@ class TestProviderEnableAllAliases:
         # Verify operations
         # Debug: print all calls
         print(
-            f"create_email_account calls: {mock_backend.create_email_account.call_args_list}"
+            f"create_update_email_account calls: {mock_backend.create_update_email_account.call_args_list}"
         )
         print(
             f"enable_email_account calls: {mock_backend.enable_email_account.call_args_list}"
         )
         print(f"ea1: {ea1}, ea2: {ea2}, ea3: {ea3}")
 
-        mock_backend.create_email_account.assert_called_once_with(ea1)
+        mock_backend.create_update_email_account.assert_called_once_with(ea1)
         mock_backend.enable_email_account.assert_called_once_with(
             ea2, is_enabled=True
         )
