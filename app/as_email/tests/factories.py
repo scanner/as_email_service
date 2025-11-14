@@ -3,10 +3,11 @@
 """
 Factories for testing all of our models and related code
 """
-import email.message
-
 # system imports
 #
+import email.message
+import logging
+import smtplib
 from typing import Any, Sequence
 
 # 3rd party imports
@@ -19,6 +20,8 @@ from factory import post_generation
 from factory.django import DjangoModelFactory
 from faker import Faker
 
+# Project imports
+#
 from ..models import (
     EmailAccount,
     InactiveEmail,
@@ -26,13 +29,14 @@ from ..models import (
     Provider,
     Server,
 )
-
-# Project imports
-#
+from ..provider_tokens import get_provider_token
 from ..providers.base import ProviderBackend
+from ..utils import get_smtp_client, sendmail, spool_message
 
 User = get_user_model()
 fake = Faker()
+
+logger = logging.getLogger("as_email.tests.factories")
 
 
 ########################################################################
@@ -89,6 +93,55 @@ class DummyProviderBackend(ProviderBackend):
         msg: email.message.EmailMessage,
         spool_on_retryable: bool = True,
     ) -> bool:
+        """
+        Attempts to send email via smtp. Presumably the `get_smtp_client`
+        function is returning a mock so no email is actually sent. But we do
+        the same basic checks a proper provider backend should be done.
+
+        Args:
+            server: The Server instance sending the email
+            email_from: The email address sending from (must match server domain)
+            rcpt_tos: List of recipient email addresses
+            msg: The email message to send
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the email was sent successfully, False otherwise
+
+        Raises:
+            ValueError: If email_from domain doesn't match server domain
+            KeyError: If server token is not configured in settings
+        """
+        if server.domain_name != email_from.split("@")[-1]:
+            raise ValueError(
+                f"Domain name of {email_from} is not the same "
+                f"as the server's: {server.domain_name}"
+            )
+
+        token = get_provider_token(self.PROVIDER_NAME, server.domain_name)
+        if not token:
+            raise KeyError(
+                f"The token for {self.PROVIDER_NAME} provider on server "
+                f"'{server.domain_name}' is not defined in `settings.EMAIL_SERVER_TOKENS`"
+            )
+        smtp_server, port = server.send_provider.smtp_server.split(":")
+        smtp_client = get_smtp_client(smtp_server, int(port))
+        try:
+            smtp_client.starttls()
+            smtp_client.login(token, token)
+            sendmail(smtp_client, msg, from_addr=email_from, to_addrs=rcpt_tos)
+        except smtplib.SMTPException as exc:
+            logger.error(
+                "Mail from %s, to: %s, failed with exception: %r",
+                email_from,
+                rcpt_tos,
+                exc,
+            )
+            if spool_on_retryable:
+                spool_message(server.outgoing_spool_dir, msg.as_bytes())
+            return False
+        finally:
+            smtp_client.quit()
         return True
 
     ####################################################################

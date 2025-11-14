@@ -212,9 +212,11 @@ def email_account_factory(server_factory, settings, faker):
             kwargs["server"] = server_factory()
 
         server = kwargs["server"]
+
         # Ensure the server's token is in settings for provider backend to use
-        # Default to postmark for backward compatibility
-        provider_name = "postmark"
+        # Default to the dummy provider backend
+        #
+        provider_name = "dummy"
         if provider_name not in settings.EMAIL_SERVER_TOKENS:
             settings.EMAIL_SERVER_TOKENS[provider_name] = {}
         if (
