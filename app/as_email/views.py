@@ -57,7 +57,7 @@ from .forms import EmailAccountForm
 
 # Project imports
 #
-from .models import EmailAccount, MessageFilterRule, Server
+from .models import EmailAccount, MessageFilterRule, Provider, Server
 from .serializers import (
     EmailAccountSerializer,
     MessageFilterRuleSerializer,
@@ -139,7 +139,7 @@ def index(request):
 
 ####################################################################
 #
-def _get_provider_for_webhook(server: Server, provider_name: str):
+def _get_provider_for_webhook(server: Server, provider_name: str) -> Provider:
     """
     Get the provider backend for handling webhooks for the given server.
 

@@ -545,6 +545,23 @@ class PostmarkBackend(ProviderBackend):
 
     ####################################################################
     #
+    def create_update_domain(self, server: "Server") -> None:
+        """
+        Create or update a domain (server) on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future GH-180 implementation. Currently, Postmark
+        servers must be created manually through their web interface.
+
+        Args:
+            server: The Server instance representing the domain
+        """
+        logger.info(
+            "Postmark domain create/update not yet implemented for %s (GH-180)",
+            server.domain_name,
+        )
+
+    ####################################################################
+    #
     def delete_domain(self, server: "Server") -> None:
         """
         Delete a domain (server) from Postmark - NOT YET IMPLEMENTED.

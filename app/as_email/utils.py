@@ -435,7 +435,7 @@ def sendmail(
 
 ####################################################################
 #
-def msg_froms(msg: EmailMessage) -> str:
+def msg_froms(msg: EmailMessage) -> list[str]:
     """
     Given an email message return a string that is all the "from"s of the
     message concatenated in to a single list. Almost always there will be a

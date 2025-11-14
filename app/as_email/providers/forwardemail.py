@@ -31,7 +31,12 @@ from urllib.parse import urljoin
 #
 import requests
 from django.conf import settings
-from django.http import HttpRequest, HttpResponseBadRequest, JsonResponse
+from django.http import (
+    Http404,
+    HttpRequest,
+    HttpResponseBadRequest,
+    JsonResponse,
+)
 from django.urls import reverse
 
 # project imports
@@ -655,14 +660,15 @@ class ForwardEmailBackend(ProviderBackend):
         # redis, if it has been more than an hour fetch them again.
         #
         redis_key = self._redis_key(ObjType.DOMAIN, "all_domains")
-        last_update_str = self.r.get(redis_key)
-        if last_update_str is None:
+        last_update_bytes = self.r.get(redis_key)
+        if last_update_bytes is None:
             self.list_domains()
             logger.info("Fetching domains from forwardemail.net")
             return True
 
         # Parse the timestamp and check if it's stale
         #
+        last_update_str = last_update_bytes.decode("utf-8")
         age = datetime.now(UTC) - now_str_datetime(last_update_str)
         if age > timedelta(hours=1) or force:
             self.list_domains()
@@ -681,33 +687,54 @@ class ForwardEmailBackend(ProviderBackend):
     #
     def create_domain(self, server: "Server") -> dict[str, Any]:
         """
-        Create a domain in forwardemail.net. Right now we are only doing
-        "receive only" support for forwardemail.net so the domain we setup is
-        very simple. All of the values are pretty much going to be hardcoded.
+        Create a domain in forwardemail.net.
 
-        If the domain already exists, we update its id in redis.
+        This is a convenience method that delegates to create_update_domain().
+        If the domain already exists, it will return its info without error.
 
-        XXX We are hardcoding the plan to "enhanced_protection" because that is
-            what we have paid for. We should add suport for at least "free" as
-            well.
+        Args:
+            server: The Server instance whose domain to create
+
+        Returns:
+            Domain info dict from forwardemail.net API
+
+        Note:
+            This method is idempotent - calling it multiple times is safe.
         """
-        # See if the domain already exists. If it does, return its info.
-        #
+        return self.create_update_domain(server)
+
+    ####################################################################
+    #
+    def create_update_domain(self, server: "Server") -> dict[str, Any]:
+        """
+        Create or update a domain in forwardemail.net.
+
+        This method checks if the domain exists and creates it if it doesn't,
+        or fetches its info if it does. This is an idempotent operation.
+
+        Args:
+            server: The Server instance whose domain to create or update
+
+        Returns:
+            Domain info dict from forwardemail.net API
+        """
         try:
-            r = self.api.req(HTTPMethod.GET, f"v1/domains/{server.domain_name}")
+            domain_id = self.get_domain_id(server.domain_name)
+            # Domain exists - fetch and return its info
+            r = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_id}")
             domain_info = r.json()
-            self.set_domain_info(domain_info)
+            logger.info(
+                "Domain '%s' already exists on forwardemail.net (ID: %s)",
+                server.domain_name,
+                domain_id,
+            )
             return domain_info
 
-        except HTTPError as e:
-            # If it fails with anyting but a 404, raise the
-            # exception. Otherwise fall through to the create because this
-            # means it does not exist.
-            #
-            if e.code != 404:
-                raise
+        except Http404:
+            # Domain doesn't exist, create it
+            pass
 
-        # The domain does not exist, create it.
+        # Create the domain
         #
         data = {
             "domain": server.domain_name,
@@ -721,6 +748,13 @@ class ForwardEmailBackend(ProviderBackend):
         r = self.api.req(HTTPMethod.POST, "v1/domains", data=data)
         domain_info = r.json()
         self.set_domain_info(domain_info)
+
+        logger.info(
+            "Created forwardemail.net domain '%s' (ID: %s)",
+            server.domain_name,
+            domain_info["id"],
+        )
+
         return domain_info
 
     ####################################################################
@@ -729,13 +763,21 @@ class ForwardEmailBackend(ProviderBackend):
         """
         Delete a domain from forwardemail.net.
 
+        If the domain doesn't exist on forwardemail.net, this is a no-op.
+
         Args:
             server: The Server instance whose domain should be deleted
-
-        Raises:
-            Exception: If the domain ID cannot be found or the deletion fails
         """
-        domain_id = self.get_domain_id(server.domain_name)
+        try:
+            domain_id = self.get_domain_id(server.domain_name)
+        except Http404:
+            # Domain doesn't exist, nothing to delete
+            logger.info(
+                "Domain '%s' does not exist on forwardemail.net, nothing to delete",
+                server.domain_name,
+            )
+            return
+
         self.api.req(HTTPMethod.DEL, f"v1/domains/{domain_id}")
 
         redis_key = self._redis_key(ObjType.DOMAIN, server.domain_name)
@@ -760,15 +802,27 @@ class ForwardEmailBackend(ProviderBackend):
 
         Returns:
             The domain ID string, or None if not found
+
+        Raises:
+            Http404: If the domain does not exist on forwardemail.net
         """
         redis_key = self._redis_key(ObjType.DOMAIN, domain_name)
-        domain_id = self.r.get(redis_key)
+        domain_id_bytes = self.r.get(redis_key)
 
-        if domain_id is None:
-            res = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_name}")
-            domain_info = res.json()
-            self.set_domain_info(domain_info)
-            domain_id = domain_info["id"]
+        if domain_id_bytes is None:
+            try:
+                res = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_name}")
+                domain_info = res.json()
+                self.set_domain_info(domain_info)
+                domain_id = domain_info["id"]
+            except HTTPError as e:
+                if e.code == 404:
+                    raise Http404(
+                        f"Domain '{domain_name}' does not exist on forwardemail.net"
+                    )
+                raise
+        else:
+            domain_id = domain_id_bytes.decode("utf-8")
 
         return domain_id
 
@@ -786,17 +840,29 @@ class ForwardEmailBackend(ProviderBackend):
 
         Returns:
            The domain alias id
+
+        Raises:
+            Http404: If the alias does not exist on forwardemail.net
         """
         redis_key = self._redis_key(ObjType.ALIAS, email_address)
-        alias_id = self.r.get(redis_key)
-        if alias_id is None:
+        alias_id_bytes = self.r.get(redis_key)
+        if alias_id_bytes is None:
             mailbox = email_address.split("@")[0]
             domain_name = email_address.split("@")[1]
             url = f"v1/domains/{domain_id}/{mailbox}"
-            res = self.api.req(HTTPMethod.GET, url)
-            alias_info = res.json()
-            self.set_alias_info(alias_info, domain_name)
-            alias_id = alias_info["id"]
+            try:
+                res = self.api.req(HTTPMethod.GET, url)
+                alias_info = res.json()
+                self.set_alias_info(alias_info, domain_name)
+                alias_id = alias_info["id"]
+            except HTTPError as e:
+                if e.code == 404:
+                    raise Http404(
+                        f"Alias '{email_address}' does not exist on forwardemail.net"
+                    )
+                raise
+        else:
+            alias_id = alias_id_bytes.decode("utf-8")
 
         return alias_id
 
@@ -986,14 +1052,16 @@ class ForwardEmailBackend(ProviderBackend):
         """
         domain_id = self.get_domain_id(email_account.server.domain_name)
         redis_key = self._redis_key(ObjType.ALIAS, email_account.email_address)
-        alias_id = self.r.get(redis_key)
+        alias_id_bytes = self.r.get(redis_key)
 
-        if alias_id is None:
+        if alias_id_bytes is None:
             logger.warning(
                 "Cannot delete alias for %s: alias ID not found in Redis",
                 email_account.email_address,
             )
             return
+
+        alias_id = alias_id_bytes.decode("utf-8")
 
         # Delete the alias
         #
@@ -1083,14 +1151,16 @@ class ForwardEmailBackend(ProviderBackend):
             return
 
         redis_key = self._redis_key(ObjType.ALIAS, email_address)
-        alias_id = self.r.get(redis_key)
+        alias_id_bytes = self.r.get(redis_key)
 
-        if alias_id is None:
+        if alias_id_bytes is None:
             logger.warning(
                 "Cannot delete alias for %s: alias ID not found in Redis",
                 email_address,
             )
             return
+
+        alias_id = alias_id_bytes.decode("utf-8")
 
         # Delete the alias
         #

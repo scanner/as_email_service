@@ -47,20 +47,29 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture(autouse=True)
 def mock_provider_tasks(mocker: MockerFixture) -> dict[str, MagicMock]:
     """
-    Override the global mock_provider_tasks to NOT mock pwfile tasks.
+    Disable signal handlers that trigger provider tasks during model creation.
 
-    The global mock_provider_tasks fixture (in conftest.py) mocks all
-    signal-triggered tasks. For test_tasks.py, we override it to only
-    mock the pwfile tasks so they don't execute, while allowing
-    pwfile tasks to run normally.
+    For test_tasks.py, we disable the signal handlers during test setup so they
+    don't trigger tasks when creating test objects, while allowing tests to call
+    tasks directly.
     """
-    # Mock the signal handler that creates provider tasks to do nothing
-    mocker.patch("as_email.signals.handle_receive_providers_changed")
-    mocker.patch("as_email.signals.create_provider_aliases")
-    mocker.patch("as_email.signals.delete_provider_aliases")
+    # Instead of mocking HUEY or tasks, disable the signal handlers
+    # that trigger tasks during model creation
+    mock_create_provider_aliases = mocker.patch(
+        "as_email.signals.create_provider_aliases"
+    )
+    mock_handle_receive_providers_changed = mocker.patch(
+        "as_email.signals.handle_receive_providers_changed"
+    )
+    mock_delete_provider_aliases = mocker.patch(
+        "as_email.signals.delete_provider_aliases"
+    )
 
-    # Return empty dict to match interface
-    return {}
+    return {
+        "create_provider_aliases": mock_create_provider_aliases,
+        "handle_receive_providers_changed": mock_handle_receive_providers_changed,
+        "delete_provider_aliases": mock_delete_provider_aliases,
+    }
 
 
 ####################################################################
@@ -959,7 +968,6 @@ class TestProviderCreateDomain:
         mocker,
         server_factory,
         provider_factory,
-        patch_redis_client,
         requests_mock,
     ) -> None:
         """
@@ -967,8 +975,6 @@ class TestProviderCreateDomain:
         When provider_create_domain is called
         Then the backend's create_domain method should be called
         """
-        # Patch redis_client FIRST to avoid connection errors from ForwardEmail backend
-        patch_redis_client("as_email.utils.redis_client")
 
         # Mock ForwardEmail API responses
         requests_mock.get(
@@ -1241,7 +1247,11 @@ class TestProviderEnableAllAliases:
     ####################################################################
     #
     def test_enable_all_aliases_creates_missing(
-        self, mocker, server_factory, email_account_factory, provider_factory
+        self,
+        mocker,
+        server_factory,
+        email_account_factory,
+        provider_factory,
     ) -> None:
         """
         Given a server with email accounts but missing aliases on provider
@@ -1266,15 +1276,14 @@ class TestProviderEnableAllAliases:
         # Call the task
         from ..tasks import provider_enable_all_aliases
 
-        res = provider_enable_all_aliases(
+        provider_enable_all_aliases(
             server.pk, provider.backend_name, is_enabled=True
         )
-        res()
 
-        # Verify both aliases were created/updated
-        assert mock_backend.create_update_email_account.call_count == 2
+        # Verify both aliases were created
+        assert mock_backend.create_email_account.call_count == 2
         # Check the calls included both email accounts
-        calls = mock_backend.create_update_email_account.call_args_list
+        calls = mock_backend.create_email_account.call_args_list
         created_emails = {call[0][0].email_address for call in calls}
         assert created_emails == {ea1.email_address, ea2.email_address}
 
@@ -1402,19 +1411,13 @@ class TestProviderEnableAllAliases:
         res()
 
         # Verify operations
-        # Debug: print all calls
-        print(
-            f"create_update_email_account calls: {mock_backend.create_update_email_account.call_args_list}"
-        )
-        print(
-            f"enable_email_account calls: {mock_backend.enable_email_account.call_args_list}"
-        )
-        print(f"ea1: {ea1}, ea2: {ea2}, ea3: {ea3}")
-
-        mock_backend.create_update_email_account.assert_called_once_with(ea1)
+        # ea1 should be created (not in backend list)
+        mock_backend.create_email_account.assert_called_once_with(ea1)
+        # ea2 should be enabled (in backend list but wrong state)
         mock_backend.enable_email_account.assert_called_once_with(
             ea2, is_enabled=True
         )
+        # ea3 should not be touched (already in correct state)
 
 
 ########################################################################
@@ -1431,7 +1434,6 @@ class TestProviderSyncAliases:
         server_factory,
         email_account_factory,
         provider_factory,
-        patch_redis_client,
         requests_mock,
     ) -> None:
         """
@@ -1439,8 +1441,6 @@ class TestProviderSyncAliases:
         When provider_sync_aliases is called
         Then provider_enable_all_aliases should be called for each server
         """
-        # Patch redis_client to avoid connection errors from ForwardEmail backend
-        patch_redis_client("as_email.utils.redis_client")
 
         # Mock ForwardEmail API responses
         requests_mock.get(

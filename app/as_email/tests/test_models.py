@@ -4,7 +4,6 @@ import email.message
 import mailbox
 from pathlib import Path
 from typing import Callable
-from unittest.mock import MagicMock
 
 # 3rd party imports
 #
@@ -13,6 +12,7 @@ from dirty_equals import Contains
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -81,20 +81,27 @@ def test_email_account_set_check_password(
     faker,
     settings,
     email_account_factory: Callable[..., EmailAccount],
-    mock_provider_tasks: dict[str, MagicMock],
+    mocker: MockerFixture,
 ) -> None:
+    """
+    Given an email account
+    When a password is set
+    Then the password should be verifiable with check_password
+    """
+    # Mock the task that updates the password file to avoid file I/O
+    mock_task = mocker.patch(
+        "as_email.signals.check_update_pwfile_for_emailaccount"
+    )
+
     ea = email_account_factory()
     password = faker.pystr(min_chars=8, max_chars=32)
     assert ea.check_password(password) is False
     ea.set_password(password)
     assert ea.check_password(password)
 
-    # The huey task `check_update_pwfile_for_emailaccount` should have been
-    # called once with the parameter the primary key of `ea`
-    #
-    mock_provider_tasks[
-        "check_update_pwfile_for_emailaccount"
-    ].assert_called_once_with(ea.pk)
+    # The signal handler should have triggered the task with ea.pk
+    # Note: With huey immediate mode, the task runs immediately
+    mock_task.assert_called_once_with(ea.pk)
 
 
 ####################################################################

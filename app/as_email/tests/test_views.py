@@ -176,9 +176,7 @@ def test_get_provider_for_webhook(
 
 ####################################################################
 #
-def test_index(
-    fakeredis_cache, api_client, user_factory, email_account_factory, faker
-):
+def test_index(api_client, user_factory, email_account_factory, faker):
     password = faker.pystr(min_chars=8, max_chars=32)
     user = user_factory(password=password)
     user.save()

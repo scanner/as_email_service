@@ -66,7 +66,7 @@ class ProviderBackend(ABC):
             ValueError: If email_from domain doesn't match server domain
             KeyError: If server token is not configured in settings
         """
-        pass
+        ...
 
     ####################################################################
     #
@@ -88,7 +88,7 @@ class ProviderBackend(ABC):
         Returns:
             True if the email was sent successfully, False otherwise
         """
-        pass
+        ...
 
     ####################################################################
     #
@@ -106,7 +106,7 @@ class ProviderBackend(ABC):
         Returns:
             JsonResponse indicating success or failure
         """
-        pass
+        ...
 
     ####################################################################
     #
@@ -124,7 +124,7 @@ class ProviderBackend(ABC):
         Returns:
             JsonResponse indicating success or failure
         """
-        pass
+        ...
 
     ####################################################################
     #
@@ -142,7 +142,7 @@ class ProviderBackend(ABC):
         Returns:
             JsonResponse indicating success or failure
         """
-        pass
+        ...
 
     ####################################################################
     #
@@ -156,6 +156,24 @@ class ProviderBackend(ABC):
 
         Returns:
             Provider-specific response data about the created domain
+        """
+        ...
+
+    ####################################################################
+    #
+    @abstractmethod
+    def create_update_domain(self, server: "Server") -> Any:
+        """
+        Create or update a domain on the provider's service.
+
+        This is an idempotent operation - if the domain exists, it should
+        be updated (or info fetched), otherwise it should be created.
+
+        Args:
+            server: The Server instance whose domain to create or update
+
+        Returns:
+            Provider-specific response data about the domain
         """
         ...
 
@@ -196,9 +214,9 @@ class ProviderBackend(ABC):
         """
         Create or update an email account (alias) on the provider's service.
 
-        This method should check if the alias already exists and update it if so,
-        or create it if it doesn't exist. This is useful for ensuring idempotency
-        when syncing email accounts with the provider.
+        This method should check if the alias already exists and update it if
+        so, or create it if it doesn't exist. This is useful for ensuring
+        idempotency when syncing email accounts with the provider.
 
         Args:
             email_account: The EmailAccount instance to create or update
@@ -252,7 +270,8 @@ class ProviderBackend(ABC):
     @abstractmethod
     def list_email_accounts(self, server: "Server") -> Any:
         """
-        List all email accounts (aliases) for a domain on the provider's service.
+        List all email accounts (aliases) for a domain on the provider's
+        service.
 
         Args:
             server: The Server instance whose aliases to list

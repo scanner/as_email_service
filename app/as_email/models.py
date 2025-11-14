@@ -32,6 +32,7 @@ from postmarker.core import PostmarkClient
 
 # project imports
 #
+from .providers import get_backend
 
 # Various models that belong to a specific user need the User object.
 #
@@ -115,8 +116,6 @@ class Provider(models.Model):
             AttributeError: If the backend class is not found
         """
         if not hasattr(self, "_backend"):
-            from .providers import get_backend
-
             self._backend = get_backend(self.backend_name)
         return self._backend
 
