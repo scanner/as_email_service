@@ -34,6 +34,7 @@ from django.conf import settings
 from django.http import (
     Http404,
     HttpRequest,
+    HttpResponse,
     HttpResponseBadRequest,
     JsonResponse,
 )
@@ -364,7 +365,7 @@ class ForwardEmailBackend(ProviderBackend):
     #
     def handle_incoming_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle incoming email webhook from ForwardEmail.net.
 
@@ -377,7 +378,7 @@ class ForwardEmailBackend(ProviderBackend):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         try:
             incoming_msg = json.loads(request.body)
@@ -498,7 +499,7 @@ class ForwardEmailBackend(ProviderBackend):
     #
     def handle_bounce_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle bounce notification webhook - NOT SUPPORTED.
 
@@ -506,7 +507,7 @@ class ForwardEmailBackend(ProviderBackend):
         so bounce notifications are not applicable.
 
         Returns:
-            JsonResponse indicating this webhook is not supported
+            HttpResponse indicating this webhook is not supported
         """
         logger.warning(
             "Received bounce webhook for receive-only provider %s on server %s",
@@ -539,7 +540,7 @@ class ForwardEmailBackend(ProviderBackend):
             self.PROVIDER_NAME,
             server.domain_name,
         )
-        return JsonResponse(
+        return HttpResponse(
             {
                 "status": "not supported",
                 "message": f"{self.PROVIDER_NAME} is a receive-only provider",

@@ -6,6 +6,7 @@ Factories for testing all of our models and related code
 # system imports
 #
 import email.message
+import json
 import logging
 import smtplib
 from typing import Any, Sequence
@@ -15,7 +16,12 @@ from typing import Any, Sequence
 import factory
 import factory.fuzzy
 from django.contrib.auth import get_user_model
-from django.http import HttpRequest, JsonResponse
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    JsonResponse,
+)
 from factory import post_generation
 from factory.django import DjangoModelFactory
 from faker import Faker
@@ -31,7 +37,12 @@ from ..models import (
 )
 from ..provider_tokens import get_provider_token
 from ..providers.base import ProviderBackend
-from ..utils import get_smtp_client, sendmail, spool_message
+from ..utils import (
+    get_smtp_client,
+    sendmail,
+    split_email_mailbox_hash,
+    spool_message,
+)
 
 User = get_user_model()
 fake = Faker()
@@ -158,7 +169,35 @@ class DummyProviderBackend(ProviderBackend):
     #
     def handle_incoming_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
+        try:
+            incoming_msg = json.loads(request.body)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Incoming webhook for %s: %r", server.domain_name, exc
+            )
+            return HttpResponseBadRequest(f"invalid json: {exc}")
+
+        from_addr = incoming_msg.get("From", "<unknown>")
+        addr, _ = split_email_mailbox_hash(incoming_msg["OriginalRecipient"])
+        try:
+            _ = EmailAccount.objects.get(email_address=addr)
+        except EmailAccount.DoesNotExist:
+            logger.info(
+                "Received email for EmailAccount that does not exist: %s, from: %s",
+                addr,
+                from_addr,
+            )
+            # XXX here we would log metrics for getting email that no one is
+            #     going to receive.
+            #
+            return JsonResponse(
+                {
+                    "status": "all good",
+                    "message": f"no such email account '{addr}'",
+                },
+            )
+
         return JsonResponse(
             {"status": "success", "message": "webhook received"}
         )

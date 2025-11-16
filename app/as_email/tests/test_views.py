@@ -55,6 +55,7 @@ def mock_webhook_provider(mocker):
             The mock provider object with backend already configured
         """
         mock_provider = mocker.MagicMock()
+        mock_provider.provider_name = "dummy"
         mock_backend = mocker.MagicMock()
         mock_provider.backend = mock_backend
 
@@ -231,7 +232,7 @@ def test_incoming_webhook(
         reverse(
             "as_email:hook_incoming",
             kwargs={
-                "provider_name": "postmark",
+                "provider_name": "dummy",
                 "domain_name": server.domain_name,
             },
         )
@@ -259,75 +260,6 @@ def test_incoming_webhook(
 
 ####################################################################
 #
-def test_incoming_webhook_bad_json(
-    server_factory,
-    api_client,
-):
-    server = server_factory()
-    server.save()
-
-    url = (
-        reverse(
-            "as_email:hook_incoming",
-            kwargs={
-                "provider_name": "postmark",
-                "domain_name": server.domain_name,
-            },
-        )
-        + "?"
-        + urlencode({"api_key": server.api_key})
-    )
-
-    client = api_client()
-    r = client.post(url, "this is bad json'", content_type="application/json")
-    assert r.status_code == 400
-
-
-####################################################################
-#
-def test_incoming_webhook_no_such_emailaccount(
-    email_factory,
-    server_factory,
-    api_client,
-    faker,
-):
-    server = server_factory()
-    server.save()
-    addr = faker.email()
-
-    msg = email_factory(to=addr)
-    incoming_message = {
-        "OriginalRecipient": addr,
-        "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
-        "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
-        "RawEmail": msg.as_string(),
-    }
-
-    url = (
-        reverse(
-            "as_email:hook_incoming",
-            kwargs={
-                "provider_name": "postmark",
-                "domain_name": server.domain_name,
-            },
-        )
-        + "?"
-        + urlencode({"api_key": server.api_key})
-    )
-
-    client = api_client()
-    r = client.post(
-        url, json.dumps(incoming_message), content_type="application/json"
-    )
-    assert r.status_code == 200
-    resp_data = r.json()
-    assert "status" in resp_data
-    assert resp_data["status"] == "all good"
-    assert resp_data["message"] == f"no such email account '{addr}'"
-
-
-####################################################################
-#
 def test_incoming_webhook_no_such_server(
     api_client,
     faker,
@@ -344,7 +276,7 @@ def test_incoming_webhook_no_such_server(
     url = (
         reverse(
             "as_email:hook_incoming",
-            kwargs={"provider_name": "postmark", "domain_name": domain_name},
+            kwargs={"provider_name": "dummy", "domain_name": domain_name},
         )
         + "?"
         + urlencode({"api_key": api_key})

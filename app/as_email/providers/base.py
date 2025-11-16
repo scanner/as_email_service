@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, List
 
 # 3rd party imports
 #
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, HttpResponse
 
 # Avoid circular imports
 #
@@ -95,7 +95,7 @@ class ProviderBackend(ABC):
     @abstractmethod
     def handle_incoming_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle incoming email webhook from the provider.
 
@@ -104,7 +104,7 @@ class ProviderBackend(ABC):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         ...
 
@@ -113,7 +113,7 @@ class ProviderBackend(ABC):
     @abstractmethod
     def handle_bounce_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle bounce notification webhook from the provider.
 
@@ -122,7 +122,7 @@ class ProviderBackend(ABC):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         ...
 
@@ -131,7 +131,7 @@ class ProviderBackend(ABC):
     @abstractmethod
     def handle_spam_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle spam complaint webhook from the provider.
 
@@ -140,7 +140,7 @@ class ProviderBackend(ABC):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         ...
 

@@ -16,7 +16,12 @@ from typing import TYPE_CHECKING, Any, List
 
 # 3rd party imports
 #
-from django.http import HttpRequest, HttpResponseBadRequest, JsonResponse
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    JsonResponse,
+)
 from postmarker.core import PostmarkClient
 from postmarker.exceptions import ClientError
 from requests import RequestException
@@ -217,7 +222,7 @@ class PostmarkBackend(ProviderBackend):
     #
     def handle_incoming_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle incoming email webhook from Postmark.
 
@@ -230,7 +235,7 @@ class PostmarkBackend(ProviderBackend):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         try:
             incoming_msg = json.loads(request.body)
@@ -319,7 +324,7 @@ class PostmarkBackend(ProviderBackend):
     #
     def handle_bounce_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle bounce notification webhook from Postmark.
 
@@ -332,7 +337,7 @@ class PostmarkBackend(ProviderBackend):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         try:
             bounce = json.loads(request.body.decode("utf-8"))
@@ -408,7 +413,7 @@ class PostmarkBackend(ProviderBackend):
     #
     def handle_spam_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle spam complaint webhook from Postmark.
 
@@ -421,7 +426,7 @@ class PostmarkBackend(ProviderBackend):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         try:
             spam = json.loads(request.body.decode("utf-8"))
