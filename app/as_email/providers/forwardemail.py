@@ -525,7 +525,7 @@ class ForwardEmailBackend(ProviderBackend):
     #
     def handle_spam_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle spam complaint webhook - NOT SUPPORTED.
 
@@ -540,7 +540,7 @@ class ForwardEmailBackend(ProviderBackend):
             self.PROVIDER_NAME,
             server.domain_name,
         )
-        return HttpResponse(
+        return JsonResponse(
             {
                 "status": "not supported",
                 "message": f"{self.PROVIDER_NAME} is a receive-only provider",

@@ -291,6 +291,37 @@ def test_incoming_webhook_no_such_server(
 
 ####################################################################
 #
+def test_incoming_webhook_no_such_provider_backend(
+    api_client,
+    faker,
+):
+    domain_name = faker.domain_name()
+    api_key = faker.pystr()
+    addr = faker.email()
+    incoming_message = {
+        "OriginalRecipient": addr,
+        "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
+        "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
+    }
+
+    url = (
+        reverse(
+            "as_email:hook_incoming",
+            kwargs={"provider_name": "foobar", "domain_name": domain_name},
+        )
+        + "?"
+        + urlencode({"api_key": api_key})
+    )
+
+    client = api_client()
+    r = client.post(
+        url, json.dumps(incoming_message), content_type="application/json"
+    )
+    assert r.status_code == 404
+
+
+####################################################################
+#
 def test_bounce_webhook(
     email_account_factory,
     api_client,
