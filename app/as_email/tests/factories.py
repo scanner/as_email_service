@@ -188,9 +188,6 @@ class DummyProviderBackend(ProviderBackend):
                 addr,
                 from_addr,
             )
-            # XXX here we would log metrics for getting email that no one is
-            #     going to receive.
-            #
             return JsonResponse(
                 {
                     "status": "all good",

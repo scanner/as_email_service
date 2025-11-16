@@ -471,7 +471,18 @@ class TestDummyProviderBackend:
 
         server = mocker.Mock()
         server.domain_name = faker.domain_name()
-        request = RequestFactory().post("/webhook")
+
+        # XXX We should make a generator fixture for this.
+        #
+        incoming_message = {
+            "OriginalRecipient": faker.email(),
+            "MessageID": faker.uuid4(),
+            "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
+        }
+
+        request = RequestFactory().post(
+            "/webhook", incoming_message, content_type="application/json"
+        )
 
         incoming_response = dummy_provider.handle_incoming_webhook(
             request, server
