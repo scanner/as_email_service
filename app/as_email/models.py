@@ -83,6 +83,8 @@ class Provider(models.Model):
             "or both."
         ),
     )
+    # XXX Should this be moved in to the provider backend? Since everything
+    #    else about the provider actually doing things is configured back there.
     smtp_server = models.CharField(
         help_text=_(
             "The host:port for sending messages via SMTP for this provider "

@@ -124,7 +124,7 @@ class DummyProviderBackend(ProviderBackend):
                 f"The token for {self.PROVIDER_NAME} provider on server "
                 f"'{server.domain_name}' is not defined in `settings.EMAIL_SERVER_TOKENS`"
             )
-        smtp_server, port = server.send_provider.smtp_server.split(":")
+        smtp_server, port = "example.net:1234".split(":")
         smtp_client = get_smtp_client(smtp_server, int(port))
         try:
             smtp_client.starttls()

@@ -425,7 +425,7 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_send_email_smtp_returns_true(
-        self, dummy_provider, mock_email_account, email_factory, faker
+        self, settings, dummy_provider, mock_email_account, email_factory, faker
     ) -> None:
         """
         Given a dummy provider
@@ -434,6 +434,9 @@ class TestDummyProviderBackend:
         """
         account = mock_email_account()
         msg = email_factory()
+        settings.EMAIL_SERVER_TOKENS[dummy_provider.PROVIDER_NAME] = {
+            account.server.domain_name: faker.uuid4()
+        }
 
         result = dummy_provider.send_email_smtp(
             account.server, account.email_address, [faker.email()], msg

@@ -88,6 +88,9 @@ class PostmarkBackend(ProviderBackend):
     #
     def send_email_smtp(
         self,
+        # XXX we should remove the need the 'server' here and just pass in the
+        #     domain name.
+        #
         server: "Server",
         email_from: str,
         rcpt_tos: List[str],
