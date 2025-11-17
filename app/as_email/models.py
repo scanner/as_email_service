@@ -455,16 +455,23 @@ class EmailAccount(models.Model):
     )
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
-    LOCAL_DELIVERY = "LD"
-    IMAP_DELIVERY = "IM"
-    ALIAS = "AL"
-    FORWARDING = "FW"
-    DELIVERY_METHOD_CHOICES = [
-        (LOCAL_DELIVERY, "Local Delivery"),
-        # (IMAP_DELIVERY), "IMAP",   # XXX coming soon
-        (ALIAS, "Alias"),
-        (FORWARDING, "Forwarding"),
-    ]
+    class DeliveryMethods(models.TextChoices):
+        """
+        Delivery methods for email accounts. An account can have multiple
+        delivery methods, allowing email to be delivered via multiple
+        mechanisms simultaneously.
+        """
+
+        LOCAL_DELIVERY = "LD", _("Local Delivery")
+        IMAP_DELIVERY = "IM", _("IMAP")  # XXX coming soon
+        ALIAS = "AL", _("Alias")
+        FORWARDING = "FW", _("Forwarding")
+
+    # Keep backward compatibility constants
+    LOCAL_DELIVERY = DeliveryMethods.LOCAL_DELIVERY
+    IMAP_DELIVERY = DeliveryMethods.IMAP_DELIVERY
+    ALIAS = DeliveryMethods.ALIAS
+    FORWARDING = DeliveryMethods.FORWARDING
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
@@ -487,16 +494,17 @@ class EmailAccount(models.Model):
             "It must have the same domin name as the associated server"
         ),
     )
-    delivery_method = models.CharField(
-        max_length=2,
-        choices=DELIVERY_METHOD_CHOICES,
-        default=LOCAL_DELIVERY,
+    delivery_methods = models.JSONField(
+        default=list,
         help_text=_(
-            "Delivery method indicates how email for this account is "
-            "delivered. This is either delivery to a local mailbox, delivery "
-            "to an IMAP mailbox, an alias to another email account on this "
-            "system or forwarding to an email address by encapsulating the "
-            "message or rewriting the headers."
+            "Delivery methods indicate how email for this account is "
+            "delivered. Multiple delivery methods can be selected, allowing "
+            "email to be delivered via multiple mechanisms simultaneously "
+            "(e.g., local delivery AND forwarding). Options include: delivery "
+            "to a local mailbox, delivery to an IMAP mailbox, an alias to "
+            "another email account on this system, or forwarding to an email "
+            "address by encapsulating the message or rewriting the headers. "
+            "If empty, defaults to local delivery only."
         ),
     )
 
@@ -830,10 +838,22 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
+    def get_delivery_methods(self) -> List[str]:
+        """
+        Get the list of delivery methods for this account.
+        If no delivery methods are set, returns LOCAL_DELIVERY as the default.
+        """
+        if not self.delivery_methods:
+            return [self.DeliveryMethods.LOCAL_DELIVERY]
+        return self.delivery_methods
+
+    ####################################################################
+    #
     def clean(self):
         """
         Make sure that the email address is one that is served by the
         server (domain) associated with this object.
+        Also validate that delivery_methods contains only valid choices.
         """
         if not self.email_address.endswith(f"@{self.server.domain_name}"):
             raise ValidationError(
@@ -844,6 +864,29 @@ class EmailAccount(models.Model):
                     )
                 }
             )
+
+        # Validate delivery_methods
+        if self.delivery_methods is not None:
+            if not isinstance(self.delivery_methods, list):
+                raise ValidationError(
+                    {
+                        "delivery_methods": _(
+                            "delivery_methods must be a list"
+                        )
+                    }
+                )
+
+            valid_methods = [choice[0] for choice in self.DeliveryMethods.choices]
+            for method in self.delivery_methods:
+                if method not in valid_methods:
+                    raise ValidationError(
+                        {
+                            "delivery_methods": _(
+                                f"Invalid delivery method: {method}. "
+                                f"Valid choices are: {', '.join(valid_methods)}"
+                            )
+                        }
+                    )
 
     ####################################################################
     #

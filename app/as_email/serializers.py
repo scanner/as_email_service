@@ -161,7 +161,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "created_at",
             "deactivated",
             "deactivated_reason",
-            "delivery_method",
+            "delivery_methods",
             "email_address",
             "forward_to",
             "message_filter_rules",

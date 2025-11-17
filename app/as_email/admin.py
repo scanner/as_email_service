@@ -71,7 +71,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "owner",
         "server",
         "email_address",
-        "delivery_method",
+        "delivery_methods",
         "mail_dir",
         "password",
         "autofile_spam",
@@ -87,7 +87,6 @@ class EmailAccountAdmin(admin.ModelAdmin):
     list_filter = (
         "owner",
         "server",
-        "delivery_method",
         "deactivated",
         "created_at",
         "modified_at",

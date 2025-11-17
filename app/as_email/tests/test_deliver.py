@@ -135,7 +135,9 @@ def test_deliver_spam_locally(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_alias(email_account_factory, email_factory):
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(
+        delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
+    )
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
@@ -157,7 +159,7 @@ def test_deliver_alias(email_account_factory, email_factory):
     ea_3 = email_account_factory()
     ea_3.save()
     ea_2.alias_for.add(ea_3)
-    ea_2.delivery_method = EmailAccount.ALIAS
+    ea_2.delivery_methods = [EmailAccount.DeliveryMethods.ALIAS]
     ea_2.save()
 
     # message sent to ea_1 will be delivered to ea_3
@@ -173,7 +175,9 @@ def test_deliver_alias(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(
+        delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
+    )
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
@@ -210,7 +214,9 @@ def test_email_account_alias_depth(
     email_accounts = []
     prev_ea = None
     for i in range(EmailAccount.MAX_ALIAS_DEPTH + 2):
-        ea = email_account_factory(delivery_method=EmailAccount.ALIAS)
+        ea = email_account_factory(
+            delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
+        )
         ea.save()
         email_accounts.append(ea)
 
@@ -242,7 +248,7 @@ def test_forwarding(email_account_factory, email_factory, smtp):
     message.
     """
     ea_1 = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
+        delivery_methods=[EmailAccount.DeliveryMethods.FORWARDING],
         forward_to=factory.Faker("email"),
     )
     ea_1.save()
@@ -288,7 +294,7 @@ def test_deactivated_forward(email_account_factory, email_factory):
     delivered locally.
     """
     ea_1 = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
+        delivery_methods=[EmailAccount.DeliveryMethods.FORWARDING],
         forward_to=factory.Faker("email"),
         deactivated=True,
     )
@@ -365,7 +371,8 @@ def test_generate_forwarded_spam_message(
     """
     forward_to = faker.email()
     ea = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING, forward_to=forward_to
+        delivery_methods=[EmailAccount.DeliveryMethods.FORWARDING],
+        forward_to=forward_to,
     )
     ea.save()
     msg = email_factory(msg_from=ea.email_address)
@@ -462,3 +469,118 @@ def test_report_failed_message(
         diagnostic="smtp; yo buddy",
     )
     assert f"Failed to lookup EmailAccount for '{bad_email}'" in caplog.text
+
+
+####################################################################
+#
+def test_multiple_delivery_methods_local_and_forward(
+    email_account_factory, email_factory, smtp, faker
+):
+    """
+    Test that an account with both LOCAL_DELIVERY and FORWARDING
+    delivers to both destinations.
+    """
+    forward_to = faker.email()
+    ea = email_account_factory(
+        delivery_methods=[
+            EmailAccount.DeliveryMethods.LOCAL_DELIVERY,
+            EmailAccount.DeliveryMethods.FORWARDING,
+        ],
+        forward_to=forward_to,
+    )
+    ea.save()
+
+    msg = email_factory()
+    deliver_message(ea, msg)
+
+    # Message should be delivered locally
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert_email_equal(msg, stored_msg)
+
+    # Message should also be forwarded
+    assert smtp.sendmail.call_count == 1
+    assert smtp.sendmail.call_args.args == Contains(
+        ea.email_address,
+        [forward_to],
+    )
+
+
+####################################################################
+#
+def test_multiple_delivery_methods_local_and_alias(
+    email_account_factory, email_factory
+):
+    """
+    Test that an account with both LOCAL_DELIVERY and ALIAS
+    delivers to both the local mailbox and the aliased account.
+    """
+    ea_1 = email_account_factory(
+        delivery_methods=[
+            EmailAccount.DeliveryMethods.LOCAL_DELIVERY,
+            EmailAccount.DeliveryMethods.ALIAS,
+        ]
+    )
+    ea_1.save()
+    ea_2 = email_account_factory()
+    ea_2.save()
+    ea_1.alias_for.add(ea_2)
+
+    msg = email_factory()
+    deliver_message(ea_1, msg)
+
+    # Message should be delivered locally to ea_1
+    mh_1 = ea_1.MH()
+    folder_1 = mh_1.get_folder("inbox")
+    stored_msg_1 = folder_1.get(1)
+    assert_email_equal(msg, stored_msg_1)
+
+    # Message should also be delivered to ea_2 (the alias target)
+    mh_2 = ea_2.MH()
+    folder_2 = mh_2.get_folder("inbox")
+    stored_msg_2 = folder_2.get(1)
+    assert_email_equal(msg, stored_msg_2)
+
+
+####################################################################
+#
+def test_empty_delivery_methods_defaults_to_local(
+    email_account_factory, email_factory
+):
+    """
+    Test that an account with empty delivery_methods list defaults
+    to LOCAL_DELIVERY.
+    """
+    ea = email_account_factory(delivery_methods=[])
+    ea.save()
+
+    msg = email_factory()
+    deliver_message(ea, msg)
+
+    # Message should be delivered locally (default behavior)
+    mh = ea.MH()
+    folder = mh.get_folder("inbox")
+    stored_msg = folder.get(1)
+    assert_email_equal(msg, stored_msg)
+
+
+####################################################################
+#
+def test_delivery_methods_validation(email_account_factory):
+    """
+    Test that invalid delivery methods are rejected during validation.
+    """
+    from django.core.exceptions import ValidationError
+
+    # Test with invalid delivery method
+    ea = email_account_factory(delivery_methods=["INVALID"])
+    with pytest.raises(ValidationError) as exc_info:
+        ea.full_clean()
+    assert "Invalid delivery method" in str(exc_info.value)
+
+    # Test with non-list value
+    ea = email_account_factory(delivery_methods="NOT_A_LIST")
+    with pytest.raises(ValidationError) as exc_info:
+        ea.full_clean()
+    assert "delivery_methods must be a list" in str(exc_info.value)

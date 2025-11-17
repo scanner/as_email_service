@@ -161,10 +161,14 @@ def test_email_account_alias_self(email_account_factory):
 
     But for now this is what we have.
     """
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(
+        delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
+    )
     ea_1.save()
 
-    ea_2 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_2 = email_account_factory(
+        delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
+    )
     ea_2.save()
 
     # This is fine.. EmailAccount #1 is an alis for EmailAccount #2.
