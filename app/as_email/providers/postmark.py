@@ -12,12 +12,16 @@ import email.message
 import json
 import logging
 import smtplib
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
-from django.conf import settings
-from django.http import HttpRequest, HttpResponseBadRequest, JsonResponse
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    JsonResponse,
+)
 from postmarker.core import PostmarkClient
 from postmarker.exceptions import ClientError
 from requests import RequestException
@@ -25,6 +29,7 @@ from requests import RequestException
 # project imports
 #
 from ..models import EmailAccount
+from ..provider_tokens import get_provider_token
 from ..tasks import (
     dispatch_incoming_email,
     process_email_bounce,
@@ -38,7 +43,7 @@ from ..utils import (
     spool_message,
     write_spooled_email,
 )
-from .base import ProviderBackend
+from .base import EmailAccountInfo, ProviderBackend
 
 # Avoid circular imports
 #
@@ -59,6 +64,8 @@ class PostmarkBackend(ProviderBackend):
     processing webhooks for incoming email, bounces, and spam notifications.
     """
 
+    PROVIDER_NAME = "postmark"
+
     ####################################################################
     #
     def _get_client(self, server: "Server") -> PostmarkClient:
@@ -74,22 +81,24 @@ class PostmarkBackend(ProviderBackend):
         Raises:
             KeyError: If server token is not configured
         """
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+        token = get_provider_token(self.PROVIDER_NAME, server.domain_name)
+        if not token:
             raise KeyError(
-                f"The token for the server '{server.domain_name}' is not "
-                "defined in `settings.EMAIL_SERVER_TOKENS`"
+                f"The token for {self.PROVIDER_NAME} provider on server "
+                f"'{server.domain_name}' is not defined in `settings.EMAIL_SERVER_TOKENS`"
             )
-        return PostmarkClient(
-            server_token=settings.EMAIL_SERVER_TOKENS[server.domain_name]
-        )
+        return PostmarkClient(server_token=token)
 
     ####################################################################
     #
     def send_email_smtp(
         self,
+        # XXX we should remove the need the 'server' here and just pass in the
+        #     domain name.
+        #
         server: "Server",
         email_from: str,
-        rcpt_tos: List[str],
+        rcpt_tos: list[str],
         msg: email.message.EmailMessage,
         spool_on_retryable: bool = True,
     ) -> bool:
@@ -120,12 +129,12 @@ class PostmarkBackend(ProviderBackend):
                 f"as the server's: {server.domain_name}"
             )
 
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+        token = get_provider_token(self.PROVIDER_NAME, server.domain_name)
+        if not token:
             raise KeyError(
-                f"The token for the server '{server.domain_name}' is not "
-                "defined in `settings.EMAIL_SERVER_TOKENS`"
+                f"The token for {self.PROVIDER_NAME} provider on server "
+                f"'{server.domain_name}' is not defined in `settings.EMAIL_SERVER_TOKENS`"
             )
-        token = settings.EMAIL_SERVER_TOKENS[server.domain_name]
 
         # Add `X-PM-Message-Stream: outbound` header for postmark. Make sure
         # that there is only ONE `X-PM-Message-Stream` header.
@@ -213,7 +222,7 @@ class PostmarkBackend(ProviderBackend):
     #
     def handle_incoming_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle incoming email webhook from Postmark.
 
@@ -226,7 +235,7 @@ class PostmarkBackend(ProviderBackend):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         try:
             incoming_msg = json.loads(request.body)
@@ -315,7 +324,7 @@ class PostmarkBackend(ProviderBackend):
     #
     def handle_bounce_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle bounce notification webhook from Postmark.
 
@@ -328,7 +337,7 @@ class PostmarkBackend(ProviderBackend):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         try:
             bounce = json.loads(request.body.decode("utf-8"))
@@ -404,7 +413,7 @@ class PostmarkBackend(ProviderBackend):
     #
     def handle_spam_webhook(
         self, request: HttpRequest, server: "Server"
-    ) -> JsonResponse:
+    ) -> HttpResponse:
         """
         Handle spam complaint webhook from Postmark.
 
@@ -417,7 +426,7 @@ class PostmarkBackend(ProviderBackend):
             server: The Server instance this webhook is for
 
         Returns:
-            JsonResponse indicating success or failure
+            HttpResponse indicating success or failure
         """
         try:
             spam = json.loads(request.body.decode("utf-8"))
@@ -518,3 +527,187 @@ class PostmarkBackend(ProviderBackend):
                 "message": f"received spam for {server.domain_name}/{ea.email_address}",
             }
         )
+
+    ####################################################################
+    #
+    # Domain and Alias Management Methods (Stubs for future implementation)
+    #
+    ####################################################################
+
+    ####################################################################
+    #
+    def create_domain(self, server: "Server") -> None:
+        """
+        Create a domain (server) on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future GH-180 implementation. Currently, Postmark
+        servers must be created manually through their web interface.
+
+        Args:
+            server: The Server instance representing the domain
+        """
+        logger.info(
+            "Postmark domain creation not yet implemented for %s (GH-180)",
+            server.domain_name,
+        )
+
+    ####################################################################
+    #
+    def create_update_domain(self, server: "Server") -> None:
+        """
+        Create or update a domain (server) on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future GH-180 implementation. Currently, Postmark
+        servers must be created manually through their web interface.
+
+        Args:
+            server: The Server instance representing the domain
+        """
+        logger.info(
+            "Postmark domain create/update not yet implemented for %s (GH-180)",
+            server.domain_name,
+        )
+
+    ####################################################################
+    #
+    def delete_domain(self, server: "Server") -> None:
+        """
+        Delete a domain (server) from Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future GH-180 implementation. Currently, Postmark
+        servers must be deleted manually through their web interface.
+
+        Args:
+            server: The Server instance representing the domain
+        """
+        logger.info(
+            "Postmark domain deletion not yet implemented for %s (GH-180)",
+            server.domain_name,
+        )
+
+    ####################################################################
+    #
+    def create_email_account(self, email_account: "EmailAccount") -> None:
+        """
+        Create an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_account: The EmailAccount to create an alias for
+        """
+        logger.debug(
+            "Postmark does not require alias creation for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
+    def create_update_email_account(
+        self, email_account: "EmailAccount"
+    ) -> None:
+        """
+        Create or update an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_account: The EmailAccount to create or update an alias for
+        """
+        logger.debug(
+            "Postmark does not require alias creation/update for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
+    def delete_email_account(self, email_account: "EmailAccount") -> None:
+        """
+        Delete an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_account: The EmailAccount whose alias to delete
+        """
+        logger.debug(
+            "Postmark does not require alias deletion for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
+    def delete_email_account_by_address(
+        self, email_address: str, server: "Server"
+    ) -> None:
+        """
+        Delete an alias by email address on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            email_address: The email address of the alias to delete
+            server: The Server instance for this domain
+        """
+        logger.debug(
+            "Postmark does not require alias deletion for %s",
+            email_address,
+        )
+
+    ####################################################################
+    #
+    def enable_email_account(
+        self, email_account: "EmailAccount", is_enabled: bool = True
+    ) -> None:
+        """
+        Enable or disable an alias on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of enabling/disabling individual aliases.
+
+        Args:
+            email_account: The EmailAccount to enable/disable
+            is_enabled: True to enable, False to disable
+        """
+        logger.debug(
+            "Postmark does not support enable/disable for %s",
+            email_account.email_address,
+        )
+
+    ####################################################################
+    #
+    def list_email_accounts(self, server: "Server") -> list[EmailAccountInfo]:
+        """
+        List all aliases for a server on Postmark - NOT YET IMPLEMENTED.
+
+        This is a stub for future implementation. Postmark doesn't have a
+        concept of per-address aliases like forwardemail.net does.
+
+        Args:
+            server: The Server instance to list aliases for
+
+        Returns:
+            List of EmailAccountInfo objects for all email accounts on this server
+        """
+        logger.debug(
+            "Postmark does not have aliases to list for %s",
+            server.domain_name,
+        )
+
+        # All email accounts on this server are active.
+        #
+        res = [
+            EmailAccountInfo(
+                id=str(ea.id),
+                email=ea.email_address,
+                domain=server.domain_name,
+                enabled=True,
+                name=ea.email_address.split("@")[0],
+            )
+            for ea in server.email_accounts.all()
+        ]
+        return res

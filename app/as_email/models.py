@@ -11,10 +11,8 @@ import email
 import email.message
 import logging
 import mailbox
-import random
 import shlex
-import string
-from pathlib import Path
+from enum import StrEnum
 from typing import List
 
 # 3rd party imports
@@ -28,11 +26,13 @@ from django.db import models
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
+from model_utils import FieldTracker
 from ordered_model.models import OrderedModel
 from postmarker.core import PostmarkClient
 
 # project imports
 #
+from .providers import get_backend
 
 # Various models that belong to a specific user need the User object.
 #
@@ -83,6 +83,8 @@ class Provider(models.Model):
             "or both."
         ),
     )
+    # XXX Should this be moved in to the provider backend? Since everything
+    #    else about the provider actually doing things is configured back there.
     smtp_server = models.CharField(
         help_text=_(
             "The host:port for sending messages via SMTP for this provider "
@@ -116,8 +118,6 @@ class Provider(models.Model):
             AttributeError: If the backend class is not found
         """
         if not hasattr(self, "_backend"):
-            from .providers import get_backend
-
             self._backend = get_backend(self.backend_name)
         return self._backend
 
@@ -230,80 +230,6 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def _set_initial_values(self):
-        """
-        A helper method that sets initial values on object creation.
-        """
-        # If the object has not been created yet then if the various file
-        # fields have not been set, set them based on django settings and the
-        # domain name.
-        #
-        # XXX We should also check to see if the path exists and if it does it
-        #     must be a directory.
-        #
-        if not self.id:
-            if not self.incoming_spool_dir:
-                self.incoming_spool_dir = str(
-                    settings.EMAIL_SPOOL_DIR / self.domain_name / "incoming"
-                )
-            if not self.outgoing_spool_dir:
-                self.outgoing_spool_dir = str(
-                    settings.EMAIL_SPOOL_DIR / self.domain_name / "outgoing"
-                )
-            if not self.mail_dir_parent:
-                self.mail_dir_parent = str(
-                    settings.MAIL_DIRS / self.domain_name
-                )
-
-            # API Key is created when the object is saved for the first time.
-            #
-            if not self.api_key:
-                self.api_key = "".join(
-                    random.choice(string.ascii_letters + string.digits)
-                    for x in range(40)
-                )
-
-    ####################################################################
-    #
-    def save(self, *args, **kwargs):
-        """
-        On pre-save of the Server instance if this is when it is being
-        created pre-fill the incoming spool dir, outgoing spool dir, and
-        mail_dir_parent based on the domain_name of the server.
-
-        This lets the default creation automatically set where these
-        directories are without requiring input if they are not set on create.
-        """
-        self._set_initial_values()
-        Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
-
-        super().save(*args, **kwargs)
-
-    ####################################################################
-    #
-    async def asave(self, *args, **kwargs):
-        """
-        On pre-save of the Server instance if this is when it is being
-        created pre-fill the incoming spool dir, outgoing spool dir, and
-        mail_dir_parent based on the domain_name of the server.
-
-        This lets the default creation automatically set where these
-        directories are without requiring input if they are not set on create.
-
-        After we have called the parent save method we make sure that the
-        directory specified exists.
-        """
-        self._set_initial_values()
-        Path(self.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.mail_dir_parent).mkdir(parents=True, exist_ok=True)
-
-        await super().asave(*args, **kwargs)
-
-    ####################################################################
-    #
     @property
     def client(self) -> PostmarkClient:
         """
@@ -312,15 +238,16 @@ class Server(models.Model):
         DEPRECATED: This property is deprecated and will be removed in a future
         version. Use send_provider.backend instead.
         """
+        from .provider_tokens import get_provider_token
+
         if not hasattr(self, "_client"):
-            if self.domain_name not in settings.EMAIL_SERVER_TOKENS:
+            token = get_provider_token("postmark", self.domain_name)
+            if not token:
                 raise KeyError(
-                    f"The token for the server '{self.domain_name} is not "
-                    "defined in `settings.EMAIL_SERVER_TOKENS`"
+                    f"The token for postmark provider on server '{self.domain_name}' "
+                    "is not defined in `settings.EMAIL_SERVER_TOKENS`"
                 )
-            self._client = PostmarkClient(
-                server_token=settings.EMAIL_SERVER_TOKENS[self.domain_name]
-            )
+            self._client = PostmarkClient(server_token=token)
         return self._client
 
     ####################################################################
@@ -453,18 +380,14 @@ class EmailAccount(models.Model):
     DEACTIVATED_DUE_TO_BAD_FORWARD_TO = (
         "Deactivated due to bounce when sending email to `forward_to` address"
     )
+
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
-    LOCAL_DELIVERY = "LD"
-    IMAP_DELIVERY = "IM"
-    ALIAS = "AL"
-    FORWARDING = "FW"
-    DELIVERY_METHOD_CHOICES = [
-        (LOCAL_DELIVERY, "Local Delivery"),
-        # (IMAP_DELIVERY), "IMAP",   # XXX coming soon
-        (ALIAS, "Alias"),
-        (FORWARDING, "Forwarding"),
-    ]
+    class DeliveryMethods(StrEnum):
+        LOCAL_DELIVERY = "LD"
+        # IMAP_DELIVERY = "IM"  # XXX coming soon
+        ALIAS = "AL"
+        FORWARDING = "FW"
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
@@ -472,7 +395,9 @@ class EmailAccount(models.Model):
     MAX_ALIAS_DEPTH = 3
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
-    server = models.ForeignKey(Server, on_delete=models.CASCADE)
+    server = models.ForeignKey(
+        Server, related_name="email_accounts", on_delete=models.CASCADE
+    )
     # XXX We should figure out a way to have this still be a validated email
     #     field, but auto-fill the domain name part from the server attribute.
     #     For now we are just going to require that the domain name's match.
@@ -489,8 +414,8 @@ class EmailAccount(models.Model):
     )
     delivery_method = models.CharField(
         max_length=2,
-        choices=DELIVERY_METHOD_CHOICES,
-        default=LOCAL_DELIVERY,
+        choices=[(tag.value, tag.name) for tag in DeliveryMethods],
+        default=DeliveryMethods.LOCAL_DELIVERY,
         help_text=_(
             "Delivery method indicates how email for this account is "
             "delivered. This is either delivery to a local mailbox, delivery "
@@ -679,6 +604,11 @@ class EmailAccount(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
+    # We want to track when certain fields change so we can do additional
+    # operations that only need to happen when those fields change.
+    #
+    tracker = FieldTracker(fields=["password", "mail_dir"])
+
     class Meta:
         # If an EmailAccount has the permission "can_have_foreign_aliases" then
         # when the EmailAccount is being modified via a view we will allow it
@@ -789,47 +719,6 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def _pre_save_logic(self):
-        """
-        Common function for doing any pre-save processing of the email
-        account setting the mail_dir attribute and creating the associated
-        mailbox.MH.
-        """
-        # If the object has not been created yet and if the mail_dir
-        # is not set set it based on the associated Server's parent
-        # mail dir and email address.
-        #
-        if not self.id:
-            if not self.mail_dir:
-                md = Path(self.server.mail_dir_parent) / self.email_address
-                self.mail_dir = str(md)
-
-        # Create the mail dir if it does not already exist. We do this
-        # even if self.id is set because the mail dir may have been
-        # changed and we want this process to ensure that it exists.
-        #
-        self.MH()
-
-    ####################################################################
-    #
-    def save(self, *args, **kwargs):
-        """
-        Make sure the mail_dir field is set (and if not fill it in)
-        """
-        self._pre_save_logic()
-        super().save(*args, **kwargs)
-
-    ####################################################################
-    #
-    async def asave(self, *args, **kwargs):
-        """
-        Make sure the mail_dir field is set (and if not fill it in)
-        """
-        self._pre_save_logic()
-        await super().asave(*args, **kwargs)
-
-    ####################################################################
-    #
     def clean(self):
         """
         Make sure that the email address is one that is served by the
@@ -855,13 +744,14 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def set_password(self, raw_password: str):
+    def set_password(self, raw_password: str, save: bool = True) -> None:
         """
         Keyword Arguments:
         password --
         """
         self.password = make_password(raw_password)
-        self.save(update_fields=["password"])
+        if save:
+            self.save(update_fields=["password"])
 
     ####################################################################
     #

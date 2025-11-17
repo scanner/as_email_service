@@ -3,6 +3,7 @@
 import email.message
 import mailbox
 from pathlib import Path
+from typing import Callable
 
 # 3rd party imports
 #
@@ -11,11 +12,11 @@ from dirty_equals import Contains
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from pytest_mock import MockerFixture
 
 # Project imports
 #
 from ..models import EmailAccount, InactiveEmail, MessageFilterRule
-from ..utils import read_emailaccount_pwfile
 from .conftest import assert_email_equal
 
 User = get_user_model()
@@ -77,20 +78,30 @@ def test_server_creates_admin_emailaccounts(
 ####################################################################
 #
 def test_email_account_set_check_password(
-    faker, settings, email_account_factory
-):
+    faker,
+    settings,
+    email_account_factory: Callable[..., EmailAccount],
+    mocker: MockerFixture,
+) -> None:
+    """
+    Given an email account
+    When a password is set
+    Then the password should be verifiable with check_password
+    """
+    # Mock the task that updates the password file to avoid file I/O
+    mock_task = mocker.patch(
+        "as_email.signals.check_update_pwfile_for_emailaccount"
+    )
+
     ea = email_account_factory()
-    ea.save()
     password = faker.pystr(min_chars=8, max_chars=32)
     assert ea.check_password(password) is False
     ea.set_password(password)
     assert ea.check_password(password)
 
-    # make sure that the password hash in the external pw file is updated
-    #
-    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    assert ea.email_address in accounts
-    assert accounts[ea.email_address].pw_hash == ea.password
+    # The signal handler should have triggered the task with ea.pk
+    # Note: With huey immediate mode, the task runs immediately
+    mock_task.assert_called_once_with(ea.pk)
 
 
 ####################################################################
@@ -139,15 +150,6 @@ def test_email_account_mail_dir(settings, email_account_factory):
     except mailbox.NoSuchMailboxError as exc:
         assert False, exc
 
-    # make sure that the mail dir in the external pw file is set properly
-    # (relative to settings.MAIL_DIRS)
-    #
-    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    assert ea.email_address in accounts
-    assert settings.MAIL_DIRS / accounts[ea.email_address].maildir == Path(
-        ea.mail_dir
-    )
-
 
 ####################################################################
 #
@@ -161,10 +163,14 @@ def test_email_account_alias_self(email_account_factory):
 
     But for now this is what we have.
     """
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_1 = email_account_factory(
+        delivery_method=EmailAccount.DeliveryMethods.ALIAS
+    )
     ea_1.save()
 
-    ea_2 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    ea_2 = email_account_factory(
+        delivery_method=EmailAccount.DeliveryMethods.ALIAS
+    )
     ea_2.save()
 
     # This is fine.. EmailAccount #1 is an alis for EmailAccount #2.

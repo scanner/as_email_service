@@ -11,20 +11,28 @@ from datetime import UTC, datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
 import pytest
+import redis
 from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
 from django.core import mail
-from fakeredis import FakeConnection
+from fakeredis import FakeConnection, FakeServer
+from huey.api import Huey
+from huey.contrib.djhuey import HUEY
 from pytest_factoryboy import register
+from pytest_mock import MockerFixture
 from requests import Response
 from rest_framework.test import APIClient, RequestsClient
 
 # Project imports
 #
+import as_email.utils
+
 from .factories import (
+    DummyProviderBackend,
     EmailAccountFactory,
     InactiveEmailFactory,
     MessageFilterRuleFactory,
@@ -46,31 +54,51 @@ register(MessageFilterRuleFactory)
 
 ####################################################################
 #
-@pytest.fixture
-def redis_client(request):
+@pytest.fixture(autouse=True)
+def use_fakeredis(settings, monkeypatch) -> redis.StrictRedis:
     """
-    Provide a `fakeredis` instance as a fixture.
+    Set up a single fake redis server and make sure all places that try to
+    use redis use this server for the duration of this test.
     """
-    import fakeredis
+    server = FakeServer()
+    huey_pool = redis.ConnectionPool(
+        server=server, connection_class=FakeConnection, db=1
+    )
+    redis_pool = redis.ConnectionPool(
+        server=server, connection_class=FakeConnection, db=2
+    )
 
-    redis_client = fakeredis.FakeRedis()
-    return redis_client
+    # Everything except huey uses the `redis_client()` helper method and that
+    # helper uses the module variable `REDIS_CONNECTION_POOL` so monkeypatching
+    # that to o a ConnectionPool we control covers that.
+    #
+    monkeypatch.setattr(as_email.utils, "REDIS_CONNECTION_POOL", redis_pool)
+
+    # Make sure huey uses our fake redis server
+    #
+    settings.HUEY["connection"]["connection_pool"] = huey_pool
+
+    # And return a redis client talking to the same FakeServer in case some
+    # tests need access to the redis instance.
+    #
+    return redis.StrictRedis(connection_pool=redis_pool)
 
 
 ####################################################################
 #
-@pytest.fixture
-def fakeredis_cache(settings) -> None:
+@pytest.fixture(autouse=True)
+def huey_immediate_mode(settings) -> Huey:
     """
-    Configure django to use fakeredis for its cache
+    Huey tasks are invoked immediately inline. Cannot think of a case
+    where we would not want this to happen automatically while running
+    tests. Especially since there is no easy to invoke a huey task directly
+    (ie: without it trying to run as a huey task.)
     """
-    settings.CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.redis.RedisCache",
-            "LOCATION": "redis://localhost:6379",
-            "OPTIONS": {"connection_class": FakeConnection},
-        }
-    }
+    immediate = HUEY.immediate
+    HUEY.immediate = True
+    settings.HUEY["immediate"] = True
+    yield HUEY
+    HUEY.immediate = immediate
 
 
 ####################################################################
@@ -184,9 +212,21 @@ def email_account_factory(server_factory, settings, faker):
             kwargs["server"] = server_factory()
 
         server = kwargs["server"]
-        # Ensure the server's token is in settings for provider backend to use
-        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
-            settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.uuid4()
+
+        # Add tokens for all of our providers for now so that if we use any of
+        # the provider backend's during our tests it can look up the token for
+        # it.  Default to the dummy provider backend
+        #
+        for provider_name in ("dummy", "postmark", "forwardemail"):
+            if provider_name not in settings.EMAIL_SERVER_TOKENS:
+                settings.EMAIL_SERVER_TOKENS[provider_name] = {}
+            if (
+                server.domain_name
+                not in settings.EMAIL_SERVER_TOKENS[provider_name]
+            ):
+                settings.EMAIL_SERVER_TOKENS[provider_name][
+                    server.domain_name
+                ] = faker.uuid4()
 
         email_account = EmailAccountFactory(*args, **kwargs)
         return email_account
@@ -248,21 +288,6 @@ def mailbox_dir(settings, tmp_path):
 
 ####################################################################
 #
-@pytest.fixture(autouse=True)
-def huey_immediate_mode(settings):
-    """
-    Huey tasks are invoked immediately inline. Can not think of a case
-    where we would not want this to happen automatically while running tests.
-    """
-    from huey.contrib.djhuey import HUEY as huey
-
-    huey.immediate = True
-    settings.HUEY["immediate"] = True
-    yield huey
-
-
-####################################################################
-#
 @pytest.fixture
 def api_client():
     """
@@ -284,7 +309,7 @@ def requests_client():
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def smtp(mocker):
+def smtp(mocker: MockerFixture) -> MagicMock:
     """
     Mock the _smtp_client function in as_email.utils so that all SMTP
     connections are mocked automatically in all tests.
@@ -300,7 +325,7 @@ def smtp(mocker):
 ####################################################################
 #
 @pytest.fixture
-def aiosmtp_session(faker):
+def aiosmtp_session(faker) -> SMTPSession:
     """
     When testing handlers and authenticators we need a aiosmtp.smtp.Session
 
@@ -472,3 +497,100 @@ def django_outbox():
     mail.outbox = []
     yield mail.outbox
     mail.outbox = old_outbox
+
+
+####################################################################
+#
+@pytest.fixture
+def dummy_provider(mocker: MockerFixture) -> DummyProviderBackend:
+    """
+    Fixture that provides a DummyProviderBackend instance with isolated state.
+
+    This fixture:
+    - Resets the shared state (_DUMMY_PROVIDER_SHARED_STATE) to empty dicts
+      using mocker.patch.dict (automatically restored when fixture scope exits)
+    - Creates and returns a fresh DummyProviderBackend instance
+    - State is isolated per test when this fixture is used
+
+    The provider maintains in-memory state for domains and email accounts during
+    the test. Tests can access and modify state directly via:
+    - dummy_provider.domains: dict mapping domain names to domain data
+    - dummy_provider.email_accounts: dict mapping email addresses to account data
+
+    Example:
+        def test_dummy_provider_methods(dummy_provider):
+            # Test the provider methods directly without signals interfering
+            dummy_provider.domains["test.com"] = {"id": "test-id", "domain": "test.com"}
+            assert "test.com" in dummy_provider.domains
+    """
+    # Reset shared state for this test using patch.dict This will automatically
+    # restore previous values when the fixture scope exits
+    #
+    mocker.patch.dict(
+        "as_email.tests.factories._DUMMY_PROVIDER_SHARED_STATE",
+        {"domains": {}, "email_accounts": {}},
+    )
+
+    # Create a single instance that will be returned
+    #
+    dummy_instance = DummyProviderBackend()
+    return dummy_instance
+
+
+####################################################################
+#
+@pytest.fixture(autouse=True)
+def setup_dummy_provider_get_backend(
+    mocker: MockerFixture, dummy_provider: DummyProviderBackend
+) -> DummyProviderBackend:
+    """
+    Automatically patch get_backend() to return the dummy provider for all
+    tests.
+
+    This autouse fixture:
+
+    - Depends on dummy_provider fixture (which resets state and creates
+      instance)
+
+    - Patches _get_backend() so all calls with backend_name="dummy" return
+      the shared dummy_provider instance
+
+    - Allows tests that patch get_backend directly (like test_tasks.py) to
+      continue working
+
+    All DummyProviderBackend instances in a test share the same state, so if you
+    create a domain via provider.backend.create_domain(), it will be visible to
+    all other provider.backend instances in that test.
+
+    Example:
+        def test_shared_state(server_factory):
+            # Create two servers with same provider
+            server1 = server_factory()  # Uses ProviderFactory with backend_name="dummy"
+            server2 = server_factory()
+
+            # Create domain via server1's provider backend
+            server1.send_provider.backend.create_domain(server1)
+
+            # Domain is visible via server2's provider backend
+            assert server1.domain_name in server2.send_provider.backend.domains
+    """
+    # Patch _get_backend (the internal implementation) to return our dummy
+    # instance when backend_name is "dummy". This allows tests that patch
+    # get_backend directly (like test_tasks.py) to continue working while
+    # ensuring all calls to get_backend() go through our dummy provider for
+    # "dummy" backend.
+    #
+    original_get_backend = __import__(
+        "as_email.providers", fromlist=["_get_backend"]
+    )._get_backend
+
+    def patched_get_backend(backend_name: str):
+        if backend_name == "dummy":
+            return dummy_provider
+        return original_get_backend(backend_name)
+
+    mocker.patch(
+        "as_email.providers._get_backend", side_effect=patched_get_backend
+    )
+
+    return dummy_provider
