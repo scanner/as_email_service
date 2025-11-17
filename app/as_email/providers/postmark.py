@@ -12,7 +12,7 @@ import email.message
 import json
 import logging
 import smtplib
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
@@ -43,7 +43,7 @@ from ..utils import (
     spool_message,
     write_spooled_email,
 )
-from .base import ProviderBackend
+from .base import EmailAccountInfo, ProviderBackend
 
 # Avoid circular imports
 #
@@ -98,7 +98,7 @@ class PostmarkBackend(ProviderBackend):
         #
         server: "Server",
         email_from: str,
-        rcpt_tos: List[str],
+        rcpt_tos: list[str],
         msg: email.message.EmailMessage,
         spool_on_retryable: bool = True,
     ) -> bool:
@@ -680,7 +680,7 @@ class PostmarkBackend(ProviderBackend):
 
     ####################################################################
     #
-    def list_email_accounts(self, server: "Server") -> list[dict[str, Any]]:
+    def list_email_accounts(self, server: "Server") -> list[EmailAccountInfo]:
         """
         List all aliases for a server on Postmark - NOT YET IMPLEMENTED.
 
@@ -691,10 +691,23 @@ class PostmarkBackend(ProviderBackend):
             server: The Server instance to list aliases for
 
         Returns:
-            Empty list (no aliases to list)
+            List of EmailAccountInfo objects for all email accounts on this server
         """
         logger.debug(
             "Postmark does not have aliases to list for %s",
             server.domain_name,
         )
-        return []
+
+        # All email accounts on this server are active.
+        #
+        res = [
+            EmailAccountInfo(
+                id=str(ea.id),
+                email=ea.email_address,
+                domain=server.domain_name,
+                enabled=True,
+                name=ea.email_address.split("@")[0],
+            )
+            for ea in server.email_accounts.all()
+        ]
+        return res

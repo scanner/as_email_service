@@ -10,6 +10,7 @@ emails, handling webhooks, and managing provider resources.
 #
 import email.message
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List
 
 # 3rd party imports
@@ -20,6 +21,37 @@ from django.http import HttpRequest, HttpResponse
 #
 if TYPE_CHECKING:
     from ..models import EmailAccount, Server
+
+
+########################################################################
+########################################################################
+#
+@dataclass
+class EmailAccountInfo:
+    """
+    Information about an email account (alias) from a provider.
+
+    This dataclass normalizes the response from list_email_accounts() across
+    different provider backends.
+
+    Attributes:
+        id: The provider's unique identifier for this account/alias
+        email: The full email address
+        domain: The domain name
+        enabled: Whether the account is enabled (accepts both 'enabled' and 'is_enabled')
+        name: The mailbox name (local part of email address)
+    """
+
+    id: str
+    email: str
+    domain: str
+    enabled: bool
+    name: str
+
+    @property
+    def is_enabled(self) -> bool:
+        """Alias for enabled to support both naming conventions."""
+        return self.enabled
 
 
 ########################################################################
@@ -268,7 +300,7 @@ class ProviderBackend(ABC):
     ####################################################################
     #
     @abstractmethod
-    def list_email_accounts(self, server: "Server") -> Any:
+    def list_email_accounts(self, server: "Server") -> list[EmailAccountInfo]:
         """
         List all email accounts (aliases) for a domain on the provider's
         service.
@@ -277,6 +309,6 @@ class ProviderBackend(ABC):
             server: The Server instance whose aliases to list
 
         Returns:
-            Provider-specific data structure containing alias information
+            List of EmailAccountInfo objects containing alias information
         """
         ...

@@ -415,12 +415,12 @@ class TestDummyProviderBackend:
         accounts_server1 = dummy_provider.list_email_accounts(server1)
         assert len(accounts_server1) == 2
         assert all(
-            acc["domain"] == server1.domain_name for acc in accounts_server1
+            acc.domain == server1.domain_name for acc in accounts_server1
         )
 
         accounts_server2 = dummy_provider.list_email_accounts(server2)
         assert len(accounts_server2) == 1
-        assert accounts_server2[0]["domain"] == server2.domain_name
+        assert accounts_server2[0].domain == server2.domain_name
 
     ####################################################################
     #

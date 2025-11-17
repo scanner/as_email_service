@@ -395,7 +395,9 @@ class EmailAccount(models.Model):
     MAX_ALIAS_DEPTH = 3
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
-    server = models.ForeignKey(Server, on_delete=models.CASCADE)
+    server = models.ForeignKey(
+        Server, related_name="email_accounts", on_delete=models.CASCADE
+    )
     # XXX We should figure out a way to have this still be a validated email
     #     field, but auto-fill the domain name part from the server attribute.
     #     For now we are just going to require that the domain name's match.

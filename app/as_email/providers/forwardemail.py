@@ -53,7 +53,7 @@ from as_email.utils import (
     write_spooled_email,
 )
 
-from .base import ProviderBackend
+from .base import EmailAccountInfo, ProviderBackend
 
 if TYPE_CHECKING:
     from as_email.models import Server
@@ -901,29 +901,34 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
-    def list_email_accounts(
-        self, server: "Server"
-    ) -> dict[str, dict[str, Any]]:
+    def list_email_accounts(self, server: "Server") -> list[EmailAccountInfo]:
         """
         List all domain aliases (email accounts) for a server's domain.
 
         Args:
             server: The Server whose aliases to list
-            redis: Optional Redis client to reuse
 
         Returns:
-            Dict mapping email addresses to their alias info from
-            forwardemail.net
+            List of EmailAccountInfo objects containing alias information
         """
         domain_id = self.get_domain_id(server.domain_name)
 
-        result = {}
+        result = []
         url = f"v1/domains/{domain_id}/aliases"
         for alias_info in self.paginated_request(url):
             alias_name = alias_info["name"]
             alias_id = alias_info["id"]
             email_address = f"{alias_name}@{server.domain_name}"
-            result[email_address] = alias_info
+
+            # Create EmailAccountInfo object
+            account_info = EmailAccountInfo(
+                id=alias_id,
+                email=email_address,
+                domain=server.domain_name,
+                enabled=alias_info.get("is_enabled", False),
+                name=alias_name,
+            )
+            result.append(account_info)
 
             # Store alias ID in Redis for quick lookup
             #

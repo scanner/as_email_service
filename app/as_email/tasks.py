@@ -258,6 +258,12 @@ def dispatch_incoming_email(email_account_pk: int, email_fname: str) -> None:
 @db_task(retries=3, retry_delay=15)
 def process_email_bounce(email_account_pk: int, bounce: dict):
     """
+    XXX This is specifically for dealing bounce notices from postmark,
+        which is currently the only provider that should send these notices
+        because it is the only provider with "send email" support.
+
+        This logic should go in the provider backend.
+
     We have received an incoming bounce notification from postmark. The web
     front end decoded the bounce message and verified the email account that
     sent the message that generated the bounce and incremented the email
@@ -833,12 +839,8 @@ def provider_enable_all_aliases(
     # Build a map of remote aliases by email address
     remote_map = {}
     for alias in remote_aliases:
-        # Extract email address from alias data
-        # Format depends on provider, but typically has 'name' field for mailbox name
-        mailbox_name = alias.get("name")
-        if mailbox_name:
-            email_addr = f"{mailbox_name}@{server.domain_name}"
-            remote_map[email_addr] = alias
+        # Extract email address from EmailAccountInfo object
+        remote_map[alias.email] = alias
 
     created_count = 0
     updated_count = 0
@@ -860,7 +862,7 @@ def provider_enable_all_aliases(
             else:
                 # Alias exists, check if is_enabled needs updating
                 remote_alias = remote_map[email_addr]
-                remote_enabled = remote_alias.get("is_enabled", False)
+                remote_enabled = remote_alias.enabled
 
                 if remote_enabled != is_enabled:
                     # Need to update is_enabled flag
@@ -950,31 +952,31 @@ def provider_report_unused_domains() -> None:
     """
     Daily task to report domains on all providers that have no active aliases.
 
+    This only looks at providers that can receive email that are assigned to at
+    least one server.
+
+    NOTE: This only bothers with backend providers that have support for
+          individual aliases per email account (ie: on the provider we can
+          specify specifc email addresses that are active and can receive
+          email. `forwardemail`, for instance, lets us specify which email
+          addresses on your domain can accept email. All others are
+          refused. However `postmark` has no way to say which email accounts
+          will accept email: They all will.
+
     Sends an email report to ADMINISTRATIVE_EMAIL_ADDRESS with details of any
     unused domains.
     """
     all_unused = []
 
     # Process each provider that supports domain management
+    #
     for provider in Provider.objects.all():
-        try:
-            get_backend(provider.backend_name)
-        except Exception as e:
-            logger.warning(
-                "Failed to get backend for provider '%s': %r",
-                provider.backend_name,
-                e,
-            )
-            continue
 
-        servers_with_provider = Server.objects.filter(
-            receive_providers=provider
-        )
-        unused_domains = []
-
-        for server in servers_with_provider:
-            alias_count = EmailAccount.objects.filter(server=server).count()
-
+        for server in provider.receiving_servers.all():
+            print(f"**** for provider {provider}: server: {server}")
+            unused_domains = []
+            alias_count = server.email_accounts.count()
+            print(f"**** number of email accounts: {alias_count}")
             if alias_count == 0:
                 unused_domains.append((server.domain_name, 0))
             else:
@@ -984,9 +986,8 @@ def provider_report_unused_domains() -> None:
                 try:
                     backend = get_backend(provider.backend_name)
                     aliases = backend.list_email_accounts(server)
-                    enabled_count = sum(
-                        1 for alias in aliases if alias.get("is_enabled")
-                    )
+                    print(f"**** aliases for server via backend: {aliases}")
+                    enabled_count = sum(1 for alias in aliases if alias.enabled)
                     if enabled_count == 0:
                         unused_domains.append((server.domain_name, alias_count))
                 except Exception as e:
@@ -1013,7 +1014,8 @@ def provider_report_unused_domains() -> None:
 
         subject = f"AS Email Service: {total_unused} unused domain(s) detected"
         message = "\n".join(report_lines)
-
+        print("******* Unused domains report")
+        print(message)
         try:
             send_mail(
                 subject=subject,

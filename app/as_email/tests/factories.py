@@ -36,7 +36,7 @@ from ..models import (
     Server,
 )
 from ..provider_tokens import get_provider_token
-from ..providers.base import ProviderBackend
+from ..providers.base import EmailAccountInfo, ProviderBackend
 from ..utils import (
     get_smtp_client,
     sendmail,
@@ -313,10 +313,16 @@ class DummyProviderBackend(ProviderBackend):
 
     ####################################################################
     #
-    def list_email_accounts(self, server: "Server") -> list[dict[str, Any]]:
+    def list_email_accounts(self, server: "Server") -> list[EmailAccountInfo]:
         """List all email accounts for a domain from the dummy provider state."""
         return [
-            account
+            EmailAccountInfo(
+                id=account["id"],
+                email=account["email"],
+                domain=account["domain"],
+                enabled=account["enabled"],
+                name=account["email"].split("@")[0],
+            )
             for account in self.email_accounts.values()
             if account["domain"] == server.domain_name
         ]

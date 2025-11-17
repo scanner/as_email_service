@@ -858,12 +858,15 @@ class TestForwardEmailAPIMethods:
         call_args = mock_req.call_args
         assert f"v1/domains/{domain_id}/aliases" in call_args[0][1]
 
-        # Verify result is a dict keyed by email address
-        assert isinstance(result, dict)
-        assert f"user1@{server.domain_name}" in result
-        assert f"user2@{server.domain_name}" in result
-        assert result[f"user1@{server.domain_name}"]["name"] == "user1"
-        assert result[f"user2@{server.domain_name}"]["name"] == "user2"
+        # Verify result is a list of EmailAccountInfo objects
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0].email == f"user1@{server.domain_name}"
+        assert result[0].name == "user1"
+        assert result[0].enabled is True
+        assert result[1].email == f"user2@{server.domain_name}"
+        assert result[1].name == "user2"
+        assert result[1].enabled is False
 
     ####################################################################
     #

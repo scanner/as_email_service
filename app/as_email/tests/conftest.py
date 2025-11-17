@@ -213,19 +213,20 @@ def email_account_factory(server_factory, settings, faker):
 
         server = kwargs["server"]
 
-        # Ensure the server's token is in settings for provider backend to use
-        # Default to the dummy provider backend
+        # Add tokens for all of our providers for now so that if we use any of
+        # the provider backend's during our tests it can look up the token for
+        # it.  Default to the dummy provider backend
         #
-        provider_name = "dummy"
-        if provider_name not in settings.EMAIL_SERVER_TOKENS:
-            settings.EMAIL_SERVER_TOKENS[provider_name] = {}
-        if (
-            server.domain_name
-            not in settings.EMAIL_SERVER_TOKENS[provider_name]
-        ):
-            settings.EMAIL_SERVER_TOKENS[provider_name][
+        for provider_name in ("dummy", "postmark", "forwardemail"):
+            if provider_name not in settings.EMAIL_SERVER_TOKENS:
+                settings.EMAIL_SERVER_TOKENS[provider_name] = {}
+            if (
                 server.domain_name
-            ] = faker.uuid4()
+                not in settings.EMAIL_SERVER_TOKENS[provider_name]
+            ):
+                settings.EMAIL_SERVER_TOKENS[provider_name][
+                    server.domain_name
+                ] = faker.uuid4()
 
         email_account = EmailAccountFactory(*args, **kwargs)
         return email_account
@@ -522,14 +523,16 @@ def dummy_provider(mocker: MockerFixture) -> DummyProviderBackend:
             dummy_provider.domains["test.com"] = {"id": "test-id", "domain": "test.com"}
             assert "test.com" in dummy_provider.domains
     """
-    # Reset shared state for this test using patch.dict
-    # This will automatically restore previous values when the fixture scope exits
+    # Reset shared state for this test using patch.dict This will automatically
+    # restore previous values when the fixture scope exits
+    #
     mocker.patch.dict(
         "as_email.tests.factories._DUMMY_PROVIDER_SHARED_STATE",
         {"domains": {}, "email_accounts": {}},
     )
 
     # Create a single instance that will be returned
+    #
     dummy_instance = DummyProviderBackend()
     return dummy_instance
 
@@ -541,12 +544,17 @@ def setup_dummy_provider_get_backend(
     mocker: MockerFixture, dummy_provider: DummyProviderBackend
 ) -> DummyProviderBackend:
     """
-    Automatically patch get_backend() to return the dummy provider for all tests.
+    Automatically patch get_backend() to return the dummy provider for all
+    tests.
 
     This autouse fixture:
-    - Depends on dummy_provider fixture (which resets state and creates instance)
+
+    - Depends on dummy_provider fixture (which resets state and creates
+      instance)
+
     - Patches _get_backend() so all calls with backend_name="dummy" return
       the shared dummy_provider instance
+
     - Allows tests that patch get_backend directly (like test_tasks.py) to
       continue working
 
@@ -566,10 +574,12 @@ def setup_dummy_provider_get_backend(
             # Domain is visible via server2's provider backend
             assert server1.domain_name in server2.send_provider.backend.domains
     """
-    # Patch _get_backend (the internal implementation) to return our dummy instance
-    # when backend_name is "dummy". This allows tests that patch get_backend
-    # directly (like test_tasks.py) to continue working while ensuring all
-    # calls to get_backend() go through our dummy provider for "dummy" backend.
+    # Patch _get_backend (the internal implementation) to return our dummy
+    # instance when backend_name is "dummy". This allows tests that patch
+    # get_backend directly (like test_tasks.py) to continue working while
+    # ensuring all calls to get_backend() go through our dummy provider for
+    # "dummy" backend.
+    #
     original_get_backend = __import__(
         "as_email.providers", fromlist=["_get_backend"]
     )._get_backend
