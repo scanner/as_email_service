@@ -471,8 +471,6 @@ class EmailAccount(models.Model):
     LOCAL_DELIVERY = DeliveryMethods.LOCAL_DELIVERY
     IMAP_DELIVERY = DeliveryMethods.IMAP_DELIVERY
     ALIAS = DeliveryMethods.ALIAS
-    # FORWARDING removed from delivery_methods - use EmailAccount.forward_to instead
-    FORWARDING = "FW"  # Kept for backward compatibility in tasks.py
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
