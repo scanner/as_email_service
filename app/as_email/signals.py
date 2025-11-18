@@ -123,6 +123,6 @@ def check_create_maintenance_email_accounts(
     first = eas[0]
     first.save()
     for ea in eas[1:]:
-        ea.delivery_method = "AL"
+        ea.delivery_methods = ["AL"]
         ea.save()
         ea.alias_for.add(first)

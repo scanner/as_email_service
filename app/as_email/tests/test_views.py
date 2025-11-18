@@ -42,7 +42,7 @@ def _expected_for_email_account(ea: EmailAccount) -> dict:
         "autofile_spam": ea.autofile_spam,
         "deactivated": ea.deactivated,
         "deactivated_reason": ea.deactivated_reason,
-        "delivery_method": ea.delivery_method,
+        "delivery_methods": ea.delivery_methods,
         "email_address": ea.email_address,
         "forward_to": ea.forward_to,
         "num_bounces": ea.num_bounces,
@@ -546,7 +546,7 @@ class TestEmailAccountEndpoints:
         #
         ea_dest = email_account_factory(owner=user)
         ea_dest.save()
-        ea.delivery_method = EmailAccount.ALIAS
+        ea.delivery_methods = [EmailAccount.ALIAS]
         ea.alias_for.add(ea_dest)
         ea.save()
 
