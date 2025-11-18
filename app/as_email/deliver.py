@@ -53,11 +53,11 @@ def deliver_message(
     depth: int = 1,
 ) -> None:
     """
-    Deliver the given message to the given email account. This accounts for
-    local delivery, aliases, and forwards to external systems.
+    Deliver the given message to the given email account using all
+    enabled delivery methods configured for the account.
 
     The account can have multiple delivery methods configured, and the message
-    will be delivered via each method.
+    will be delivered via each method in priority order.
     """
     # If the max alias depth is exceeded the message is delivered locally to
     # this account and a message is logged.
@@ -70,22 +70,31 @@ def deliver_message(
         )
         return
 
-    # Get the delivery methods for this account, defaulting to LOCAL_DELIVERY
-    # if none are set
-    delivery_methods = email_account.get_delivery_methods()
+    # Get all enabled delivery methods, ordered by priority
+    delivery_methods = email_account.delivery_method_set.filter(
+        enabled=True
+    ).order_by("order", "id")
 
-    # Iterate over all delivery methods and deliver via each one
+    # If no delivery methods configured, use local delivery as default
+    if not delivery_methods.exists():
+        logger.info(
+            f"No delivery methods configured for {email_account.email_address}, "
+            f"using local delivery"
+        )
+        deliver_message_locally(email_account, msg)
+        return
+
+    # Execute each delivery method
     for delivery_method in delivery_methods:
-        match delivery_method:
-            case EmailAccount.DeliveryMethods.LOCAL_DELIVERY:
-                deliver_message_locally(email_account, msg)
-            case EmailAccount.DeliveryMethods.IMAP_DELIVERY:
-                pass  # XXX implementation forthcoming
-            case EmailAccount.DeliveryMethods.ALIAS:
-                for alias_for in email_account.alias_for.all():
-                    deliver_message(alias_for, msg, depth + 1)
-            case _:
-                raise RuntimeError(f"Unknown delivery method {delivery_method}")
+        try:
+            delivery_method.deliver(msg, depth)
+        except Exception as exc:
+            logger.error(
+                f"Failed to deliver via {delivery_method.get_delivery_type_display()} "
+                f"for {email_account.email_address}: {exc}",
+                exc_info=True,
+            )
+            # Continue with other delivery methods even if one fails
 
 
 ####################################################################

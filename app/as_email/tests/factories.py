@@ -106,19 +106,53 @@ class EmailAccountFactory(DjangoModelFactory):
     email_address = factory.LazyAttribute(
         lambda o: f"{fake.profile()['username']}@{o.server.domain_name}"
     )
-    delivery_methods = (
-        []
-    )  # Defaults to LOCAL_DELIVERY via get_delivery_methods()
+    delivery_methods = []  # Old field - will be removed in future migration
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):
         password = extracted if extracted else fake.password(length=16)
         self.set_password(password)
 
+    @post_generation
+    def setup_delivery_methods(
+        self, create: bool, extracted: Sequence[Any], **kwargs
+    ):
+        """Create default LOCAL_DELIVERY delivery method if none exist."""
+        if not create:
+            return
+
+        # Only create default if no DeliveryMethod instances exist
+        if not self.delivery_method_set.exists():
+            from ..models import DeliveryMethod
+
+            DeliveryMethod.objects.create(
+                email_account=self,
+                delivery_type=DeliveryMethod.DeliveryType.LOCAL_DELIVERY,
+                config={},
+                order=0,
+                enabled=True,
+            )
+
     class Meta:
         model = EmailAccount
         skip_postgeneration_save = True  # Saved when `set_password()` is called
         django_get_or_create = ("owner", "email_address", "server")
+
+
+########################################################################
+########################################################################
+#
+class DeliveryMethodFactory(DjangoModelFactory):
+    """Factory for creating DeliveryMethod instances."""
+
+    email_account = factory.SubFactory(EmailAccountFactory)
+    delivery_type = "LD"  # LOCAL_DELIVERY by default
+    config = {}
+    order = 0
+    enabled = True
+
+    class Meta:
+        model = "as_email.DeliveryMethod"
 
 
 ########################################################################

@@ -981,6 +981,137 @@ class Alias(models.Model):
 ########################################################################
 ########################################################################
 #
+class DeliveryMethod(models.Model):
+    """
+    Represents a configured delivery method for an EmailAccount.
+
+    Each EmailAccount can have multiple delivery methods, and each delivery
+    method has type-specific configuration stored in a config JSONField.
+    Messages are delivered via each enabled delivery method in priority order.
+    """
+
+    ####################################################################
+    #
+    class DeliveryType(models.TextChoices):
+        """
+        Delivery method types.
+
+        Each type corresponds to a backend implementation that handles the
+        actual delivery logic and configuration validation.
+        """
+
+        LOCAL_DELIVERY = "LD", _("Local Delivery")
+        ALIAS = "AL", _("Alias")
+        # Future: IMAP_DELIVERY = "IM", _("IMAP Delivery")
+
+    email_account = models.ForeignKey(
+        EmailAccount,
+        on_delete=models.CASCADE,
+        related_name="delivery_method_set",
+        help_text=_("The email account this delivery method belongs to"),
+    )
+
+    delivery_type = models.CharField(
+        max_length=2,
+        choices=DeliveryType.choices,
+        help_text=_("The type of delivery method"),
+    )
+
+    # JSONField for type-specific configuration
+    # Contents vary by delivery_type:
+    # - LOCAL_DELIVERY: {} (no config needed)
+    # - ALIAS: {"target_email_account_id": <int>}
+    # - IMAP_DELIVERY: {"imap_server": <str>, "username": <str>, ...}
+    config = models.JSONField(
+        default=dict,
+        help_text=_(
+            "Type-specific configuration for this delivery method. "
+            "Contents vary by delivery_type."
+        ),
+    )
+
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text=_("Execution order (lower numbers execute first)"),
+    )
+
+    enabled = models.BooleanField(
+        default=True, help_text=_("Whether this delivery method is active")
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        indexes = [
+            models.Index(fields=["email_account", "enabled"]),
+            models.Index(fields=["email_account", "order"]),
+        ]
+
+    ####################################################################
+    #
+    def __str__(self):
+        return f"{self.email_account.email_address}: {self.get_delivery_type_display()}"
+
+    ####################################################################
+    #
+    @property
+    def backend(self):
+        """
+        Get the delivery type backend for this delivery method.
+
+        Returns:
+            An instance of the delivery backend (e.g., LocalBackend)
+
+        Raises:
+            ValueError: If delivery_type is not recognized
+            ImportError: If backend module cannot be loaded
+            AttributeError: If backend class is not found
+        """
+        if not hasattr(self, "_backend"):
+            from .delivery_backends import get_delivery_backend
+
+            self._backend = get_delivery_backend(self.delivery_type)
+        return self._backend
+
+    ####################################################################
+    #
+    def deliver(self, msg, depth: int = 1):
+        """
+        Deliver a message using this delivery method.
+
+        Args:
+            msg: The email message to deliver
+            depth: Recursion depth for alias chains
+
+        Returns:
+            True if delivery succeeded
+
+        Raises:
+            Exception: If delivery fails
+        """
+        return self.backend.deliver(self, msg, depth)
+
+    ####################################################################
+    #
+    def clean(self):
+        """
+        Validate the delivery method configuration.
+
+        Uses the backend's validate_config method to ensure the config
+        dictionary is valid for this delivery type.
+
+        Raises:
+            ValidationError: If configuration is invalid
+        """
+        super().clean()
+        self.backend.validate_config(self.config, self.email_account)
+
+
+########################################################################
+########################################################################
+#
 class MessageFilterRule(OrderedModel):
     # slocal offers "folder", "destroy", "file", "mbox", "mmdf", "pipe",
     # "qpipe" which offer various actions. We are only supporting 'folder' and
