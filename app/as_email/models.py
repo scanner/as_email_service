@@ -1061,6 +1061,62 @@ class DeliveryMethod(models.Model):
         super().clean()
         self.backend.validate_config(self.config, self.email_account)
 
+    ####################################################################
+    # DRY Rest Permissions
+    ####################################################################
+
+    @staticmethod
+    @authenticated_users
+    def has_read_permission(request):
+        return True
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_read_permission(self, request):
+        """
+        Allow reading if the user owns the associated email account.
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    @staticmethod
+    @authenticated_users
+    def has_write_permission(request):
+        """
+        Allow creation of delivery methods.
+        Actual permission check is in ViewSet create() method.
+        """
+        return True
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_write_permission(self, request):
+        """
+        Allow write if the user owns the associated email account.
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_update_permission(self, request):
+        """
+        Allow update if the user owns the associated email account.
+        """
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_destroy_permission(self, request):
+        """
+        Allow deletion if the user owns the associated email account.
+        """
+        return request.user == self.email_account.owner
+
 
 ########################################################################
 ########################################################################

@@ -130,11 +130,13 @@ class DeliveryMethodSerializer(serializers.ModelSerializer):
         source="get_delivery_type_display", read_only=True
     )
     config_summary = serializers.SerializerMethodField()
+    email_account = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = DeliveryMethod
         fields = [
             "id",
+            "email_account",
             "delivery_type",
             "delivery_type_display",
             "config",
@@ -144,7 +146,7 @@ class DeliveryMethodSerializer(serializers.ModelSerializer):
             "created_at",
             "modified_at",
         ]
-        read_only_fields = ["id", "created_at", "modified_at"]
+        read_only_fields = ["id", "email_account", "created_at", "modified_at"]
 
     def get_config_summary(self, obj):
         """Return human-readable summary of configuration."""
@@ -152,6 +154,30 @@ class DeliveryMethodSerializer(serializers.ModelSerializer):
             return obj.backend.get_display_summary(obj.config)
         except Exception as e:
             return f"Error: {str(e)}"
+
+    def validate(self, attrs):
+        """Validate the delivery method configuration using the backend."""
+        from .delivery_backends import get_delivery_backend
+
+        delivery_type = attrs.get("delivery_type")
+        config = attrs.get("config", {})
+
+        # Get the email_account from context (set by the viewset)
+        email_account = self.context.get("email_account")
+
+        if not email_account:
+            raise serializers.ValidationError(
+                "Email account must be provided in context"
+            )
+
+        # Validate using the appropriate backend
+        try:
+            backend = get_delivery_backend(delivery_type)
+            backend.validate_config(config, email_account)
+        except Exception as e:
+            raise serializers.ValidationError({"config": str(e)})
+
+        return attrs
 
 
 ########################################################################

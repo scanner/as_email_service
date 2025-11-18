@@ -11,6 +11,7 @@ from rest_framework_nested import routers
 # Project imports
 #
 from .views import (
+    DeliveryMethodViewSet,
     EmailAccountViewSet,
     MessageFilterRuleViewSet,
     hook_bounce,
@@ -36,6 +37,8 @@ api_router.register(
 # generate:
 #  /email_accounts/{pk}/message_filter_rules/
 #  /email_accounts/{pk}/message_filter_rules/{pk}/
+#  /email_accounts/{pk}/delivery_methods/
+#  /email_accounts/{pk}/delivery_methods/{pk}/
 #
 api_email_account_router = routers.NestedSimpleRouter(
     api_router, r"email_accounts", lookup="email_account"
@@ -45,6 +48,12 @@ api_email_account_router.register(
     r"message_filter_rules",
     MessageFilterRuleViewSet,
     basename="message-filter-rule",
+)
+
+api_email_account_router.register(
+    r"delivery_methods",
+    DeliveryMethodViewSet,
+    basename="delivery-method",
 )
 
 api_urls = api_router.urls + api_email_account_router.urls
