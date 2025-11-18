@@ -6,6 +6,7 @@ from ordered_model.admin import OrderedModelAdmin
 # Project imports
 #
 from .models import (
+    DeliveryMethod,
     EmailAccount,
     InactiveEmail,
     MessageFilterRule,
@@ -64,6 +65,26 @@ class AliasesInline(admin.TabularInline):
     verbose_name_plural = "aliases"
 
 
+class DeliveryMethodInline(admin.TabularInline):
+    """Inline admin for managing delivery methods."""
+
+    model = DeliveryMethod
+    extra = 1
+    fields = ("delivery_type", "config", "order", "enabled", "config_summary")
+    readonly_fields = ("config_summary",)
+
+    def config_summary(self, obj):
+        """Display a human-readable summary of the configuration."""
+        if obj.pk:
+            try:
+                return obj.backend.get_display_summary(obj.config)
+            except Exception as e:
+                return f"Error: {e}"
+        return "-"
+
+    config_summary.short_description = "Configuration Summary"
+
+
 @admin.register(EmailAccount)
 class EmailAccountAdmin(admin.ModelAdmin):
     list_display = (
@@ -71,7 +92,6 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "owner",
         "server",
         "email_address",
-        "delivery_methods",
         "mail_dir",
         "password",
         "autofile_spam",
@@ -99,6 +119,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "email_address",
     )
     inlines = [
+        DeliveryMethodInline,
         AliasForInline,
         AliasesInline,
     ]

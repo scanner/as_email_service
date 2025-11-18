@@ -18,7 +18,12 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 # Project imports
 #
-from .models import EmailAccount, InactiveEmail, MessageFilterRule
+from .models import (
+    DeliveryMethod,
+    EmailAccount,
+    InactiveEmail,
+    MessageFilterRule,
+)
 
 
 ########################################################################
@@ -159,9 +164,46 @@ class DeliveryMethodsField(serializers.ListField):
 ########################################################################
 ########################################################################
 #
+class DeliveryMethodSerializer(serializers.ModelSerializer):
+    """Serializer for DeliveryMethod model."""
+
+    delivery_type_display = serializers.CharField(
+        source="get_delivery_type_display", read_only=True
+    )
+    config_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeliveryMethod
+        fields = [
+            "id",
+            "delivery_type",
+            "delivery_type_display",
+            "config",
+            "config_summary",
+            "order",
+            "enabled",
+            "created_at",
+            "modified_at",
+        ]
+        read_only_fields = ["id", "created_at", "modified_at"]
+
+    def get_config_summary(self, obj):
+        """Return human-readable summary of configuration."""
+        try:
+            return obj.backend.get_display_summary(obj.config)
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+
+########################################################################
+########################################################################
+#
 class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
-    # Custom field to handle delivery methods list
-    delivery_methods = DeliveryMethodsField()
+    # Custom field to handle OLD delivery methods list (deprecated, read-only)
+    delivery_methods = DeliveryMethodsField(read_only=True)
+
+    # New field for delivery method instances
+    delivery_method_set = DeliveryMethodSerializer(many=True, read_only=True)
 
     url = serializers.HyperlinkedIdentityField(
         view_name="as_email:email-account-detail", read_only=True
@@ -205,7 +247,8 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "created_at",
             "deactivated",
             "deactivated_reason",
-            "delivery_methods",
+            "delivery_methods",  # Deprecated, read-only
+            "delivery_method_set",  # New field for delivery method instances
             "email_address",
             "forward_to",
             "message_filter_rules",
