@@ -493,20 +493,6 @@ class EmailAccount(models.Model):
             "It must have the same domin name as the associated server"
         ),
     )
-    delivery_methods = models.JSONField(
-        default=list,
-        help_text=_(
-            "Delivery methods indicate how email for this account is "
-            "delivered. Multiple delivery methods can be selected, allowing "
-            "email to be delivered via multiple mechanisms simultaneously "
-            "(e.g., local delivery AND forwarding). Options include: delivery "
-            "to a local mailbox, delivery to an IMAP mailbox, an alias to "
-            "another email account on this system, or forwarding to an email "
-            "address by encapsulating the message or rewriting the headers. "
-            "If empty, defaults to local delivery only."
-        ),
-    )
-
     # NOTE: In a system with arbitrary user's this field should not be settable
     #       by users. Probably should not even be visible. So I guess make sure
     #       it is not in the serializer, not in any forms. (ie: mark it
@@ -837,22 +823,10 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def get_delivery_methods(self) -> List[str]:
-        """
-        Get the list of delivery methods for this account.
-        If no delivery methods are set, returns LOCAL_DELIVERY as the default.
-        """
-        if not self.delivery_methods:
-            return [self.DeliveryMethods.LOCAL_DELIVERY]
-        return self.delivery_methods
-
-    ####################################################################
-    #
     def clean(self):
         """
         Make sure that the email address is one that is served by the
         server (domain) associated with this object.
-        Also validate that delivery_methods contains only valid choices.
         """
         if not self.email_address.endswith(f"@{self.server.domain_name}"):
             raise ValidationError(
@@ -863,27 +837,6 @@ class EmailAccount(models.Model):
                     )
                 }
             )
-
-        # Validate delivery_methods
-        if self.delivery_methods is not None:
-            if not isinstance(self.delivery_methods, list):
-                raise ValidationError(
-                    {"delivery_methods": _("delivery_methods must be a list")}
-                )
-
-            valid_methods = [
-                choice[0] for choice in self.DeliveryMethods.choices
-            ]
-            for method in self.delivery_methods:
-                if method not in valid_methods:
-                    raise ValidationError(
-                        {
-                            "delivery_methods": _(
-                                f"Invalid delivery method: {method}. "
-                                f"Valid choices are: {', '.join(valid_methods)}"
-                            )
-                        }
-                    )
 
     ####################################################################
     #
@@ -1007,7 +960,7 @@ class DeliveryMethod(models.Model):
     email_account = models.ForeignKey(
         EmailAccount,
         on_delete=models.CASCADE,
-        related_name="delivery_method_set",
+        related_name="delivery_methods",
         help_text=_("The email account this delivery method belongs to"),
     )
 

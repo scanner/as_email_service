@@ -106,7 +106,6 @@ class EmailAccountFactory(DjangoModelFactory):
     email_address = factory.LazyAttribute(
         lambda o: f"{fake.profile()['username']}@{o.server.domain_name}"
     )
-    delivery_methods = []  # Old field - will be removed in future migration
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):
@@ -122,7 +121,7 @@ class EmailAccountFactory(DjangoModelFactory):
             return
 
         # Only create default if no DeliveryMethod instances exist
-        if not self.delivery_method_set.exists():
+        if not self.delivery_methods.exists():
             from ..models import DeliveryMethod
 
             DeliveryMethod.objects.create(

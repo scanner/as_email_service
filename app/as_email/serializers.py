@@ -123,47 +123,6 @@ class EmailAccountRelatedField(serializers.SlugRelatedField):
 ########################################################################
 ########################################################################
 #
-class DeliveryMethodsField(serializers.ListField):
-    """
-    Custom field to handle delivery methods list that can accept both
-    enum values and string values.
-    """
-
-    def __init__(self, **kwargs):
-        kwargs["child"] = serializers.ChoiceField(
-            choices=EmailAccount.DeliveryMethods.choices
-        )
-        kwargs.setdefault("required", False)
-        kwargs.setdefault("allow_empty", True)
-        kwargs.setdefault(
-            "help_text",
-            _(
-                "List of delivery methods for this account. Can include: "
-                "Local Delivery (LD), IMAP (IM), or Alias (AL)."
-            ),
-        )
-        super().__init__(**kwargs)
-
-    def to_internal_value(self, data):
-        """Convert enum values to their string representation."""
-        if not isinstance(data, list):
-            self.fail("not_a_list")
-
-        # Convert any enum values to strings
-        converted_data = []
-        for item in data:
-            # If it's an enum, get its value
-            if hasattr(item, "value"):
-                converted_data.append(item.value)
-            else:
-                converted_data.append(item)
-
-        return super().to_internal_value(converted_data)
-
-
-########################################################################
-########################################################################
-#
 class DeliveryMethodSerializer(serializers.ModelSerializer):
     """Serializer for DeliveryMethod model."""
 
@@ -199,11 +158,8 @@ class DeliveryMethodSerializer(serializers.ModelSerializer):
 ########################################################################
 #
 class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
-    # Custom field to handle OLD delivery methods list (deprecated, read-only)
-    delivery_methods = DeliveryMethodsField(read_only=True)
-
-    # New field for delivery method instances
-    delivery_method_set = DeliveryMethodSerializer(many=True, read_only=True)
+    # Nested delivery methods
+    delivery_methods = DeliveryMethodSerializer(many=True, read_only=True)
 
     url = serializers.HyperlinkedIdentityField(
         view_name="as_email:email-account-detail", read_only=True
@@ -247,8 +203,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "created_at",
             "deactivated",
             "deactivated_reason",
-            "delivery_methods",  # Deprecated, read-only
-            "delivery_method_set",  # New field for delivery method instances
+            "delivery_methods",
             "email_address",
             "forward_to",
             "message_filter_rules",

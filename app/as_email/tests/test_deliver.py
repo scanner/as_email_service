@@ -142,7 +142,7 @@ def test_deliver_alias(email_account_factory, email_factory):
     ea_2.save()
 
     # Clear default LOCAL_DELIVERY and setup ALIAS delivery method
-    ea_1.delivery_method_set.all().delete()
+    ea_1.delivery_methods.all().delete()
     from as_email.models import DeliveryMethod
 
     DeliveryMethod.objects.create(
@@ -171,7 +171,7 @@ def test_deliver_alias(email_account_factory, email_factory):
     ea_3.save()
 
     # Setup ea_2 to alias to ea_3
-    ea_2.delivery_method_set.all().delete()
+    ea_2.delivery_methods.all().delete()
     DeliveryMethod.objects.create(
         email_account=ea_2,
         delivery_type=DeliveryMethod.DeliveryType.ALIAS,
@@ -203,7 +203,7 @@ def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
     ea_3.save()
 
     # Clear default LOCAL_DELIVERY and setup multiple ALIAS delivery methods
-    ea_1.delivery_method_set.all().delete()
+    ea_1.delivery_methods.all().delete()
     from as_email.models import DeliveryMethod
 
     # Create one DeliveryMethod for each alias target
@@ -260,7 +260,7 @@ def test_email_account_alias_depth(
 
         if prev_ea:
             # Clear default LOCAL_DELIVERY and setup ALIAS delivery
-            prev_ea.delivery_method_set.all().delete()
+            prev_ea.delivery_methods.all().delete()
             DeliveryMethod.objects.create(
                 email_account=prev_ea,
                 delivery_type=DeliveryMethod.DeliveryType.ALIAS,
@@ -536,7 +536,7 @@ def test_multiple_delivery_methods_local_and_alias(
     ea_2.save()
 
     # Clear default and setup both LOCAL_DELIVERY and ALIAS delivery methods
-    ea_1.delivery_method_set.all().delete()
+    ea_1.delivery_methods.all().delete()
     DeliveryMethod.objects.create(
         email_account=ea_1,
         delivery_type=DeliveryMethod.DeliveryType.LOCAL_DELIVERY,
@@ -571,42 +571,3 @@ def test_multiple_delivery_methods_local_and_alias(
 
 ####################################################################
 #
-def test_empty_delivery_methods_defaults_to_local(
-    email_account_factory, email_factory
-):
-    """
-    Test that an account with empty delivery_methods list defaults
-    to LOCAL_DELIVERY.
-    """
-    ea = email_account_factory(delivery_methods=[])
-    ea.save()
-
-    msg = email_factory()
-    deliver_message(ea, msg)
-
-    # Message should be delivered locally (default behavior)
-    mh = ea.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-    assert_email_equal(msg, stored_msg)
-
-
-####################################################################
-#
-def test_delivery_methods_validation(email_account_factory):
-    """
-    Test that invalid delivery methods are rejected during validation.
-    """
-    from django.core.exceptions import ValidationError
-
-    # Test with invalid delivery method
-    ea = email_account_factory(delivery_methods=["INVALID"])
-    with pytest.raises(ValidationError) as exc_info:
-        ea.full_clean()
-    assert "Invalid delivery method" in str(exc_info.value)
-
-    # Test with non-list value
-    ea = email_account_factory(delivery_methods="NOT_A_LIST")
-    with pytest.raises(ValidationError) as exc_info:
-        ea.full_clean()
-    assert "delivery_methods must be a list" in str(exc_info.value)

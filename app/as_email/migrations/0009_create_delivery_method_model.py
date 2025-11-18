@@ -7,10 +7,16 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("as_email", "0008_remove_forwarding_from_delivery_methods"),
+        ("as_email", "0006_remove_old_provider_field"),
     ]
 
     operations = [
+        # Remove the old delivery_method CharField
+        migrations.RemoveField(
+            model_name="emailaccount",
+            name="delivery_method",
+        ),
+        # Create the new DeliveryMethod model
         migrations.CreateModel(
             name="DeliveryMethod",
             fields=[
@@ -59,7 +65,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         help_text="The email account this delivery method belongs to",
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="delivery_method_set",
+                        related_name="delivery_methods",
                         to="as_email.emailaccount",
                     ),
                 ),

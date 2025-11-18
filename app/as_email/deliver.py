@@ -71,7 +71,7 @@ def deliver_message(
         return
 
     # Get all enabled delivery methods, ordered by priority
-    delivery_methods = email_account.delivery_method_set.filter(
+    delivery_methods = email_account.delivery_methods.filter(
         enabled=True
     ).order_by("order", "id")
 
