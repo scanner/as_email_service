@@ -120,9 +120,27 @@ def check_create_maintenance_email_accounts(
 
     # Set `alias_for`` all the email accounts to the first one.
     #
+    from .models import DeliveryMethod
+
     first = eas[0]
     first.save()
+    # Create default LOCAL_DELIVERY for first account
+    DeliveryMethod.objects.create(
+        email_account=first,
+        delivery_type=DeliveryMethod.DeliveryType.LOCAL_DELIVERY,
+        config={},
+        order=0,
+        enabled=True,
+    )
+
     for ea in eas[1:]:
-        ea.delivery_method = "AL"
         ea.save()
         ea.alias_for.add(first)
+        # Create ALIAS delivery method pointing to first account
+        DeliveryMethod.objects.create(
+            email_account=ea,
+            delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+            config={"target_email_account_id": first.pk},
+            order=0,
+            enabled=True,
+        )

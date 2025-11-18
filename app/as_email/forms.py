@@ -22,6 +22,12 @@ from .models import EmailAccount
 ########################################################################
 #
 class EmailAccountForm(forms.ModelForm):
+    delivery_methods = forms.MultipleChoiceField(
+        choices=EmailAccount.DeliveryMethods.choices,
+        widget=forms.CheckboxSelectMultiple,
+        help_text=EmailAccount.delivery_methods.field.help_text,
+        required=False,
+    )
     aliases = forms.ModelMultipleChoiceField(
         queryset=None,
         help_text=_(
@@ -51,7 +57,7 @@ class EmailAccountForm(forms.ModelForm):
     class Meta:
         model = EmailAccount
         fields = [
-            "delivery_method",
+            "delivery_methods",
             "autofile_spam",
             "spam_delivery_folder",
             "spam_score_threshold",
@@ -98,7 +104,7 @@ class EmailAccountForm(forms.ModelForm):
         self.helper.layout = Layout(
             Fieldset(
                 "",
-                "delivery_method",
+                "delivery_methods",
             ),
             Fieldset(
                 "Delivery to Local or IMAP",

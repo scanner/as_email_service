@@ -57,8 +57,9 @@ from .forms import EmailAccountForm
 
 # Project imports
 #
-from .models import EmailAccount, MessageFilterRule, Server
+from .models import DeliveryMethod, EmailAccount, MessageFilterRule, Server
 from .serializers import (
+    DeliveryMethodSerializer,
     EmailAccountSerializer,
     MessageFilterRuleSerializer,
     MoveOrderSerializer,
@@ -544,3 +545,165 @@ class MessageFilterRuleViewSet(ModelViewSet):
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
+
+
+########################################################################
+########################################################################
+#
+class DeliveryMethodViewSet(ModelViewSet):
+    """
+    ViewSet for managing DeliveryMethod instances.
+    Nested under EmailAccount - users can only manage delivery methods
+    for their own email accounts.
+    """
+
+    permission_classes = (IsAuthenticated, DRYPermissions)
+    serializer_class = DeliveryMethodSerializer
+    filter_backends = (EmailAccountOwnerFilterBackend,)
+    queryset = DeliveryMethod.objects.all()
+    authentication_classes = (
+        CSRFExemptSessionAuthentication,
+        BasicAuthentication,
+    )
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        """Filter delivery methods by the parent email account."""
+        return DeliveryMethod.objects.filter(
+            email_account=self.kwargs["email_account_pk"]
+        ).order_by("order", "id")
+
+    ####################################################################
+    #
+    def get_serializer_context(self):
+        """Add email_account to context for validation."""
+        context = super().get_serializer_context()
+        email_account_pk = self.kwargs.get("email_account_pk")
+        if email_account_pk:
+            try:
+                context["email_account"] = EmailAccount.objects.get(
+                    pk=email_account_pk
+                )
+            except EmailAccount.DoesNotExist:
+                pass
+        return context
+
+    ####################################################################
+    #
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new DeliveryMethod for the parent EmailAccount.
+        """
+        # Get the email account
+        email_account_pk = kwargs["email_account_pk"]
+        try:
+            email_account = EmailAccount.objects.get(pk=email_account_pk)
+        except EmailAccount.DoesNotExist:
+            return Response(
+                {"detail": "Email account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check permissions - user must own the email account
+        if email_account.owner != request.user:
+            return Response(
+                {
+                    "detail": "You do not have permission to add delivery methods to this email account"
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(email_account=email_account)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
+    ####################################################################
+    #
+    @action(detail=False, methods=["get"])
+    def form_schema(self, request, **kwargs):
+        """
+        Return the form schema for a specific delivery type.
+        Query param: delivery_type (e.g., LD, AL)
+        """
+        from .delivery_backends import get_delivery_backend
+
+        delivery_type = request.query_params.get("delivery_type")
+        if not delivery_type:
+            return Response(
+                {"detail": "delivery_type query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate delivery_type
+        valid_types = dict(DeliveryMethod.DeliveryType.choices).keys()
+        if delivery_type not in valid_types:
+            return Response(
+                {
+                    "detail": f"Invalid delivery_type. Must be one of: {', '.join(valid_types)}"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get email account for context
+        email_account_pk = kwargs.get("email_account_pk")
+        try:
+            email_account = EmailAccount.objects.get(pk=email_account_pk)
+        except EmailAccount.DoesNotExist:
+            return Response(
+                {"detail": "Email account not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check permissions
+        if email_account.owner != request.user:
+            return Response(
+                {
+                    "detail": "You do not have permission to access this email account"
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Get the backend and form
+        try:
+            backend = get_delivery_backend(delivery_type)
+            form = backend.get_config_form(email_account)
+
+            # Extract form schema
+            fields = []
+            for field_name, field in form.fields.items():
+                field_info = {
+                    "name": field_name,
+                    "label": field.label or field_name,
+                    "required": field.required,
+                    "help_text": field.help_text,
+                    "type": field.__class__.__name__,
+                }
+
+                # Add choices for choice fields
+                if hasattr(field, "choices") and field.choices:
+                    field_info["choices"] = [
+                        {"value": value, "label": label}
+                        for value, label in field.choices
+                    ]
+
+                fields.append(field_info)
+
+            return Response(
+                {
+                    "delivery_type": delivery_type,
+                    "delivery_type_display": dict(
+                        DeliveryMethod.DeliveryType.choices
+                    )[delivery_type],
+                    "fields": fields,
+                }
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Error getting form schema: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

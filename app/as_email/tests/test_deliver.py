@@ -135,10 +135,23 @@ def test_deliver_spam_locally(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_alias(email_account_factory, email_factory):
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    # Create email accounts
+    ea_1 = email_account_factory()
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
+
+    # Clear default LOCAL_DELIVERY and setup ALIAS delivery method
+    ea_1.delivery_methods.all().delete()
+    from as_email.models import DeliveryMethod
+
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_2.pk},
+        order=0,
+        enabled=True,
+    )
     ea_1.alias_for.add(ea_2)
 
     # Messages being delivered to ea1 will be delivered to ea2.
@@ -156,9 +169,17 @@ def test_deliver_alias(email_account_factory, email_factory):
     # Create another level of aliasing.
     ea_3 = email_account_factory()
     ea_3.save()
+
+    # Setup ea_2 to alias to ea_3
+    ea_2.delivery_methods.all().delete()
+    DeliveryMethod.objects.create(
+        email_account=ea_2,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_3.pk},
+        order=0,
+        enabled=True,
+    )
     ea_2.alias_for.add(ea_3)
-    ea_2.delivery_method = EmailAccount.ALIAS
-    ea_2.save()
 
     # message sent to ea_1 will be delivered to ea_3
     #
@@ -173,12 +194,33 @@ def test_deliver_alias(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
-    ea_1 = email_account_factory(delivery_method=EmailAccount.ALIAS)
+    # Create email accounts
+    ea_1 = email_account_factory()
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
     ea_3 = email_account_factory()
     ea_3.save()
+
+    # Clear default LOCAL_DELIVERY and setup multiple ALIAS delivery methods
+    ea_1.delivery_methods.all().delete()
+    from as_email.models import DeliveryMethod
+
+    # Create one DeliveryMethod for each alias target
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_2.pk},
+        order=0,
+        enabled=True,
+    )
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_3.pk},
+        order=1,
+        enabled=True,
+    )
 
     ea_1.alias_for.add(ea_2)
     ea_1.alias_for.add(ea_3)
@@ -206,15 +248,26 @@ def test_email_account_alias_depth(
     we only let an alias go three deep. if we try to alias more than that
     it will be delivered at a higher level. also a warning will be logged.
     """
+    from as_email.models import DeliveryMethod
+
     # Make a list of email accounts, aliasing them to the next account.
     email_accounts = []
     prev_ea = None
     for i in range(EmailAccount.MAX_ALIAS_DEPTH + 2):
-        ea = email_account_factory(delivery_method=EmailAccount.ALIAS)
+        ea = email_account_factory()
         ea.save()
         email_accounts.append(ea)
 
         if prev_ea:
+            # Clear default LOCAL_DELIVERY and setup ALIAS delivery
+            prev_ea.delivery_methods.all().delete()
+            DeliveryMethod.objects.create(
+                email_account=prev_ea,
+                delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+                config={"target_email_account_id": ea.pk},
+                order=0,
+                enabled=True,
+            )
             prev_ea.alias_for.add(ea)
         prev_ea = ea
 
@@ -237,12 +290,11 @@ def test_email_account_alias_depth(
 #
 def test_forwarding(email_account_factory, email_factory, smtp):
     """
-    Test forwarding of the message by having the original message attached
-    as an rfc822 attachment, the original content text being in the new
-    message.
+    Test forwarding of the message using forward_message function directly.
+    Note: FORWARDING is no longer available as a delivery method, but the
+    forward_message function can still be called directly for external use.
     """
     ea_1 = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
         forward_to=factory.Faker("email"),
     )
     ea_1.save()
@@ -251,7 +303,10 @@ def test_forwarding(email_account_factory, email_factory, smtp):
     original_from = msg["From"]
     original_subj = msg["Subject"]
 
-    deliver_message(ea_1, msg)
+    # Call forward_message directly rather than through deliver_message
+    from ..deliver import forward_message
+
+    forward_message(ea_1, msg)
 
     # NOTE: in the models object we create a smtp_client. On the smtp_client
     #       the only thing we care about is that the `sendmail` method was
@@ -284,11 +339,10 @@ def test_forwarding(email_account_factory, email_factory, smtp):
 def test_deactivated_forward(email_account_factory, email_factory):
     """
     Deactivated email accounts can receive email, can alias email, but can
-    not forward email. The account that tries to forward the email has it
-    delivered locally.
+    not forward email via forward_message. The forward_message function
+    delivers locally when the account is deactivated.
     """
     ea_1 = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING,
         forward_to=factory.Faker("email"),
         deactivated=True,
     )
@@ -296,10 +350,10 @@ def test_deactivated_forward(email_account_factory, email_factory):
 
     msg = email_factory()
 
-    # Since this account is forwarding, but it is deactivated the message will
-    # be locally delivered.
-    #
-    deliver_message(ea_1, msg)
+    # Since this account is deactivated, forward_message will deliver locally
+    from ..deliver import forward_message
+
+    forward_message(ea_1, msg)
     mh = ea_1.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
@@ -365,7 +419,7 @@ def test_generate_forwarded_spam_message(
     """
     forward_to = faker.email()
     ea = email_account_factory(
-        delivery_method=EmailAccount.FORWARDING, forward_to=forward_to
+        forward_to=forward_to,
     )
     ea.save()
     msg = email_factory(msg_from=ea.email_address)
@@ -462,3 +516,58 @@ def test_report_failed_message(
         diagnostic="smtp; yo buddy",
     )
     assert f"Failed to lookup EmailAccount for '{bad_email}'" in caplog.text
+
+
+####################################################################
+#
+def test_multiple_delivery_methods_local_and_alias(
+    email_account_factory, email_factory
+):
+    """
+    Test that an account with both LOCAL_DELIVERY and ALIAS
+    delivers to both the local mailbox and the aliased account.
+    """
+    from as_email.models import DeliveryMethod
+
+    # Create email accounts
+    ea_1 = email_account_factory()
+    ea_1.save()
+    ea_2 = email_account_factory()
+    ea_2.save()
+
+    # Clear default and setup both LOCAL_DELIVERY and ALIAS delivery methods
+    ea_1.delivery_methods.all().delete()
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.LOCAL_DELIVERY,
+        config={},
+        order=0,
+        enabled=True,
+    )
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_2.pk},
+        order=1,
+        enabled=True,
+    )
+    ea_1.alias_for.add(ea_2)
+
+    msg = email_factory()
+    deliver_message(ea_1, msg)
+
+    # Message should be delivered locally to ea_1
+    mh_1 = ea_1.MH()
+    folder_1 = mh_1.get_folder("inbox")
+    stored_msg_1 = folder_1.get(1)
+    assert_email_equal(msg, stored_msg_1)
+
+    # Message should also be delivered to ea_2 (the alias target)
+    mh_2 = ea_2.MH()
+    folder_2 = mh_2.get_folder("inbox")
+    stored_msg_2 = folder_2.get(1)
+    assert_email_equal(msg, stored_msg_2)
+
+
+####################################################################
+#
