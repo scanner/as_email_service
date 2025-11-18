@@ -354,12 +354,11 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             "to see if this can be resolved."
         )
 
-    # If the emailaccount is forwarding and we got a non-transient bounce when
-    # sending email to the forward_to address then the account gets
-    # deactivated.
+    # If the emailaccount has forward_to set and we got a non-transient bounce
+    # when sending email to that address then the account gets deactivated.
     #
     if (
-        ea.FORWARDING in ea.get_delivery_methods()
+        ea.forward_to
         and not transient
         and bounce_details.Email == ea.forward_to
     ):
@@ -516,15 +515,10 @@ def process_email_spam(email_account_pk: int, spam: dict):
             "to see if this can be resolved."
         )
 
-    # If the emailaccount is forwarding and we got a non-transient spam when
-    # sending email to the forward_to address then the account gets
-    # deactivated.
+    # If the emailaccount has forward_to set and we got a non-transient spam
+    # when sending email to that address then the account gets deactivated.
     #
-    if (
-        ea.FORWARDING in ea.get_delivery_methods()
-        and not transient
-        and spam["Email"] == ea.forward_to
-    ):
+    if ea.forward_to and not transient and spam["Email"] == ea.forward_to:
         notify_user = True
         ea.deactivated = True
         ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO

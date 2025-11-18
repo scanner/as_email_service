@@ -243,12 +243,11 @@ def test_email_account_alias_depth(
 #
 def test_forwarding(email_account_factory, email_factory, smtp):
     """
-    Test forwarding of the message by having the original message attached
-    as an rfc822 attachment, the original content text being in the new
-    message.
+    Test forwarding of the message using forward_message function directly.
+    Note: FORWARDING is no longer available as a delivery method, but the
+    forward_message function can still be called directly for external use.
     """
     ea_1 = email_account_factory(
-        delivery_methods=[EmailAccount.DeliveryMethods.FORWARDING],
         forward_to=factory.Faker("email"),
     )
     ea_1.save()
@@ -257,7 +256,10 @@ def test_forwarding(email_account_factory, email_factory, smtp):
     original_from = msg["From"]
     original_subj = msg["Subject"]
 
-    deliver_message(ea_1, msg)
+    # Call forward_message directly rather than through deliver_message
+    from ..deliver import forward_message
+
+    forward_message(ea_1, msg)
 
     # NOTE: in the models object we create a smtp_client. On the smtp_client
     #       the only thing we care about is that the `sendmail` method was
@@ -290,11 +292,10 @@ def test_forwarding(email_account_factory, email_factory, smtp):
 def test_deactivated_forward(email_account_factory, email_factory):
     """
     Deactivated email accounts can receive email, can alias email, but can
-    not forward email. The account that tries to forward the email has it
-    delivered locally.
+    not forward email via forward_message. The forward_message function
+    delivers locally when the account is deactivated.
     """
     ea_1 = email_account_factory(
-        delivery_methods=[EmailAccount.DeliveryMethods.FORWARDING],
         forward_to=factory.Faker("email"),
         deactivated=True,
     )
@@ -302,10 +303,10 @@ def test_deactivated_forward(email_account_factory, email_factory):
 
     msg = email_factory()
 
-    # Since this account is forwarding, but it is deactivated the message will
-    # be locally delivered.
-    #
-    deliver_message(ea_1, msg)
+    # Since this account is deactivated, forward_message will deliver locally
+    from ..deliver import forward_message
+
+    forward_message(ea_1, msg)
     mh = ea_1.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
@@ -371,7 +372,6 @@ def test_generate_forwarded_spam_message(
     """
     forward_to = faker.email()
     ea = email_account_factory(
-        delivery_methods=[EmailAccount.DeliveryMethods.FORWARDING],
         forward_to=forward_to,
     )
     ea.save()
@@ -469,42 +469,6 @@ def test_report_failed_message(
         diagnostic="smtp; yo buddy",
     )
     assert f"Failed to lookup EmailAccount for '{bad_email}'" in caplog.text
-
-
-####################################################################
-#
-def test_multiple_delivery_methods_local_and_forward(
-    email_account_factory, email_factory, smtp, faker
-):
-    """
-    Test that an account with both LOCAL_DELIVERY and FORWARDING
-    delivers to both destinations.
-    """
-    forward_to = faker.email()
-    ea = email_account_factory(
-        delivery_methods=[
-            EmailAccount.DeliveryMethods.LOCAL_DELIVERY,
-            EmailAccount.DeliveryMethods.FORWARDING,
-        ],
-        forward_to=forward_to,
-    )
-    ea.save()
-
-    msg = email_factory()
-    deliver_message(ea, msg)
-
-    # Message should be delivered locally
-    mh = ea.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-    assert_email_equal(msg, stored_msg)
-
-    # Message should also be forwarded
-    assert smtp.sendmail.call_count == 1
-    assert smtp.sendmail.call_args.args == Contains(
-        ea.email_address,
-        [forward_to],
-    )
 
 
 ####################################################################

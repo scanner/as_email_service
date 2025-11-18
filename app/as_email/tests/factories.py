@@ -106,7 +106,9 @@ class EmailAccountFactory(DjangoModelFactory):
     email_address = factory.LazyAttribute(
         lambda o: f"{fake.profile()['username']}@{o.server.domain_name}"
     )
-    delivery_methods = []  # Defaults to LOCAL_DELIVERY via get_delivery_methods()
+    delivery_methods = (
+        []
+    )  # Defaults to LOCAL_DELIVERY via get_delivery_methods()
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):

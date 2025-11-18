@@ -453,6 +453,7 @@ class EmailAccount(models.Model):
     DEACTIVATED_DUE_TO_BAD_FORWARD_TO = (
         "Deactivated due to bounce when sending email to `forward_to` address"
     )
+
     # EmailAccount delivery methods - local, imap, alias, forwarding
     #
     class DeliveryMethods(models.TextChoices):
@@ -465,13 +466,13 @@ class EmailAccount(models.Model):
         LOCAL_DELIVERY = "LD", _("Local Delivery")
         IMAP_DELIVERY = "IM", _("IMAP")  # XXX coming soon
         ALIAS = "AL", _("Alias")
-        FORWARDING = "FW", _("Forwarding")
 
     # Keep backward compatibility constants
     LOCAL_DELIVERY = DeliveryMethods.LOCAL_DELIVERY
     IMAP_DELIVERY = DeliveryMethods.IMAP_DELIVERY
     ALIAS = DeliveryMethods.ALIAS
-    FORWARDING = DeliveryMethods.FORWARDING
+    # FORWARDING removed from delivery_methods - use EmailAccount.forward_to instead
+    FORWARDING = "FW"  # Kept for backward compatibility in tasks.py
 
     # Max number of levels you can nest an alias. There is no easy way to check
     # this except for traversing all the aliases.
@@ -869,14 +870,12 @@ class EmailAccount(models.Model):
         if self.delivery_methods is not None:
             if not isinstance(self.delivery_methods, list):
                 raise ValidationError(
-                    {
-                        "delivery_methods": _(
-                            "delivery_methods must be a list"
-                        )
-                    }
+                    {"delivery_methods": _("delivery_methods must be a list")}
                 )
 
-            valid_methods = [choice[0] for choice in self.DeliveryMethods.choices]
+            valid_methods = [
+                choice[0] for choice in self.DeliveryMethods.choices
+            ]
             for method in self.delivery_methods:
                 if method not in valid_methods:
                     raise ValidationError(

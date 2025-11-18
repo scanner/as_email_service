@@ -84,12 +84,8 @@ def deliver_message(
             case EmailAccount.DeliveryMethods.ALIAS:
                 for alias_for in email_account.alias_for.all():
                     deliver_message(alias_for, msg, depth + 1)
-            case EmailAccount.DeliveryMethods.FORWARDING:
-                forward_message(email_account, msg)
             case _:
-                raise RuntimeError(
-                    f"Unknown delivery method {delivery_method}"
-                )
+                raise RuntimeError(f"Unknown delivery method {delivery_method}")
 
 
 ####################################################################
