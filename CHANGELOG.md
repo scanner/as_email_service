@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Support for disabling SMTP ports in aiosmtpd daemon by specifying "off" for `--submission_port` or `--smtp_port` arguments, allowing flexible port configuration
+
+## [0.1.5 - 2023-11-28]
+
+### Updated
+
+- Now `SENTRY_PROFILES_SAMPLE_RATE` defaults to 0.0 and is settable via .env
+
 ## [0.1.4 - 2023-11-26]
 
 ### Fixed

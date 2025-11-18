@@ -5,23 +5,26 @@ Test the huey tasks
 """
 # system imports
 #
-from datetime import datetime
+import json
+from datetime import UTC, datetime
 
 # 3rd party imports
 #
 import pytest
+from dirty_equals import Contains
 
 # Project imports
 #
-from ..models import EmailAccount, InactiveEmail, spool_message
+from ..models import EmailAccount, InactiveEmail
 from ..tasks import (
     decrement_num_bounces_counter,
     dispatch_incoming_email,
     dispatch_spooled_outgoing_email,
     process_email_bounce,
     process_email_spam,
+    retry_failed_incoming_email,
 )
-from ..utils import write_spooled_email
+from ..utils import read_emailaccount_pwfile, spool_message, write_spooled_email
 from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -44,12 +47,11 @@ def test_dispatch_spool_outgoing_email(
     spool_message(server.outgoing_spool_dir, msg.as_bytes())
     res = dispatch_spooled_outgoing_email()
     res()
-    send_message = smtp.return_value.send_message
-    assert send_message.call_count == 1
-    assert send_message.call_args.kwargs == {
-        "from_addr": from_addr,
-        "to_addrs": rcpt_tos,
-    }
+    assert smtp.sendmail.call_count == 1
+    assert smtp.sendmail.call_args.args == Contains(
+        from_addr,
+        rcpt_tos,
+    )
 
 
 ####################################################################
@@ -78,6 +80,135 @@ def test_dispatch_incoming_email(
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
+
+
+####################################################################
+#
+def test_dispatch_incoming_mail_failure(
+    mocker,
+    email_spool_dir,
+    email_account_factory,
+    email_factory,
+    settings,
+):
+    """
+    If we are unable to deliver a message due to some local issue, the
+    messages are dumped in to a failure directory. Force `deliver_message` to
+    fail and check to see if the message is moved to the failure directory.
+    """
+    mocker.patch(
+        "as_email.tasks.deliver_message", side_effect=Exception("ERROR")
+    )
+    ea = email_account_factory()
+    ea.save()
+    msg = email_factory(to=ea.email_address)
+    now = datetime.now()
+    message_id = msg["Message-ID"]
+    fname = write_spooled_email(
+        msg["To"], settings.EMAIL_SPOOL_DIR, msg, str(now), message_id
+    )
+
+    res = dispatch_incoming_email(ea.pk, str(fname))
+    res()
+
+    # We should find a single file in the failed message directory that has the
+    # same message id from above.
+    #
+    failed_msg_file = list(settings.FAILED_INCOMING_MSG_DIR.iterdir())[0]
+    email_msg = json.loads(failed_msg_file.read_text())
+    assert email_msg["message-id"] == message_id
+
+
+####################################################################
+#
+def test_retry_failed_incoming_email_failure(
+    caplog,
+    email_spool_dir,
+    email_factory,
+    settings,
+) -> None:
+    """
+    Setup `retry_failed_incoming_email` to attempt to redeliver several
+    messages and have it fail again. We exepct it to try 5 times and then give
+    up.
+    """
+    # Create 5 email messages, but do not create any EmailAccount's. This will
+    # result in the lookup failing.
+    #
+    settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
+    failed_email_files = []
+    for _ in range(5):
+        msg = email_factory()
+        now = datetime.now()
+        message_id = msg["Message-ID"]
+        msg_path = write_spooled_email(
+            msg["To"],
+            settings.FAILED_INCOMING_MSG_DIR,
+            msg,
+            str(now),
+            message_id,
+        )
+        failed_email_files.append(msg_path)
+
+    res = retry_failed_incoming_email()
+    res()
+
+    # Make sure our five failed retry messages were logged.
+    #
+    assert "Stopping redelivery attempts after" in caplog.text
+    for msg_path in failed_email_files:
+        assert f"Unable to deliver failed message '{msg_path}'" in caplog.text
+
+
+####################################################################
+#
+def test_retry_failed_incoming_email(
+    mocker,
+    email_spool_dir,
+    email_account_factory,
+    email_factory,
+    settings,
+) -> None:
+    """
+    Create several emails, and create several EmailAccount's to receive
+    those emails and make sure that `deliver_message` was called for each of
+    those EmailAccounts.
+    """
+    # Mock the `deliver_message` function so we can verify that it was called
+    # properly.
+    mock_deliver_message = mocker.Mock(return_value=None)
+    # mock_deliver_message(1, 2, 3)
+    mocker.patch("as_email.tasks.deliver_message", new=mock_deliver_message)
+    deliveries = []
+    for _ in range(6):
+        ea = email_account_factory()
+        msg = email_factory(to=ea.email_address)
+        now = datetime.now()
+        message_id = msg["Message-ID"]
+        write_spooled_email(
+            msg["To"],
+            settings.FAILED_INCOMING_MSG_DIR,
+            msg,
+            str(now),
+            message_id,
+        )
+        deliveries.append((ea.email_address, msg))
+
+    res = retry_failed_incoming_email()
+    res()
+
+    # And check to see that all messages were delivered.
+    #
+    expected = sorted(deliveries, key=lambda x: x[0])
+    mock_call_args = mock_deliver_message.call_args_list
+    assert mock_call_args
+    called = sorted(
+        [(x[0][0].email_address, x[0][1]) for x in mock_call_args],
+        key=lambda x: x[0],
+    )
+    for exp, call in zip(expected, called):
+        assert exp[0] == call[0]
+        assert_email_equal(exp[1], call[1])
 
 
 ####################################################################
@@ -182,7 +313,7 @@ def test_too_many_bounces(
         "Details": "Test bounce details",
         "Email": "john@example.com",
         "From": ea.email_address,
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "DumpAvailable": False,
         "Inactive": False,
         "CanActivate": True,
@@ -252,7 +383,7 @@ def test_bounce_inactive(
         "Details": "Test bounce details",
         "Email": bounce_address,
         "From": ea.email_address,
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "DumpAvailable": False,
         "Inactive": True,
         "CanActivate": can_activate,
@@ -308,7 +439,7 @@ def test_transient_bounce_notifications(
         "Details": "Test bounce details",
         "Email": "john@example.com",
         "From": ea.email_address,
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "DumpAvailable": False,
         "Inactive": False,
         "CanActivate": True,
@@ -354,7 +485,7 @@ def test_bounce_to_forwarded_to_deactivates_emailaccount(
     bounce_id = faker.pyint(1_000_000_000, 9_999_999_999)
 
     bounce_data = {
-        "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "CanActivate": True,
         "Description": "Invalid email address — The address is not a valid email address.",
         "Details": "Invalid email address",
@@ -617,3 +748,28 @@ def test_process_spam_invalid_typecode(
     ea.refresh_from_db()
     assert ea.num_bounces == 1
     assert not ea.deactivated
+
+
+####################################################################
+#
+def test_delete_email_account_removes_pwfile_entry(
+    settings, email_account_factory
+):
+    """
+    Make sure that the entry for an email account in the external pw file
+    is deleted when the email account object is deleted.
+    """
+    ea = email_account_factory()
+    ea.save()
+
+    # It should exist in the pwfile after we save it.
+    #
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    assert ea.email_address in accounts
+
+    # And now if we delete the email address, it should be deleted from the
+    # external pw file.
+    #
+    ea.delete()
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    assert ea.email_address not in accounts

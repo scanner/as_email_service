@@ -7,7 +7,7 @@ pytest fixtures for our tests
 #
 import email.policy
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -17,6 +17,7 @@ from email.utils import parseaddr
 import pytest
 from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
 from django.core import mail
+from fakeredis import FakeConnection
 from pytest_factoryboy import register
 from requests import Response
 from rest_framework.test import APIClient, RequestsClient
@@ -39,7 +40,37 @@ from .factories import (
 #
 register(UserFactory)
 register(ProviderFactory)
+register(ServerFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+@pytest.fixture
+def redis_client(request):
+    """
+    Provide a `fakeredis` instance as a fixture.
+    """
+    import fakeredis
+
+    redis_client = fakeredis.FakeRedis()
+    return redis_client
+
+
+####################################################################
+#
+@pytest.fixture
+def fakeredis_cache(settings) -> None:
+    """
+    Configure django to use fakeredis for its cache
+    """
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": "redis://localhost:6379",
+            "OPTIONS": {"connection_class": FakeConnection},
+        }
+    }
 
 
 ####################################################################
@@ -55,8 +86,8 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     if ignore_headers is False:
         assert len(msg1.items()) == len(msg2.items())
         for header, value in msg1.items():
-            value = value.replace("\n", "")
-            assert msg2[header].replace("\n", "") == value
+            value = value.replace("\n", "").replace("\r", "")
+            assert msg2[header].replace("\n", "").replace("\r", "") == value
 
     # If we are ignoring only some headers, then skip those.
     #
@@ -81,7 +112,9 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     assert len(parts1) == len(parts2)
 
     for part1, part2 in zip(parts1, parts2):
-        assert part1.get_payload() == part2.get_payload()
+        assert part1.get_payload().strip().replace("\r", "").replace(
+            "\n", ""
+        ) == part2.get_payload().strip().replace("\r", "").replace("\n", "")
 
 
 ####################################################################
@@ -138,35 +171,23 @@ def email_factory(faker):
 ####################################################################
 #
 @pytest.fixture
-def server_factory(postmark_client, settings, faker):
+def email_account_factory(server_factory, settings, faker):
     """
-    A factory for creating server's that have the postmarker pytest
-    postmark_client factory returned when you call ".client"
-    This also sets makes sure that the API token for the server we create
-    is in the django settings.EMAIL_SERVER_TOKENS
-    """
+    Create EmailAccount instances with proper server setup.
 
-    def make_server(*args, **kwargs):
-        server = ServerFactory(*args, **kwargs)
-        settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.pystr()
-        server._client = postmark_client
-        return server
-
-    yield make_server
-
-
-####################################################################
-#
-@pytest.fixture
-def email_account_factory(server_factory):
-    """
-    Make sure our email account factory uses the fixtures setup by the
-    server_factory.
+    Ensures that if no server is provided, one is created using server_factory,
+    and that the EMAIL_SERVER_TOKENS setting is configured for the server.
     """
 
     def make_email_account(*args, **kwargs):
         if "server" not in kwargs:
             kwargs["server"] = server_factory()
+
+        server = kwargs["server"]
+        # Ensure the server's token is in settings for provider backend to use
+        if server.domain_name not in settings.EMAIL_SERVER_TOKENS:
+            settings.EMAIL_SERVER_TOKENS[server.domain_name] = faker.uuid4()
+
         email_account = EmailAccountFactory(*args, **kwargs)
         return email_account
 
@@ -180,7 +201,7 @@ def inactive_email_factory():
     """
     in order to _not_ create and save the object to the db so we can call
     this from async as well as sync tests use the `.build()` method to create
-    thte object but not save it.
+    the object but not save it.
     """
 
     def make_inactive_email(*args, **kwargs):
@@ -202,6 +223,10 @@ def email_spool_dir(settings, tmp_path):
     spool_dir = tmp_path / "spool"
     spool_dir.mkdir(parents=True, exist_ok=True)
     settings.EMAIL_SPOOL_DIR = spool_dir
+    settings.FAILED_INCOMING_MSG_DIR = (
+        settings.EMAIL_SPOOL_DIR / "failed_incoming"
+    )
+    settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
     yield spool_dir
 
 
@@ -217,6 +242,7 @@ def mailbox_dir(settings, tmp_path):
     mail_base_dir = tmp_path / "mail_base_dir"
     mail_base_dir.mkdir(parents=True, exist_ok=True)
     settings.MAIL_DIRS = mail_base_dir
+    settings.EXT_PW_FILE = mail_base_dir / "asimapd_passwords.txt"
     yield mail_base_dir
 
 
@@ -257,18 +283,18 @@ def requests_client():
 
 ####################################################################
 #
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def smtp(mocker):
     """
-    We frequently need to test something that will send an email via SMTP.
-    This fixture encapsulates this and returns a mock object that can be
-    interrogated for the SMTP calls against it.
+    Mock the _smtp_client function in as_email.utils so that all SMTP
+    connections are mocked automatically in all tests.
 
-    NOTE: This only mocks the smtplib.SMTP module in the models module
+    This allows backend implementations to use get_smtp_client() and
+    _smtp_client() without needing to mock smtplib.SMTP in each module.
     """
-    mock_SMTP = mocker.MagicMock(name="as_email.models.smtplib.SMTP")
-    mocker.patch("as_email.models.smtplib.SMTP", new=mock_SMTP)
-    return mock_SMTP
+    mock_smtp = mocker.MagicMock(name="SMTP")
+    mocker.patch("as_email.utils._smtp_client", return_value=mock_smtp)
+    return mock_smtp
 
 
 ####################################################################
@@ -388,7 +414,7 @@ def postmark_request_bounce(
         print(f"Response update: {response_update}")
 
         response = {
-            "BouncedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "CanActivate": True,
             "Content": email_message.as_string(policy=email.policy.default),
             "Description": "The server was unable to deliver your message (ex: unknown user, mailbox not found).",

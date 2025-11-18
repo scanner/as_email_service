@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
+
 # System imports
 #
 from pathlib import Path
@@ -33,22 +34,15 @@ BASE_DIR = Path(__file__).parent.parent
 #
 random_chars = "abcdefghijklmnopqrstuvwxyz0123456789!@#%^&*(-_=+)"
 env = environ.FileAwareEnv(
-    DEBUG=(bool, False),
-    DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
-    SITE_NAME=(str, "example.com"),
-    DATABASE_URL=(str, "sqlite:///:memory:"),
-    EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
-    EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
-    MAIL_DIRS=(str, "/mnt/mail_dir"),
-    DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
     ALLOWED_HOSTS=(list, list()),
-    REDIS_SERVER=(str, "redis"),
-    VERSION=(str, "unknown"),
     CACHE_URL=(str, "dummycache://"),
-    SENTRY_DSN=(str, None),
-    SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
     COMPRESS_ENABLED=(bool, True),
     COMPRESS_OFFLINE=(bool, True),
+    DATABASE_URL=(str, "sqlite:///:memory:"),
+    DEBUG=(bool, False),
+    DEFAULT_FROM_EMAIL=(str, "admin@example.com"),
+    DJANGO_SECRET_KEY=(str, get_random_string(50, random_chars)),
+    EMAIL_SERVER_TOKENS=(dict, {"example.com": "foo"}),
     # Email service accounts are email addresses that are widely expected to
     # exist for any domain that accepts email. This will be created, linked
     # together via alises, and owned by the earliest admin account on the
@@ -68,18 +62,30 @@ env = environ.FileAwareEnv(
             "noc",
         ],
     ),
+    EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
+    MAIL_DIRS=(str, "/mnt/mail_dir"),
+    REDIS_SERVER=(str, "redis"),
+    SENTRY_DSN=(str, None),
+    SENTRY_PROFILES_SAMPLE_RATE=(float, 0.0),
+    SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
+    SITE_NAME=(str, "example.com"),
+    SPAMD_HOST=(str, "spamassassin:783"),
+    TZ=(str, "America/Los_Angeles"),
+    VERSION=(str, "unknown"),
     EMAIL_SERVICE_ACCOUNTS_OWNER=(str, None),
 )
+
+DEBUG = env("DEBUG")
 
 # If we are running through a reverse proxy (like caddy) we need to make sure
 # that even though we are being access at `http` we make sure we resolve all
 # services at `https`
 #
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
 # NOTE: We should try moving secrets to compose secrets.
 #
-DEBUG = env("DEBUG")
+SPAMD_HOST, SPAMD_PORT = env("SPAMD_HOST").split(":")
+SPAMD_PORT = int(SPAMD_PORT)
 VERSION = env("VERSION")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 SITE_NAME = env("SITE_NAME")
@@ -90,6 +96,7 @@ REDIS_SERVER = env("REDIS_SERVER")
 EMAIL_SERVICE_ACCOUNTS = env("EMAIL_SERVICE_ACCOUNTS")
 EMAIL_SERVICE_ACCOUNTS_OWNER = env("EMAIL_SERVICE_ACCOUNTS_OWNER")
 SENTRY_TRACES_SAMPLE_RATE = env("SENTRY_TRACES_SAMPLE_RATE")
+SENTRY_PROFILES_SAMPLE_RATE = env("SENTRY_PROFILES_SAMPLE_RATE")
 SENTRY_DSN = env("SENTRY_DSN")
 if SENTRY_DSN is not None:
     sentry_sdk.init(
@@ -100,7 +107,7 @@ if SENTRY_DSN is not None:
         # Set profiles_sample_rate to 1.0 to profile 100%
         # of sampled transactions.
         # We recommend adjusting this value in production.
-        profiles_sample_rate=1.0,
+        profiles_sample_rate=SENTRY_PROFILES_SAMPLE_RATE,
         environment="devel" if DEBUG else "production",
         release=f"as_email_service@{VERSION}",
     )
@@ -159,7 +166,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
-
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10_485_760  # 10mib
 REST_FRAMEWORK = {
     # All access to the as_email API requires authentication. Additional
     # permissions are defined on each of the models.
@@ -194,7 +201,7 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "home"
 
-TIME_ZONE = "America/Los_Angeles"
+TIME_ZONE = env("TZ")
 # https://docs.djangoproject.com/en/dev/ref/settings/#language-code
 LANGUAGE_CODE = "en-us"
 # https://docs.djangoproject.com/en/dev/ref/settings/#site-id
@@ -277,13 +284,24 @@ EMAIL_SERVER_TOKENS = env.dict("EMAIL_SERVER_TOKENS")
 # directory there will be an "incoming" and "outgoing" directory.
 #
 EMAIL_SPOOL_DIR = Path(env("EMAIL_SPOOL_DIR"))
+FAILED_INCOMING_MSG_DIR = EMAIL_SPOOL_DIR / "failed_incoming"
 
-# This is the parent directory where all the MH mail dirs are for all the
-# email accounts. There will be a subdir for each server, and a dir with the
-# username under that subdir. That username dir will be the mh mail dir for
-# each email account.
+# This is the parent directory where all the MH mail dirs are for all the email
+# accounts. There will be a subdir for each server, and a dir with the username
+# under that subdir. That username dir will be the mh mail dir for each email
+# account. This is also the location of the external password file used by
+# other services (asimapd)
 #
 MAIL_DIRS = Path(env("MAIL_DIRS"))
+EXT_PW_FILE = MAIL_DIRS / "asimapd_passwords.txt"
+DEFAULT_FOLDERS = (
+    "inbox",
+    "Junk",
+    "Archive",
+    "Sent Messages",
+    "Drafts",
+    "Deleted Messages",
+)
 
 # The external auth db is a sqlite db that we maintain one table in: "users"
 # The "user" table will at least have two columns: "password" and
@@ -325,12 +343,12 @@ LOGGING = {
         },
         "mail": {
             "handlers": ["console"],
-            "level": "DEBUG" if DEBUG else "WARNING",
+            "level": "DEBUG" if DEBUG else "ERROR",
             "propagate": True,
         },
         "huey": {
             "handlers": ["console"],
-            "level": "DEBUG" if DEBUG else "WARNING",
+            "level": "INFO" if DEBUG else "WARNING",
             "propagate": True,
         },
     },

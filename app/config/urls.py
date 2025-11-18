@@ -1,12 +1,13 @@
 """
 URL configuration for as_email_service project.
 """
+
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic.base import RedirectView
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("admin/", admin.site.urls, name="admin"),
     path(
         "accounts/",
         RedirectView.as_view(pattern_name="login", permanent=True),
