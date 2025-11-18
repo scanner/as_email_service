@@ -135,12 +135,23 @@ def test_deliver_spam_locally(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_alias(email_account_factory, email_factory):
-    ea_1 = email_account_factory(
-        delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
-    )
+    # Create email accounts
+    ea_1 = email_account_factory()
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
+
+    # Clear default LOCAL_DELIVERY and setup ALIAS delivery method
+    ea_1.delivery_method_set.all().delete()
+    from as_email.models import DeliveryMethod
+
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_2.pk},
+        order=0,
+        enabled=True,
+    )
     ea_1.alias_for.add(ea_2)
 
     # Messages being delivered to ea1 will be delivered to ea2.
@@ -158,9 +169,17 @@ def test_deliver_alias(email_account_factory, email_factory):
     # Create another level of aliasing.
     ea_3 = email_account_factory()
     ea_3.save()
+
+    # Setup ea_2 to alias to ea_3
+    ea_2.delivery_method_set.all().delete()
+    DeliveryMethod.objects.create(
+        email_account=ea_2,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_3.pk},
+        order=0,
+        enabled=True,
+    )
     ea_2.alias_for.add(ea_3)
-    ea_2.delivery_methods = [EmailAccount.DeliveryMethods.ALIAS]
-    ea_2.save()
 
     # message sent to ea_1 will be delivered to ea_3
     #
@@ -175,14 +194,33 @@ def test_deliver_alias(email_account_factory, email_factory):
 ####################################################################
 #
 def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
-    ea_1 = email_account_factory(
-        delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
-    )
+    # Create email accounts
+    ea_1 = email_account_factory()
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
     ea_3 = email_account_factory()
     ea_3.save()
+
+    # Clear default LOCAL_DELIVERY and setup multiple ALIAS delivery methods
+    ea_1.delivery_method_set.all().delete()
+    from as_email.models import DeliveryMethod
+
+    # Create one DeliveryMethod for each alias target
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_2.pk},
+        order=0,
+        enabled=True,
+    )
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_3.pk},
+        order=1,
+        enabled=True,
+    )
 
     ea_1.alias_for.add(ea_2)
     ea_1.alias_for.add(ea_3)
@@ -210,17 +248,26 @@ def test_email_account_alias_depth(
     we only let an alias go three deep. if we try to alias more than that
     it will be delivered at a higher level. also a warning will be logged.
     """
+    from as_email.models import DeliveryMethod
+
     # Make a list of email accounts, aliasing them to the next account.
     email_accounts = []
     prev_ea = None
     for i in range(EmailAccount.MAX_ALIAS_DEPTH + 2):
-        ea = email_account_factory(
-            delivery_methods=[EmailAccount.DeliveryMethods.ALIAS]
-        )
+        ea = email_account_factory()
         ea.save()
         email_accounts.append(ea)
 
         if prev_ea:
+            # Clear default LOCAL_DELIVERY and setup ALIAS delivery
+            prev_ea.delivery_method_set.all().delete()
+            DeliveryMethod.objects.create(
+                email_account=prev_ea,
+                delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+                config={"target_email_account_id": ea.pk},
+                order=0,
+                enabled=True,
+            )
             prev_ea.alias_for.add(ea)
         prev_ea = ea
 
@@ -480,15 +527,30 @@ def test_multiple_delivery_methods_local_and_alias(
     Test that an account with both LOCAL_DELIVERY and ALIAS
     delivers to both the local mailbox and the aliased account.
     """
-    ea_1 = email_account_factory(
-        delivery_methods=[
-            EmailAccount.DeliveryMethods.LOCAL_DELIVERY,
-            EmailAccount.DeliveryMethods.ALIAS,
-        ]
-    )
+    from as_email.models import DeliveryMethod
+
+    # Create email accounts
+    ea_1 = email_account_factory()
     ea_1.save()
     ea_2 = email_account_factory()
     ea_2.save()
+
+    # Clear default and setup both LOCAL_DELIVERY and ALIAS delivery methods
+    ea_1.delivery_method_set.all().delete()
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.LOCAL_DELIVERY,
+        config={},
+        order=0,
+        enabled=True,
+    )
+    DeliveryMethod.objects.create(
+        email_account=ea_1,
+        delivery_type=DeliveryMethod.DeliveryType.ALIAS,
+        config={"target_email_account_id": ea_2.pk},
+        order=1,
+        enabled=True,
+    )
     ea_1.alias_for.add(ea_2)
 
     msg = email_factory()
