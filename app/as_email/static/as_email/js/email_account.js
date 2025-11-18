@@ -54,10 +54,10 @@ export default {
       type: String,
       required: true,
     },
-    deliveryMethod: {
-      type: String,
-      default: "LD",
-      required: true,
+    deliveryMethods: {
+      type: Array,
+      default: () => [],
+      required: false,
     },
     autofileSpam: {
       type: Boolean,
@@ -132,7 +132,6 @@ export default {
   // event that lets the parent know the values of these have changed.
   //
   emits: [
-    "update:deliveryMethod",
     "update:autofileSpam",
     "update:spamDeliveryFolder",
     "update:spamScoreThreshold",
@@ -178,7 +177,6 @@ export default {
       alias_for: "",
       aliases: "",
       autofile_spam: "",
-      delivery_method: "",
       forward_to: "",
       spam_delivery_folder: "",
       spam_score_threshold: "",
@@ -255,7 +253,6 @@ export default {
         }
 
         let data = {
-          delivery_method: props.deliveryMethod,
           autofile_spam: props.autofileSpam,
           spam_delivery_folder: props.spamDeliveryFolder,
           spam_score_threshold: props.spamScoreThreshold,
@@ -292,7 +289,6 @@ export default {
           let aliasForDiffs = arrayDiff(preupdateAliasFor, data.alias_for);
           let aliasChanges = [...new Set(aliasesDiffs.concat(aliasForDiffs))];
 
-          ctx.emit("update:deliveryMethod", data.delivery_method);
           ctx.emit("update:autofileSpam", data.autofile_spam);
           ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
           ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
@@ -350,7 +346,6 @@ export default {
         let res = await fetch(props.url);
         if (res.ok) {
           let data = await res.json();
-          ctx.emit("update:deliveryMethod", data.delivery_method);
           ctx.emit("update:autofileSpam", data.autofile_spam);
           ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
           ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);

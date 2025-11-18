@@ -28,29 +28,19 @@
         <p class="help is-danger" v-if="labelErrorMessages.detail">[[ labelErrorMessages.detail ]]</p>
         <p class="help is-danger has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.num_bounces}`" v-if="numBounces">Number of sent email bounces: [[ numBounces ]]</p>
 
-        <div class="field has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.delivery_method}`">
-          <label class="label is-small" :for="`id-delivery-method-${pk}`">Delivery method </label>
-          <div class="control">
-            <div class="select is-small">
-              <select
-                name="delivery_method"
-                :id="`id-delivery-method-${pk}`"
-                :value="deliveryMethod"
-                @input="$emit('update:deliveryMethod', $event.target.value)"
-              >
-                <option value="LD">
-                  Local Delivery
-                </option>
-                <option value="AL">
-                  Alias
-                </option>
-                <option value="FW">
-                  Forwarding
-                </option>
-              </select>
-            </div>
+        <div class="field has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.delivery_methods}`">
+          <label class="label is-small">Delivery Methods</label>
+          <div class="content">
+            <p class="help">Delivery methods are managed via the Django admin interface or REST API.</p>
+            <ul class="is-size-7" v-if="deliveryMethods && deliveryMethods.length > 0">
+              <li v-for="dm in deliveryMethods" :key="dm.id" :class="{'has-text-grey-light': !dm.enabled}">
+                <strong>[[ dm.delivery_type_display ]]</strong>
+                <span v-if="dm.config_summary"> - [[ dm.config_summary ]]</span>
+                <span v-if="!dm.enabled" class="tag is-small is-warning ml-2">Disabled</span>
+              </li>
+            </ul>
+            <p class="help is-warning" v-else>No delivery methods configured. Messages will be delivered locally by default.</p>
           </div>
-          <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.delivery_method ]]</p>
         </div>
 
         <div class="field is-grouped" v-bind:class="{ 'has-background-grey-light': !autofileSpam}">
@@ -264,7 +254,7 @@
                 v-model:pk="emailAccountsData.pk{{email_account.pk}}.pk"
                 v-model:url="emailAccountsData.pk{{email_account.pk}}.url"
                 v-model:email-address="emailAccountsData.pk{{email_account.pk}}.email_address"
-                v-model:delivery-method="emailAccountsData.pk{{email_account.pk}}.delivery_method"
+                v-model:delivery-methods="emailAccountsData.pk{{email_account.pk}}.delivery_methods"
                 v-model:autofile-spam="emailAccountsData.pk{{email_account.pk}}.autofile_spam"
                 v-model:spam-delivery-folder="emailAccountsData.pk{{email_account.pk}}.spam_delivery_folder"
                 v-model:spam-score-threshold="emailAccountsData.pk{{email_account.pk}}.spam_score_threshold"
