@@ -132,6 +132,7 @@ export default {
   // event that lets the parent know the values of these have changed.
   //
   emits: [
+    "update:deliveryMethods",
     "update:autofileSpam",
     "update:spamDeliveryFolder",
     "update:spamScoreThreshold",
@@ -167,6 +168,19 @@ export default {
     const emailAccountPassword = ref("");
     const emailAccountPasswordConfirm = ref("");
     const emailAccountPasswordStatus = ref("");
+
+    // Delivery Method management state
+    const deliveryMethodModalTitle = ref("");
+    const deliveryMethodEditing = ref(null); // null for create, object for edit
+    const deliveryMethodType = ref("");
+    const deliveryMethodFormFields = ref([]);
+    const deliveryMethodFormData = ref({});
+    const deliveryMethodError = ref("");
+    const deliveryMethodStatus = ref("");
+    const deliveryMethodSaving = ref(false);
+    const deliveryMethodToDelete = ref(null);
+    const deliveryMethodDeleteError = ref("");
+    const deliveryMethodDeleting = ref(false);
 
     // Messages that appear next to fields (mostly for error messages) For
     // keys/attributes we use the same strings that the server would send us so
@@ -486,6 +500,221 @@ export default {
       }
     };
 
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Delivery Method Management Functions
+    //
+    ////////////////////////////////////////////////////////////////////////
+
+    const openAddDeliveryMethod = function ($event) {
+      deliveryMethodModalTitle.value = "Add Delivery Method";
+      deliveryMethodEditing.value = null;
+      deliveryMethodType.value = "";
+      deliveryMethodFormFields.value = [];
+      deliveryMethodFormData.value = { order: 0, enabled: true };
+      deliveryMethodError.value = "";
+      deliveryMethodStatus.value = "";
+
+      const modal = document.getElementById(
+        `delivery-method-modal-${props.pk}`,
+      );
+      if (modal) {
+        modal.classList.add("is-active");
+      }
+    };
+
+    const openEditDeliveryMethod = function (deliveryMethod) {
+      deliveryMethodModalTitle.value = "Edit Delivery Method";
+      deliveryMethodEditing.value = deliveryMethod;
+      deliveryMethodType.value = deliveryMethod.delivery_type;
+      deliveryMethodError.value = "";
+      deliveryMethodStatus.value = "";
+
+      // Load the form schema and then populate with existing data
+      loadDeliveryMethodForm().then(() => {
+        // Populate form with existing data
+        deliveryMethodFormData.value = {
+          ...deliveryMethod.config,
+          order: deliveryMethod.order,
+          enabled: deliveryMethod.enabled,
+        };
+      });
+
+      const modal = document.getElementById(
+        `delivery-method-modal-${props.pk}`,
+      );
+      if (modal) {
+        modal.classList.add("is-active");
+      }
+    };
+
+    const loadDeliveryMethodForm = async function () {
+      if (!deliveryMethodType.value) {
+        deliveryMethodFormFields.value = [];
+        return;
+      }
+
+      try {
+        const url = new URL(`delivery_methods/form_schema/`, `${props.url}/`);
+        url.searchParams.set("delivery_type", deliveryMethodType.value);
+
+        const res = await fetch(url.href);
+        if (res.ok) {
+          const data = await res.json();
+          deliveryMethodFormFields.value = data.fields;
+          // Initialize form data with default values
+          if (!deliveryMethodEditing.value) {
+            deliveryMethodFormData.value = { order: 0, enabled: true };
+          }
+        } else {
+          const error = await res.json();
+          deliveryMethodError.value =
+            error.detail || "Failed to load form schema";
+        }
+      } catch (e) {
+        deliveryMethodError.value = `Error loading form: ${e.message}`;
+      }
+    };
+
+    const saveDeliveryMethod = async function () {
+      deliveryMethodSaving.value = true;
+      deliveryMethodError.value = "";
+      deliveryMethodStatus.value = "";
+
+      try {
+        // Build config from form data (exclude order and enabled)
+        const config = {};
+        for (const field of deliveryMethodFormFields.value) {
+          if (deliveryMethodFormData.value[field.name] !== undefined) {
+            config[field.name] = deliveryMethodFormData.value[field.name];
+          }
+        }
+
+        const payload = {
+          delivery_type: deliveryMethodType.value,
+          config: config,
+          order: deliveryMethodFormData.value.order || 0,
+          enabled: deliveryMethodFormData.value.enabled !== false,
+        };
+
+        let res;
+        if (deliveryMethodEditing.value) {
+          // Update existing
+          const url = `${props.url}/delivery_methods/${deliveryMethodEditing.value.id}/`;
+          res = await fetch(url, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+            headers: {
+              "Content-type": "application/json; charset=UTF-8",
+            },
+          });
+        } else {
+          // Create new
+          const url = `${props.url}/delivery_methods/`;
+          res = await fetch(url, {
+            method: "POST",
+            body: JSON.stringify(payload),
+            headers: {
+              "Content-type": "application/json; charset=UTF-8",
+            },
+          });
+        }
+
+        if (res.ok) {
+          deliveryMethodStatus.value = deliveryMethodEditing.value
+            ? "Delivery method updated successfully"
+            : "Delivery method created successfully";
+
+          // Wait a moment to show success message
+          await new Promise((r) => setTimeout(r, 1000));
+
+          // Close modal
+          const modal = document.getElementById(
+            `delivery-method-modal-${props.pk}`,
+          );
+          if (modal) {
+            modal.classList.remove("is-active");
+          }
+
+          // Refresh delivery methods
+          await refreshDeliveryMethods();
+        } else {
+          const error = await res.json();
+          if (error.config && typeof error.config === "object") {
+            deliveryMethodError.value = Object.values(error.config).join(", ");
+          } else if (error.detail) {
+            deliveryMethodError.value = error.detail;
+          } else {
+            deliveryMethodError.value = "Failed to save delivery method";
+          }
+        }
+      } catch (e) {
+        deliveryMethodError.value = `Error: ${e.message}`;
+      } finally {
+        deliveryMethodSaving.value = false;
+      }
+    };
+
+    const confirmDeleteDeliveryMethod = function (deliveryMethod) {
+      deliveryMethodToDelete.value = deliveryMethod;
+      deliveryMethodDeleteError.value = "";
+
+      const modal = document.getElementById(
+        `delete-delivery-method-modal-${props.pk}`,
+      );
+      if (modal) {
+        modal.classList.add("is-active");
+      }
+    };
+
+    const deleteDeliveryMethod = async function () {
+      if (!deliveryMethodToDelete.value) return;
+
+      deliveryMethodDeleting.value = true;
+      deliveryMethodDeleteError.value = "";
+
+      try {
+        const url = `${props.url}/delivery_methods/${deliveryMethodToDelete.value.id}/`;
+        const res = await fetch(url, {
+          method: "DELETE",
+        });
+
+        if (res.ok || res.status === 204) {
+          // Close modal
+          const modal = document.getElementById(
+            `delete-delivery-method-modal-${props.pk}`,
+          );
+          if (modal) {
+            modal.classList.remove("is-active");
+          }
+
+          // Refresh delivery methods
+          await refreshDeliveryMethods();
+        } else {
+          const error = await res.json();
+          deliveryMethodDeleteError.value =
+            error.detail || "Failed to delete delivery method";
+        }
+      } catch (e) {
+        deliveryMethodDeleteError.value = `Error: ${e.message}`;
+      } finally {
+        deliveryMethodDeleting.value = false;
+      }
+    };
+
+    const refreshDeliveryMethods = async function () {
+      try {
+        const res = await fetch(props.url);
+        if (res.ok) {
+          const data = await res.json();
+          // Update delivery methods via emit
+          ctx.emit("update:deliveryMethods", data.delivery_methods);
+        }
+      } catch (e) {
+        console.error("Failed to refresh delivery methods:", e);
+      }
+    };
+
     //////////
     //
     // setup code that does stuff goes here (as opposed to variable
@@ -514,6 +743,25 @@ export default {
       emailAccountPasswordStatus,
       checkPassword,
       setPassword,
+      // Delivery Method management
+      deliveryMethodModalTitle,
+      deliveryMethodEditing,
+      deliveryMethodType,
+      deliveryMethodFormFields,
+      deliveryMethodFormData,
+      deliveryMethodError,
+      deliveryMethodStatus,
+      deliveryMethodSaving,
+      deliveryMethodToDelete,
+      deliveryMethodDeleteError,
+      deliveryMethodDeleting,
+      openAddDeliveryMethod,
+      openEditDeliveryMethod,
+      loadDeliveryMethodForm,
+      saveDeliveryMethod,
+      confirmDeleteDeliveryMethod,
+      deleteDeliveryMethod,
+      refreshDeliveryMethods,
       props,
     };
   },
