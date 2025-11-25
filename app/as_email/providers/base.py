@@ -38,7 +38,7 @@ class EmailAccountInfo:
         id: The provider's unique identifier for this account/alias
         email: The full email address
         domain: The domain name
-        enabled: Whether the account is enabled (accepts both 'enabled' and 'is_enabled')
+        enabled: Whether the account is enabled
         name: The mailbox name (local part of email address)
     """
 
@@ -47,11 +47,6 @@ class EmailAccountInfo:
     domain: str
     enabled: bool
     name: str
-
-    @property
-    def is_enabled(self) -> bool:
-        """Alias for enabled to support both naming conventions."""
-        return self.enabled
 
 
 ########################################################################
@@ -286,14 +281,14 @@ class ProviderBackend(ABC):
     #
     @abstractmethod
     def enable_email_account(
-        self, email_account: "EmailAccount", enable: bool = True
+        self, email_account: "EmailAccount", enabled: bool = True
     ) -> None:
         """
         Enable or disable an email account (alias) on the provider's service.
 
         Args:
             email_account: The EmailAccount instance to enable/disable
-            enable: True to enable, False to disable
+            enabled: True to enable, False to disable
         """
         ...
 

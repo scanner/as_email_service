@@ -305,11 +305,13 @@ class DummyProviderBackend(ProviderBackend):
     ####################################################################
     #
     def enable_email_account(
-        self, email_account: "EmailAccount", enable: bool = True
+        self, email_account: "EmailAccount", enabled: bool = True
     ) -> None:
         """Enable or disable an email account in the dummy provider state."""
         if email_account.email_address in self.email_accounts:
-            self.email_accounts[email_account.email_address]["enabled"] = enable
+            self.email_accounts[email_account.email_address][
+                "enabled"
+            ] = enabled
 
     ####################################################################
     #
@@ -338,13 +340,15 @@ class UserFactory(DjangoModelFactory):
     last_name = factory.Faker("first_name")
 
     @post_generation
-    def password(self, create: bool, extracted: Sequence[Any], **kwargs):
+    def password(
+        self: User, create: bool, extracted: Sequence[Any], **kwargs: Any
+    ) -> None:
         password = extracted if extracted else fake.password(length=16)
         self.set_password(password)
         self.save()
 
     class Meta:
-        model = get_user_model()
+        model = User
         django_get_or_create = ("username",)
         skip_postgeneration_save = True
 
@@ -372,8 +376,8 @@ class ServerFactory(DjangoModelFactory):
 
     @post_generation
     def receive_providers(
-        self, create: bool, extracted: Sequence[Any], **kwargs
-    ):
+        self: Server, create: bool, extracted: Sequence[Any], **kwargs: Any
+    ) -> None:
         """
         Add receive_providers to the server. By default, adds the send_provider
         as a receive provider as well.
@@ -406,7 +410,12 @@ class EmailAccountFactory(DjangoModelFactory):
     )
 
     @post_generation
-    def password(self, create: bool, extracted: Sequence[Any], **kwargs):
+    def password(
+        self: EmailAccount,
+        create: bool,
+        extracted: Sequence[Any],
+        **kwargs: Any,
+    ) -> None:
         password = extracted if extracted else "XXX"
         do_save = password != "XXX"
         self.set_password(password, save=do_save)

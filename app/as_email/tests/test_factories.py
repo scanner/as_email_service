@@ -363,7 +363,7 @@ class TestDummyProviderBackend:
             is True
         )
 
-        dummy_provider.enable_email_account(account, enable=False)
+        dummy_provider.enable_email_account(account, enabled=False)
         assert (
             dummy_provider.email_accounts[account.email_address]["enabled"]
             is False

@@ -815,7 +815,7 @@ class TestForwardEmailAPIMethods:
         mock_req = mocker.patch.object(backend.api, "req")
 
         # Call enable_email_account
-        backend.enable_email_account(email_account, enable=True)
+        backend.enable_email_account(email_account, enabled=True)
 
         # Verify API was called with correct data
         mock_req.assert_called_once()

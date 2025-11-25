@@ -1090,14 +1090,14 @@ class ForwardEmailBackend(ProviderBackend):
     def enable_email_account(
         self,
         email_account: "EmailAccount",
-        enable: bool = True,
+        enabled: bool = True,
     ) -> None:
         """
         Enable or disable a domain alias on forwardemail.net.
 
         Args:
             email_account: The EmailAccount whose alias to enable/disable
-            enable: True to enable, False to disable
+            enabled: True to enable, False to disable
             redis: Optional Redis client to reuse
         """
         # Get domain and alias IDs
@@ -1113,9 +1113,9 @@ class ForwardEmailBackend(ProviderBackend):
             )
             return
 
-        # Update the alias is_enabled field
+        # Update the alias enabled field
         #
-        update_data = {"is_enabled": enable}
+        update_data = {"is_enabled": enabled}
         self.api.req(
             HTTPMethod.PUT,
             f"v1/domains/{domain_id}/aliases/{alias_id}",
@@ -1124,7 +1124,7 @@ class ForwardEmailBackend(ProviderBackend):
 
         logger.info(
             "%s forwardemail.net alias for %s (ID: %s)",
-            "Enabled" if enable else "Disabled",
+            "Enabled" if enabled else "Disabled",
             email_account.email_address,
             alias_id,
         )

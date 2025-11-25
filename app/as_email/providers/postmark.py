@@ -661,7 +661,7 @@ class PostmarkBackend(ProviderBackend):
     ####################################################################
     #
     def enable_email_account(
-        self, email_account: "EmailAccount", is_enabled: bool = True
+        self, email_account: "EmailAccount", enabled: bool = True
     ) -> None:
         """
         Enable or disable an alias on Postmark - NOT YET IMPLEMENTED.
@@ -671,7 +671,7 @@ class PostmarkBackend(ProviderBackend):
 
         Args:
             email_account: The EmailAccount to enable/disable
-            is_enabled: True to enable, False to disable
+            enabled: True to enable, False to disable
         """
         logger.debug(
             "Postmark does not support enable/disable for %s",

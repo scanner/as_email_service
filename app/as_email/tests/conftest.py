@@ -7,10 +7,13 @@ pytest fixtures for our tests
 #
 import email.policy
 import json
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 # 3rd party imports
@@ -18,7 +21,9 @@ from unittest.mock import MagicMock
 import pytest
 import redis
 from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
+from django.conf import LazySettings
 from django.core import mail
+from faker import Faker
 from fakeredis import FakeConnection, FakeServer
 from huey.api import Huey
 from huey.contrib.djhuey import HUEY
@@ -30,6 +35,7 @@ from rest_framework.test import APIClient, RequestsClient
 # Project imports
 #
 import as_email.utils
+from as_email.models import EmailAccount, InactiveEmail, Server
 
 from .factories import (
     DummyProviderBackend,
@@ -55,7 +61,9 @@ register(MessageFilterRuleFactory)
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def use_fakeredis(settings, monkeypatch) -> redis.StrictRedis:
+def use_fakeredis(
+    settings: LazySettings, monkeypatch: pytest.MonkeyPatch
+) -> redis.StrictRedis:
     """
     Set up a single fake redis server and make sure all places that try to
     use redis use this server for the duration of this test.
@@ -76,7 +84,7 @@ def use_fakeredis(settings, monkeypatch) -> redis.StrictRedis:
 
     # Make sure huey uses our fake redis server
     #
-    settings.HUEY["connection"]["connection_pool"] = huey_pool
+    settings.HUEY["connection"]["connection_pool"] = huey_pool  # type: ignore[index]
 
     # And return a redis client talking to the same FakeServer in case some
     # tests need access to the redis instance.
@@ -87,7 +95,7 @@ def use_fakeredis(settings, monkeypatch) -> redis.StrictRedis:
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def huey_immediate_mode(settings) -> Huey:
+def huey_immediate_mode(settings: LazySettings) -> Iterator[Huey]:
     """
     Huey tasks are invoked immediately inline. Cannot think of a case
     where we would not want this to happen automatically while running
@@ -148,7 +156,7 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
 ####################################################################
 #
 @pytest.fixture
-def email_factory(faker):
+def email_factory(faker: Faker) -> Callable[..., EmailMessage]:
     """
     Returns a factory that creates email.message.EmailMessages
 
@@ -159,7 +167,7 @@ def email_factory(faker):
     # TODO: have this factory take kwargs for headers the caller can set in the
     #       generated email.
     #
-    def make_email(**kwargs):
+    def make_email(**kwargs: Any) -> EmailMessage:
         """
         if kwargs for 'subject', 'from' or 'to' are provided use those in
         the message instead of faker generated ones.
@@ -199,7 +207,9 @@ def email_factory(faker):
 ####################################################################
 #
 @pytest.fixture
-def email_account_factory(server_factory, settings, faker):
+def email_account_factory(
+    server_factory: Callable[..., Server], settings: LazySettings, faker: Faker
+) -> Iterator[Callable[..., EmailAccount]]:
     """
     Create EmailAccount instances with proper server setup.
 
@@ -207,7 +217,7 @@ def email_account_factory(server_factory, settings, faker):
     and that the EMAIL_SERVER_TOKENS setting is configured for the server.
     """
 
-    def make_email_account(*args, **kwargs):
+    def make_email_account(*args: Any, **kwargs: Any) -> EmailAccount:
         if "server" not in kwargs:
             kwargs["server"] = server_factory()
 
@@ -228,7 +238,7 @@ def email_account_factory(server_factory, settings, faker):
                     server.domain_name
                 ] = faker.uuid4()
 
-        email_account = EmailAccountFactory(*args, **kwargs)
+        email_account: EmailAccount = EmailAccountFactory(*args, **kwargs)  # type: ignore[assignment]
         return email_account
 
     yield make_email_account
@@ -237,14 +247,14 @@ def email_account_factory(server_factory, settings, faker):
 ####################################################################
 #
 @pytest.fixture
-def inactive_email_factory():
+def inactive_email_factory() -> Iterator[Callable[..., InactiveEmail]]:
     """
     in order to _not_ create and save the object to the db so we can call
     this from async as well as sync tests use the `.build()` method to create
     the object but not save it.
     """
 
-    def make_inactive_email(*args, **kwargs):
+    def make_inactive_email(*args: Any, **kwargs: Any) -> InactiveEmail:
         inactive_email = InactiveEmailFactory.build(*args, **kwargs)
         return inactive_email
 
@@ -254,7 +264,7 @@ def inactive_email_factory():
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def email_spool_dir(settings, tmp_path):
+def email_spool_dir(settings: LazySettings, tmp_path: Path) -> Iterator[Path]:
     """
     We want every test to run with a spool dir that is a fixture (so
     that we do not accidentally forget to set it in a test that uses a
@@ -273,7 +283,7 @@ def email_spool_dir(settings, tmp_path):
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def mailbox_dir(settings, tmp_path):
+def mailbox_dir(settings: LazySettings, tmp_path: Path) -> Iterator[Path]:
     """
     We want every test to run with a MAIL_DIRS that is a fixture (so
     that we do not accidentally forget to set it in a test that uses a
@@ -332,20 +342,22 @@ def aiosmtp_session(faker) -> SMTPSession:
     XXX We should make this return a callable and let the user pass in things
         like the peer.
     """
-    sess = SMTPSession(None)
-    sess.peer = (faker.ipv4(), faker.pyint(0, 65535))
+    sess = SMTPSession(None)  # type: ignore[arg-type]
+    sess.peer = (faker.ipv4(), faker.pyint(0, 65535))  # type: ignore[assignment]
     return sess
 
 
 ####################################################################
 #
 @pytest.fixture
-def aiosmtp_envelope(email_factory):
+def aiosmtp_envelope(
+    email_factory: Callable[..., EmailMessage],
+) -> Callable[..., SMTPEnvelope]:
     """
     Similar to (and uses) email_factory to create a SMTPEnvelope.
     """
 
-    def make_envelope(**kwargs):
+    def make_envelope(**kwargs: Any) -> SMTPEnvelope:
         """
         if kwargs for 'subject', 'from' or 'to' are provided use those in
         the message instead of faker generated ones. If they are `None` that
@@ -379,15 +391,22 @@ def aiosmtp_envelope(email_factory):
 #
 @pytest.fixture
 def postmark_request_bounce(
-    postmark_request, email_account_factory, email_factory, faker
-):
+    postmark_request: Any,
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    faker: Faker,
+) -> Callable[..., None]:
     """
     This sets up a fixture that will allow us to use the postmarker client
     for getting information about a bounce that is consistent with the
     provided EmailAccount.
     """
 
-    def setup_responses(email_account=None, email_message=None, **kwargs):
+    def setup_responses(
+        email_account: EmailAccount | None = None,
+        email_message: EmailMessage | None = None,
+        **kwargs: Any,
+    ) -> None:
         """
         The fixture returns this function which sets up a side effect on
         the postmark_client mock such that a generated bounce detail is set
@@ -467,7 +486,9 @@ def postmark_request_bounce(
             f"https://api.postmarkapp.com/bounces/{response['ID']}": response,
         }
 
-        def postmarker_requests(method, url, **kwargs):
+        def postmarker_requests(
+            method: str, url: str, **kwargs: Any
+        ) -> Response:
             """
             The `postmark_request` fixture substitutes a mock object for
             the `requests.Session().get` function. What we are doing here is
@@ -488,7 +509,7 @@ def postmark_request_bounce(
 ####################################################################
 #
 @pytest.fixture
-def django_outbox():
+def django_outbox() -> Iterator[list[Any]]:
     """
     Makes sure that the django outbox is preserved, emptied, and restored
     where it is used.

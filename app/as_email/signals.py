@@ -30,7 +30,7 @@ from .tasks import (
     provider_create_alias,
     provider_create_domain,
     provider_delete_alias,
-    provider_enable_all_aliases,
+    provider_enable_all_aliases_for_server,
 )
 
 User = get_user_model()
@@ -298,7 +298,7 @@ def handle_receive_providers_changed(
             pipeline = provider_create_domain.s(
                 instance.pk, provider.backend_name
             ).then(
-                provider_enable_all_aliases,
+                provider_enable_all_aliases_for_server,
                 instance.pk,
                 provider.backend_name,
                 True,
@@ -310,6 +310,6 @@ def handle_receive_providers_changed(
         for provider_pk in pk_set:
             provider = Provider.objects.get(pk=provider_pk)
             # Disable all aliases for this server on the provider
-            provider_enable_all_aliases(
-                instance.pk, provider.backend_name, is_enabled=False
+            provider_enable_all_aliases_for_server(
+                instance.pk, provider.backend_name, enabled=False
             )

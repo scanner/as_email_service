@@ -798,29 +798,36 @@ def provider_delete_alias(
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_enable_all_aliases(
-    server_pk: int, provider_name: str, is_enabled: bool
+def provider_enable_all_aliases_for_server(
+    server_pk: int, provider_name: str, enabled: bool
 ) -> None:
     """
-    Enable or disable all domain aliases for a server on the specified provider.
+    Enable or disable all domain aliases for a server on the specified
+    provider.
 
     This task fetches the current state of all aliases from the provider,
     compares with local EmailAccounts, and only updates aliases that need
     changing. It will also create any missing aliases.
 
     This task is triggered when:
-    - Provider is added to Server's receive_providers (is_enabled=True)
-    - Provider is removed from Server's receive_providers (is_enabled=False)
+    - Provider is added to Server's receive_providers (enabled=True)
+    - Provider is removed from Server's receive_providers (enabled=False)
 
     Args:
         server_pk: Primary key of the Server instance
-        provider_name: Name of the provider backend (e.g., 'forwardemail', 'postmark')
-        is_enabled: True to enable aliases, False to disable them
+        provider_name: Name of the provider backend (e.g., 'forwardemail',
+                       'postmark')
+        enabled: True to enable aliases, False to disable them
     """
     server = Server.objects.get(pk=server_pk)
     backend = get_backend(provider_name)
 
     # Get all EmailAccounts for this server
+    #
+    # NOTE: This obviously does not scale if you have thousands and thousands
+    # of email accounts. We likely need to do both fetches from django and from
+    # the provider in parallel using generators.
+    #
     email_accounts = EmailAccount.objects.filter(server=server)
     local_addresses = {ea.email_address: ea for ea in email_accounts}
 
@@ -836,11 +843,16 @@ def provider_enable_all_aliases(
         )
         raise
 
-    # Build a map of remote aliases by email address
-    remote_map = {}
-    for alias in remote_aliases:
-        # Extract email address from EmailAccountInfo object
-        remote_map[alias.email] = alias
+    from pprint import pprint
+
+    print("****** local addresses:")
+    pprint(local_addresses)
+    print("****** remote aliases:")
+    pprint(remote_aliases)
+
+    # Build a map of remote aliases by their email address
+    #
+    remote_map = {alias.email: alias for alias in remote_aliases}
 
     created_count = 0
     updated_count = 0
@@ -860,19 +872,17 @@ def provider_enable_all_aliases(
                     provider_name,
                 )
             else:
-                # Alias exists, check if is_enabled needs updating
+                # Alias exists, check if enabled needs updating
                 remote_alias = remote_map[email_addr]
                 remote_enabled = remote_alias.enabled
 
-                if remote_enabled != is_enabled:
-                    # Need to update is_enabled flag
-                    backend.enable_email_account(
-                        email_account, is_enabled=is_enabled
-                    )
+                if remote_enabled != enabled:
+                    # Need to update enabled flag
+                    backend.enable_email_account(email_account, enabled=enabled)
                     updated_count += 1
                     logger.debug(
-                        "Updated is_enabled=%s for alias '%s' on provider '%s'",
-                        is_enabled,
+                        "Updated enabled=%s for alias '%s' on provider '%s'",
+                        enabled,
                         email_addr,
                         provider_name,
                     )
@@ -891,14 +901,14 @@ def provider_enable_all_aliases(
 
     logger.info(
         "Bulk alias sync for server '%s' on provider '%s': "
-        "%d created, %d updated, %d skipped, %d errors (target is_enabled=%s)",
+        "%d created, %d updated, %d skipped, %d errors (target enabled=%s)",
         server.domain_name,
         provider_name,
         created_count,
         updated_count,
         skipped_count,
         error_count,
-        is_enabled,
+        enabled,
     )
 
 
@@ -907,9 +917,9 @@ def provider_enable_all_aliases(
 @db_periodic_task(crontab(minute="0"))
 def provider_sync_aliases() -> None:
     """
-    Hourly task to sync alias is_enabled state across all configured providers.
+    Hourly task to sync alias enabled state across all configured providers.
 
-    This ensures that the is_enabled flag for all aliases on each provider
+    This ensures that the enabled flag for all aliases on each provider
     matches the expected state based on whether that provider is configured
     as a receive provider for each server.
     """
@@ -932,9 +942,9 @@ def provider_sync_aliases() -> None:
         for server in servers_with_provider:
             try:
                 # Use the same logic as provider_enable_all_aliases
-                # to sync all aliases for this server (target: is_enabled=True)
-                provider_enable_all_aliases(
-                    server.pk, provider.backend_name, is_enabled=True
+                # to sync all aliases for this server (target: enabled=True)
+                provider_enable_all_aliases_for_server(
+                    server.pk, provider.backend_name, enabled=True
                 )
             except Exception as e:
                 logger.exception(

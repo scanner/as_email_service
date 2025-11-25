@@ -6,13 +6,20 @@ Test the huey tasks
 # system imports
 #
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
+from email.message import EmailMessage
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
 import pytest
+from _pytest.logging import LogCaptureFixture
 from dirty_equals import Contains
+from django.conf import LazySettings
+from faker import Faker
 from pytest_mock import MockerFixture
 
 # Project imports
@@ -29,7 +36,7 @@ from ..tasks import (
     provider_create_alias,
     provider_create_domain,
     provider_delete_alias,
-    provider_enable_all_aliases,
+    provider_enable_all_aliases_for_server,
     provider_report_unused_domains,
     provider_sync_aliases,
     retry_failed_incoming_email,
@@ -45,41 +52,13 @@ from .test_deliver import assert_email_equal
 pytestmark = pytest.mark.django_db
 
 
-# ####################################################################
-# #
-# @pytest.fixture(autouse=True)
-# def mock_provider_tasks(mocker: MockerFixture) -> dict[str, MagicMock]:
-#     """
-#     Disable signal handlers that trigger provider tasks during model creation.
-
-#     For test_tasks.py, we disable the signal handlers during test setup so they
-#     don't trigger tasks when creating test objects, while allowing tests to call
-#     tasks directly.
-#     """
-#     # Instead of mocking HUEY or tasks, disable the signal handlers
-#     # that trigger tasks during model creation
-#     mock_create_provider_aliases = mocker.patch(
-#         "as_email.signals.create_provider_aliases"
-#     )
-#     mock_handle_receive_providers_changed = mocker.patch(
-#         "as_email.signals.handle_receive_providers_changed"
-#     )
-#     mock_delete_provider_aliases = mocker.patch(
-#         "as_email.signals.delete_provider_aliases"
-#     )
-
-#     return {
-#         "create_provider_aliases": mock_create_provider_aliases,
-#         "handle_receive_providers_changed": mock_handle_receive_providers_changed,
-#         "delete_provider_aliases": mock_delete_provider_aliases,
-#     }
-
-
 ####################################################################
 #
 def test_dispatch_spool_outgoing_email(
-    email_account_factory, email_factory, smtp
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    smtp: MagicMock,
+) -> None:
     """
     Given a message spooled in outgoing spool directory
     When dispatch_spooled_outgoing_email task runs
@@ -91,6 +70,7 @@ def test_dispatch_spool_outgoing_email(
     msg = email_factory(msg_from=ea.email_address)
     rcpt_tos = [msg["To"]]
     from_addr = msg["From"]
+    assert server.outgoing_spool_dir is not None
     spool_message(server.outgoing_spool_dir, msg.as_bytes())
     res = dispatch_spooled_outgoing_email()
     res()
@@ -104,10 +84,10 @@ def test_dispatch_spool_outgoing_email(
 ####################################################################
 #
 def test_dispatch_incoming_email(
-    email_account_factory,
-    email_factory,
-    tmp_path,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    tmp_path: Path,
+) -> None:
     """
     Given a spooled incoming email in JSON format
     When dispatch_incoming_email task runs
@@ -127,7 +107,7 @@ def test_dispatch_incoming_email(
     #
     mh = ea.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get("1")
     assert_email_equal(msg, stored_msg)
 
 
@@ -135,11 +115,11 @@ def test_dispatch_incoming_email(
 #
 def test_dispatch_incoming_mail_failure(
     mocker: MockerFixture,
-    email_spool_dir,
-    email_account_factory,
-    email_factory,
-    settings,
-):
+    email_spool_dir: Path,
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    settings: LazySettings,
+) -> None:
     """
     Given deliver_message raises an exception
     When dispatch_incoming_email task runs
@@ -171,10 +151,10 @@ def test_dispatch_incoming_mail_failure(
 ####################################################################
 #
 def test_retry_failed_incoming_email_failure(
-    caplog,
-    email_spool_dir,
-    email_factory,
-    settings,
+    caplog: LogCaptureFixture,
+    email_spool_dir: Path,
+    email_factory: Callable[..., EmailMessage],
+    settings: LazySettings,
 ) -> None:
     """
     Given multiple failed messages without valid EmailAccounts
@@ -262,7 +242,9 @@ def test_retry_failed_incoming_email(
 
 ####################################################################
 #
-def test_decrement_num_bounces_counter(email_account_factory):
+def test_decrement_num_bounces_counter(
+    email_account_factory: Callable[..., EmailAccount],
+) -> None:
     """
     Given email accounts with varying bounce counts
     When decrement_num_bounces_counter task runs
@@ -338,13 +320,13 @@ def test_decrement_num_bounces_counter(email_account_factory):
 ####################################################################
 #
 def test_too_many_bounces_postmark(
-    email_account_factory,
-    email_factory,
-    postmark_request,
-    postmark_request_bounce,
-    faker,
-    django_outbox,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    postmark_request: Any,
+    postmark_request_bounce: Callable[..., None],
+    faker: Faker,
+    django_outbox: list[Any],
+) -> None:
     """
     Given an account near bounce limit, and the provider is 'postmark'
     When process_email_bounce increments bounces past limit
@@ -407,13 +389,13 @@ def test_too_many_bounces_postmark(
 ####################################################################
 #
 def test_bounce_inactive(
-    email_account_factory,
-    email_factory,
-    postmark_request,
-    postmark_request_bounce,
-    faker,
-    django_outbox,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    postmark_request: Any,
+    postmark_request_bounce: Callable[..., None],
+    faker: Faker,
+    django_outbox: list[Any],
+) -> None:
     """
     Given a bounce marked as inactive by Postmark
     When process_email_bounce task runs
@@ -466,12 +448,12 @@ def test_bounce_inactive(
 ####################################################################
 #
 def test_transient_bounce_notifications(
-    email_account_factory,
-    email_factory,
-    postmark_request,
-    postmark_request_bounce,
-    faker,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    postmark_request: Any,
+    postmark_request_bounce: Callable[..., None],
+    faker: Faker,
+) -> None:
     """
     Given a transient bounce notification
     When process_email_bounce task runs
@@ -516,13 +498,13 @@ def test_transient_bounce_notifications(
 ####################################################################
 #
 def test_bounce_to_forwarded_to_deactivates_emailaccount(
-    email_account_factory,
-    email_factory,
-    postmark_request,
-    postmark_request_bounce,
-    faker,
-    django_outbox,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    postmark_request: Any,
+    postmark_request_bounce: Callable[..., None],
+    faker: Faker,
+    django_outbox: list[Any],
+) -> None:
     """
     Given an account with forward_to that generates hard bounce
     When process_email_bounce task runs
@@ -580,10 +562,10 @@ def test_bounce_to_forwarded_to_deactivates_emailaccount(
 ####################################################################
 #
 def test_process_email_spam(
-    email_account_factory,
-    email_factory,
-    faker,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    faker: Faker,
+) -> None:
     """
     Given a spam complaint notification
     When process_email_spam task runs
@@ -628,11 +610,11 @@ def test_process_email_spam(
 ####################################################################
 #
 def test_process_email_spam_too_many_bounces(
-    email_account_factory,
-    email_factory,
-    django_outbox,
-    faker,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    django_outbox: list[Any],
+    faker: Faker,
+) -> None:
     """
     Given an account near bounce limit with spam complaints
     When process_email_spam increments past limit
@@ -696,11 +678,11 @@ def test_process_email_spam_too_many_bounces(
 ####################################################################
 #
 def test_process_email_spam_forward_to(
-    email_account_factory,
-    email_factory,
-    django_outbox,
-    faker,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    django_outbox: list[Any],
+    faker: Faker,
+) -> None:
     """
     Given an account forwarding to address marked as spam
     When process_email_spam task runs
@@ -770,10 +752,10 @@ def test_process_email_spam_forward_to(
 ####################################################################
 #
 def test_process_spam_invalid_typecode(
-    email_account_factory,
-    email_factory,
-    faker,
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    faker: Faker,
+) -> None:
     """
     Given a spam complaint with invalid TypeCode
     When process_email_spam task runs
@@ -818,8 +800,10 @@ def test_process_spam_invalid_typecode(
 ####################################################################
 #
 def test_delete_email_account_removes_pwfile_entry(
-    settings, email_account_factory, faker
-):
+    settings: LazySettings,
+    email_account_factory: Callable[..., EmailAccount],
+    faker: Faker,
+) -> None:
     """
     Given an email account exists in pwfile
     When the account is deleted
@@ -845,8 +829,10 @@ def test_delete_email_account_removes_pwfile_entry(
 ####################################################################
 #
 def test_check_update_pwfile_for_emailaccount_creates_new_entry(
-    settings, email_account_factory, faker
-):
+    settings: LazySettings,
+    email_account_factory: Callable[..., EmailAccount],
+    faker: Faker,
+) -> None:
     """
     Given a new email account with password
     When the account is saved
@@ -862,6 +848,7 @@ def test_check_update_pwfile_for_emailaccount_creates_new_entry(
     assert accounts[ea.email_address].pw_hash == ea.password
 
     # Verify mail_dir is relative to EXT_PW_FILE parent
+    assert ea.mail_dir is not None
     expected_mail_dir = Path(ea.mail_dir).relative_to(
         settings.EXT_PW_FILE.parent
     )
@@ -871,8 +858,10 @@ def test_check_update_pwfile_for_emailaccount_creates_new_entry(
 ####################################################################
 #
 def test_check_update_pwfile_for_emailaccount_updates_password(
-    settings, email_account_factory, faker
-):
+    settings: LazySettings,
+    email_account_factory: Callable[..., EmailAccount],
+    faker: Faker,
+) -> None:
     """
     Given an email account with password in pwfile
     When the password is changed and saved
@@ -900,8 +889,11 @@ def test_check_update_pwfile_for_emailaccount_updates_password(
 ####################################################################
 #
 def test_check_update_pwfile_for_emailaccount_updates_maildir(
-    settings, email_account_factory, faker, tmp_path
-):
+    settings: LazySettings,
+    email_account_factory: Callable[..., EmailAccount],
+    faker: Faker,
+    tmp_path: Path,
+) -> None:
     """
     Given an email account with password in pwfile
     When the mail_dir is changed and task is invoked
@@ -937,8 +929,10 @@ def test_check_update_pwfile_for_emailaccount_updates_maildir(
 ####################################################################
 #
 def test_check_update_pwfile_for_emailaccount_no_change(
-    settings, email_account_factory, mocker
-):
+    settings: LazySettings,
+    email_account_factory: Callable[..., EmailAccount],
+    mocker: MockerFixture,
+) -> None:
     """
     Given an email account with no changes
     When check_update_pwfile_for_emailaccount is invoked
@@ -1040,31 +1034,28 @@ class TestProviderCreateAlias:
     ####################################################################
     #
     def test_create_alias_success(
-        self, mocker: MockerFixture, email_account_factory, provider_factory
+        self,
+        mocker: MockerFixture,
+        email_account_factory,
+        server_factory,
+        dummy_provider: DummyProviderBackend,
     ) -> None:
         """
-        Given an email account
+        Given an email account and the dummy provider
         When provider_create_alias is called
         Then the backend's create_update_email_account method should be called
         """
-        provider = provider_factory(backend_name="forwardemail")
-        email_account = email_account_factory()
-        email_account.server.receive_providers.add(provider)
+        server = server_factory(send_provider=None, receive_providers=[])
+        email_account = email_account_factory(server=server)
 
-        # Mock get_backend
-        mock_backend = mocker.Mock()
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
+        res = provider_create_alias(
+            email_account.pk, dummy_provider.PROVIDER_NAME
         )
-
-        res = provider_create_alias(email_account.pk, provider.backend_name)
         res()
 
         # Verify backend.create_update_email_account was called
-        mock_backend.create_update_email_account.assert_called_once_with(
-            email_account
-        )
+        #
+        assert email_account.email_address in dummy_provider.email_accounts
 
     ####################################################################
     #
@@ -1072,7 +1063,9 @@ class TestProviderCreateAlias:
         self,
         mocker: MockerFixture,
         email_account_factory,
+        server_factory,
         provider_factory,
+        dummy_provider: DummyProviderBackend,
         caplog,
     ) -> None:
         """
@@ -1080,25 +1073,25 @@ class TestProviderCreateAlias:
         When provider_create_alias is called
         Then the exception should be logged and re-raised
         """
-        provider = provider_factory(backend_name="forwardemail")
-        email_account = email_account_factory()
-        email_account.server.receive_providers.add(provider)
+        server = server_factory(send_provider=None, receive_providers=[])
+        email_account = email_account_factory(server=server)
 
         # Mock get_backend to raise exception
-        mock_backend = mocker.Mock()
-        mock_backend.create_update_email_account.side_effect = Exception(
-            "API error"
-        )
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
+        # Mock the dummy provider's `create_domain` method to raise an
+        # exception.
+        #
+        mocker.patch.object(
+            dummy_provider,
+            "create_update_email_account",
+            side_effect=Exception("API error"),
         )
 
-        res = provider_create_alias(email_account.pk, provider.backend_name)
+        res = provider_create_alias(
+            email_account.pk, dummy_provider.PROVIDER_NAME
+        )
         with pytest.raises(Exception, match="API error"):
             res()
 
-        # Verify error was logged
         assert "Failed to create/update alias" in caplog.text
 
 
@@ -1111,36 +1104,39 @@ class TestProviderDeleteAlias:
     ####################################################################
     #
     def test_delete_alias_success(
-        self, mocker: MockerFixture, email_account_factory, provider_factory
+        self,
+        mocker: MockerFixture,
+        email_account_factory,
+        server_factory,
+        dummy_provider: DummyProviderBackend,
     ) -> None:
         """
         Given an email address and domain
         When provider_delete_alias is called
         Then the backend's delete_email_account_by_address should be called
         """
-        provider = provider_factory(backend_name="forwardemail")
-        email_account = email_account_factory()
-        server = email_account.server
-        server.receive_providers.add(provider)
-
-        # Mock get_backend
-        mock_backend = mocker.Mock()
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
-        )
+        # By creating a default server it will have the dummy provider as its
+        # receiver and sender methods.  When creating the email account this
+        # will cause it to call the dummy provider backend and create the email
+        # account on the dummy provider backend. This way, when we delete the
+        # email account by address it should no longer exist in the dummy
+        # provider backend.
+        #
+        server = server_factory()
+        email_account = email_account_factory(server=server)
+        assert email_account.email_address in dummy_provider.email_accounts
 
         res = provider_delete_alias(
             email_account.email_address,
             server.domain_name,
-            provider.backend_name,
+            dummy_provider.PROVIDER_NAME,
         )
         res()
 
-        # Verify backend.delete_email_account_by_address was called
-        mock_backend.delete_email_account_by_address.assert_called_once_with(
-            email_account.email_address, server
-        )
+        # and the email account should no longer exist in the dummy provider
+        # backend.
+        #
+        assert email_account.email_address not in dummy_provider.email_accounts
 
     ####################################################################
     #
@@ -1152,15 +1148,7 @@ class TestProviderDeleteAlias:
         When provider_delete_alias is called
         Then a warning should be logged and no exception raised
         """
-        provider = provider_factory(backend_name="forwardemail")
-
-        # Mock get_backend
-        mock_backend = mocker.Mock()
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
-        )
-
+        provider = provider_factory()
         email_address = faker.email()
         domain_name = faker.domain_name()
 
@@ -1171,8 +1159,6 @@ class TestProviderDeleteAlias:
 
         # Verify warning was logged
         assert "server" in caplog.text and "no longer exists" in caplog.text
-        # Verify backend was not called
-        mock_backend.delete_email_account_by_address.assert_not_called()
 
     ####################################################################
     #
@@ -1181,6 +1167,8 @@ class TestProviderDeleteAlias:
         mocker: MockerFixture,
         email_account_factory,
         provider_factory,
+        server_factory,
+        dummy_provider: DummyProviderBackend,
         caplog,
     ) -> None:
         """
@@ -1188,30 +1176,27 @@ class TestProviderDeleteAlias:
         When provider_delete_alias is called
         Then the exception should be logged and re-raised
         """
-        provider = provider_factory(backend_name="forwardemail")
-        email_account = email_account_factory()
-        server = email_account.server
-        server.receive_providers.add(provider)
+        server = server_factory(send_provider=None, receive_providers=[])
+        email_account = email_account_factory(server=server)
 
         # Mock get_backend to raise exception
-        mock_backend = mocker.Mock()
-        mock_backend.delete_email_account_by_address.side_effect = Exception(
-            "API error"
-        )
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
+        # Mock the dummy provider's `create_domain` method to raise an
+        # exception.
+        #
+        mocker.patch.object(
+            dummy_provider,
+            "delete_email_account_by_address",
+            side_effect=Exception("API error"),
         )
 
         res = provider_delete_alias(
             email_account.email_address,
             server.domain_name,
-            provider.backend_name,
+            dummy_provider.PROVIDER_NAME,
         )
         with pytest.raises(Exception, match="API error"):
             res()
 
-        # Verify error was logged
         assert "Failed to delete alias" in caplog.text
 
 
@@ -1219,7 +1204,7 @@ class TestProviderDeleteAlias:
 ########################################################################
 #
 class TestProviderEnableAllAliases:
-    """Tests for provider_enable_all_aliases task."""
+    """Tests for provider_enable_all_aliases_for_server task."""
 
     ####################################################################
     #
@@ -1229,37 +1214,31 @@ class TestProviderEnableAllAliases:
         server_factory,
         email_account_factory,
         provider_factory,
+        dummy_provider: DummyProviderBackend,
     ) -> None:
         """
         Given a server with email accounts but missing aliases on provider
-        When provider_enable_all_aliases is called
+        When provider_enable_all_aliases_for_server is called
         Then missing aliases should be created
         """
-        provider = provider_factory(backend_name="forwardemail")
-        server = server_factory()
-        server.receive_providers.add(provider)
-
+        server = server_factory(send_provider=None, receive_providers=[])
         ea1 = email_account_factory(server=server)
         ea2 = email_account_factory(server=server)
+        email_accounts = sorted((ea1, ea2), key=lambda x: x.email_address)
 
-        # Mock backend to return empty list (no aliases exist on provider)
-        mock_backend = mocker.Mock()
-        mock_backend.list_email_accounts.return_value = []
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
+        res = provider_enable_all_aliases_for_server(
+            server.pk,
+            dummy_provider.PROVIDER_NAME,
+            enabled=True,
         )
+        res()
 
-        provider_enable_all_aliases(
-            server.pk, provider.backend_name, is_enabled=True
-        )
+        backend_email_accounts = dummy_provider.list_email_accounts(server)
+        assert len(backend_email_accounts) == 2
+        backend_email_accounts.sort(key=lambda x: x.email)
 
-        # Verify both aliases were created
-        assert mock_backend.create_email_account.call_count == 2
-        # Check the calls included both email accounts
-        calls = mock_backend.create_email_account.call_args_list
-        created_emails = {call[0][0].email_address for call in calls}
-        assert created_emails == {ea1.email_address, ea2.email_address}
+        for a, b in zip(email_accounts, backend_email_accounts):
+            assert a.email_address == b.email
 
     ####################################################################
     #
@@ -1268,46 +1247,41 @@ class TestProviderEnableAllAliases:
         mocker: MockerFixture,
         server_factory,
         email_account_factory,
-        provider_factory,
+        dummy_provider: DummyProviderBackend,
     ) -> None:
         """
         Given aliases that exist but have wrong is_enabled state
-        When provider_enable_all_aliases is called
+        When provider_enable_all_aliases_for_server is called
         Then aliases should be updated
         """
-        provider = provider_factory(backend_name="forwardemail")
         server = server_factory()
-        server.receive_providers.add(provider)
 
-        ea1 = email_account_factory(server=server)
-        mailbox_name = ea1.email_address.split("@")[0]
-
-        # Mock backend to return alias that is disabled
-        mock_backend = mocker.Mock()
-        mock_backend.list_email_accounts.return_value = [
-            EmailAccountInfo(
-                id=f"dummy-{mailbox_name}",
-                email=ea1.email_address,
-                domain=server.domain_name,
-                enabled=False,
-                name=mailbox_name,
-            )
+        # Create the email accounts, since we did not specify providers when
+        # creating the server via the factory it used the dummy backend. By
+        # creating these email accounts they will be created in the provider
+        # backend (and enabled)
+        #
+        email_accounts = [
+            email_account_factory(server=server) for _ in range(3)
         ]
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
-        )
+        for ea in email_accounts:
+            dummy_provider.enable_email_account(ea, enabled=False)
 
-        res = provider_enable_all_aliases(
-            server.pk, provider.backend_name, is_enabled=True
+        # To make sure they got disabled check the backend..
+        #
+        for ea in dummy_provider.list_email_accounts(server):
+            assert ea.enabled is False
+
+        res = provider_enable_all_aliases_for_server(
+            server.pk, dummy_provider.PROVIDER_NAME, enabled=True
         )
         res()
 
-        # Verify alias was updated, not created
-        mock_backend.create_update_email_account.assert_not_called()
-        mock_backend.enable_email_account.assert_called_once_with(
-            ea1, is_enabled=True
-        )
+        # Go through each email account, and check its state. They should all
+        # be enabled now.
+        #
+        for ea in dummy_provider.list_email_accounts(server):
+            assert ea.enabled is True
 
     ####################################################################
     #
@@ -1320,9 +1294,9 @@ class TestProviderEnableAllAliases:
     ) -> None:
         """
         Given aliases already in correct is_enabled state When
-        provider_enable_all_aliases is called Then aliases should be skipped
+        provider_enable_all_aliases_for_server is called Then aliases should be skipped
         """
-        provider = provider_factory(backend_name="forwardemail")
+        provider = provider_factory(backend_name="dummy")
         server = server_factory()
         server.receive_providers.add(provider)
 
@@ -1345,8 +1319,8 @@ class TestProviderEnableAllAliases:
             return_value=mock_backend,
         )
 
-        res = provider_enable_all_aliases(
-            server.pk, provider.backend_name, is_enabled=True
+        res = provider_enable_all_aliases_for_server(
+            server.pk, provider.backend_name, enabled=True
         )
         res()
 
@@ -1365,10 +1339,10 @@ class TestProviderEnableAllAliases:
     ) -> None:
         """
         Given a mix of enabled, disabled, and missing email accounts from the backend
-        When `provider_enable_all_aliases` is called
+        When `provider_enable_all_aliases_for_server` is called
         Then disabled accounts should be enabled, missing accounts created
         """
-        provider = provider_factory(backend_name="forwardemail")
+        provider = provider_factory(backend_name="dummy")
         server = server_factory()
         server.receive_providers.add(provider)
 
@@ -1409,8 +1383,8 @@ class TestProviderEnableAllAliases:
         # Call the huey task. Remember in tests all huey tasks execute in
         # immediate mode.
         #
-        res = provider_enable_all_aliases(
-            server.pk, provider.backend_name, is_enabled=True
+        res = provider_enable_all_aliases_for_server(
+            server.pk, provider.backend_name, enabled=True
         )
         res()
 
@@ -1419,7 +1393,7 @@ class TestProviderEnableAllAliases:
         mock_backend.create_email_account.assert_called_once_with(ea1)
         # ea2 should be enabled (in backend list but wrong state)
         mock_backend.enable_email_account.assert_called_once_with(
-            ea2, is_enabled=True
+            ea2, enabled=True
         )
         # ea3 should not be touched (already in correct state)
 
@@ -1435,73 +1409,56 @@ class TestProviderSyncAliases:
     def test_sync_aliases_processes_all_providers(
         self,
         mocker: MockerFixture,
+        dummy_provider: DummyProviderBackend,
         server_factory,
         email_account_factory,
         provider_factory,
         requests_mock,
     ) -> None:
         """
-        Given multiple providers with servers
+        Given multiple providers with multiple servers
         When provider_sync_aliases is called
-        Then provider_enable_all_aliases should be called for each server
+        Then provider_enable_all_aliases_for_server should be called for all servers
         """
+        provider1 = provider_factory(backend_name="dummy")
+        provider2 = provider_factory(backend_name="dummy")
 
-        # Mock ForwardEmail API responses
-        requests_mock.get(
-            "https://api.forwardemail.net/v1/domains",
-            json=[],
-            status_code=200,
+        server1 = server_factory(receive_providers=[provider1])
+        server2 = server_factory(receive_providers=[provider1])
+        server3 = server_factory(receive_providers=[provider2])
+        server4 = server_factory(receive_providers=[provider2])
+
+        # We actually do not need any email address because we are going to
+        # mock the underlying function `provider_enable_all_aliases_for_server_for_server`
+        # and see that it is called. Testing _that_ task is a separate test
+        # from this one.
+        #
+        for server in (server1, server2, server3, server4):
+            email_account_factory(server=server)
+            email_account_factory(server=server)
+
+        # mock the `provider_enable_all_alises` task that will be called once
+        # for each server. We are doing it after the above factories because
+        # they will also call this task when setting up the intial aliases.
+        #
+        provider_enable_all_aliases_for_server_mock = mocker.patch(
+            "as_email.tasks.provider_enable_all_aliases_for_server"
         )
-        requests_mock.post(
-            "https://api.forwardemail.net/v1/domains",
-            json={"name": "test.example.com", "id": "domain123"},
-            status_code=200,
-        )
-        requests_mock.get(
-            "https://api.forwardemail.net/v1/domains/domain123/aliases",
-            json=[],
-            status_code=200,
-        )
-
-        provider1 = provider_factory(backend_name="forwardemail")
-        provider2 = provider_factory(
-            backend_name="postmark", name="Postmark Provider"
-        )
-
-        server1 = server_factory()
-        server1.receive_providers.add(provider1)
-
-        server2 = server_factory()
-        server2.receive_providers.add(provider2)
-
-        email_account_factory(server=server1)
-        email_account_factory(server=server2)
-
-        # Mock get_backend
-        mock_backend = mocker.Mock()
-        mock_backend.list_email_accounts.return_value = []
-        mocker.patch(
-            "as_email.tasks.get_backend",
-            return_value=mock_backend,
-        )
-
-        # Mock provider_enable_all_aliases to track calls and prevent execution
-        mock_enable_fn = mocker.Mock(return_value=None)
-        mocker.patch(
-            "as_email.tasks.provider_enable_all_aliases",
-            side_effect=mock_enable_fn,
-        )
-
-        # Reset mock to clear calls from setup (domain creation, etc.)
-        mock_enable_fn.reset_mock()
-
         res = provider_sync_aliases()
         res()
 
-        # Verify provider_enable_all_aliases was called for each server
-        # Due to signal handlers and provider setup, may be called more than once per server
-        # so we check it was called at least twice (once for each server minimum)
-        assert mock_enable_fn.call_count >= 2
+        # Verify provider_enable_all_aliases_for_server was called once for each server.
+        #
+        assert provider_enable_all_aliases_for_server_mock.call_count == 4
+
+        # Verify it was called with each server exactly once
+        #
+        called_server_ids = {
+            call[0][0]
+            for call in provider_enable_all_aliases_for_server_mock.call_args_list
+        }
+        expected_server_ids = {server1.pk, server2.pk, server3.pk, server4.pk}
+        assert called_server_ids == expected_server_ids
 
     ####################################################################
     #
@@ -1532,10 +1489,10 @@ class TestProviderSyncAliases:
             side_effect=get_backend_side_effect,
         )
 
-        # Mock provider_enable_all_aliases
+        # Mock provider_enable_all_aliases_for_server
         mock_enable_task = mocker.Mock()
         mocker.patch(
-            "as_email.tasks.provider_enable_all_aliases",
+            "as_email.tasks.provider_enable_all_aliases_for_server",
             return_value=mock_enable_task,
         )
 
@@ -1656,8 +1613,8 @@ class TestProviderReportUnusedDomains:
         server = server_factory(receive_providers=[provider])
         # server.receive_providers.add(provider)
 
-        # Setup enabled email accounts in our dummy provider
-        # Since create_provider_aliases signal is mocked, manually add to provider
+        # Setup enabled email accounts in our dummy provider Since
+        # create_provider_aliases signal is mocked, manually add to provider
         #
         email_account = email_account_factory(server=server)
         dummy_provider.create_update_email_account(email_account)
