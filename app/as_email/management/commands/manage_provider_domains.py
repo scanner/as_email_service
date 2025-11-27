@@ -28,7 +28,10 @@ logger = logging.getLogger("as_email")
 #
 class Command(BaseCommand):
     """
-    Management command to list and delete unused provider domains.
+    Management command to list and delete unused provider domains. As the
+    system is now we domains on a provider that have no email aliases will
+    remain. We need a management command that will delete the domains
+    on the given provider that have no email aliases.
 
     Usage:
         # List all unused domains across all providers
@@ -149,10 +152,10 @@ class Command(BaseCommand):
                 else:
                     # Check if any aliases are actually enabled
                     try:
-                        backend = get_backend(provider.backend_name)()
+                        backend = get_backend(provider.backend_name)
                         aliases = backend.list_email_accounts(server)
                         enabled_count = sum(
-                            1 for alias in aliases if alias.get("is_enabled")
+                            1 for alias in aliases if alias.enabled
                         )
                         if enabled_count == 0:
                             unused_domains.append(
@@ -233,7 +236,7 @@ class Command(BaseCommand):
 
         # Get backend
         try:
-            backend = get_backend(provider_name)()
+            backend = get_backend(provider_name)
         except Exception as e:
             raise CommandError(
                 f"Failed to get backend for provider '{provider_name}': {e}"
@@ -244,9 +247,7 @@ class Command(BaseCommand):
 
         try:
             aliases = backend.list_email_accounts(server)
-            enabled_count = sum(
-                1 for alias in aliases if alias.get("is_enabled")
-            )
+            enabled_count = sum(1 for alias in aliases if alias.enabled)
         except Exception as e:
             raise CommandError(
                 f"Failed to check aliases for domain '{domain_name}': {e}"
