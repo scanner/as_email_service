@@ -12,8 +12,8 @@ dependencies = [
     "cryptography==42.0.8",
     "csscompressor",
     "django",
-    "docopt",
     "django-anymail",
+    "django-compressor",
     "django-crispy-forms",
     "django-cryptography",
     "django-dry-rest-permissions",
@@ -21,13 +21,14 @@ dependencies = [
     "django-extensions",
     "django-filter",
     "django-guardian",
+    "django-model-utils>=5.0.0",
     "django-ordered-model",
     "django-passkeys",
     "django-settings-export",
     "django-simple-bulma==2.6.0",
-    "django-compressor",
     "djangorestframework",
     "dnspython",
+    "docopt",
     "drf-nested-routers",
     "gunicorn",
     "httpx",
@@ -85,6 +86,8 @@ dev = [
     "types-setuptools",
     "yapf",
     "django-test-migrations>=1.5.0",
+    "python-lsp-server>=1.13.1",
+    "python-lsp-ruff>=2.3.0",
 ]
 
 [build-system]
@@ -118,12 +121,16 @@ filter_files = true
 skip_glob = ["*venv*","*/migrations/*",".*cache"]
 known_first_party = ["as_email"]
 
+[tool.pylsp-mypy]
+enabled = true
+live_mode = true
+
 [tool.ruff]
 line-length = 80
 exclude = [
     'migrations/.+\.py$',
 ]
-ignore = [
+lint.ignore = [
        "E501",   # Ignore lines that are too long
 ]
 

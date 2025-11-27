@@ -14,14 +14,63 @@ import pytest
 from dirty_equals import IsPartialDict
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
+from django.http import JsonResponse
 from django.urls import resolve, reverse
 
 # Project imports
 #
 from ..models import EmailAccount, MessageFilterRule
-from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db
+
+
+####################################################################
+#
+@pytest.fixture
+def mock_webhook_provider(mocker):
+    """
+    Factory fixture for mocking webhook provider backends.
+
+    Returns a function that creates a mocked provider with a specified
+    webhook handler method and mocks _get_provider_for_webhook to return it.
+
+    Usage:
+        mock_provider = mock_webhook_provider(
+            "handle_incoming_webhook",
+            JsonResponse({"status": "all good"})
+        )
+        # mock_provider.backend.handle_incoming_webhook is now set up
+    """
+
+    def _mock_provider(webhook_method: str, response):
+        """
+        Create a mocked provider with the specified webhook handler method.
+
+        Args:
+            webhook_method: Name of the webhook handler method to mock
+                           (e.g., "handle_incoming_webhook")
+            response: The response object to return from the mocked method
+
+        Returns:
+            The mock provider object with backend already configured
+        """
+        mock_provider = mocker.MagicMock()
+        mock_provider.provider_name = "dummy"
+        mock_backend = mocker.MagicMock()
+        mock_provider.backend = mock_backend
+
+        # Set the return value for the specified method
+        getattr(mock_backend, webhook_method).return_value = response
+
+        # Mock _get_provider_for_webhook to return our mock provider
+        mocker.patch(
+            "as_email.views._get_provider_for_webhook",
+            return_value=mock_provider,
+        )
+
+        return mock_provider
+
+    return _mock_provider
 
 
 ####################################################################
@@ -86,9 +135,49 @@ def _expected_for_message_filter_rule(mfr: MessageFilterRule) -> dict:
 
 ####################################################################
 #
-def test_index(
-    fakeredis_cache, api_client, user_factory, email_account_factory, faker
+@pytest.mark.parametrize("provider_name", ["postmark"])
+def test_get_provider_for_webhook(
+    provider_factory, server_factory, provider_name
 ):
+    """
+    Test that _get_provider_for_webhook correctly retrieves providers configured
+    for a server's receive_providers.
+    """
+    from django.http import Http404
+
+    from ..views import _get_provider_for_webhook
+
+    # Create a provider with the specified backend name
+    #
+    provider = provider_factory(backend_name=provider_name)
+    provider.save()
+
+    # Create a server with this provider as a receive provider
+    #
+    server = server_factory(send_provider=provider)
+    server.save()
+    server.receive_providers.add(provider)
+
+    # Should successfully retrieve the provider
+    #
+    retrieved_provider = _get_provider_for_webhook(server, provider_name)
+    assert retrieved_provider == provider
+    assert retrieved_provider.backend_name == provider_name
+
+    # Should raise Http404 if provider is not in receive_providers
+    #
+    other_provider = provider_factory(backend_name="other_provider")
+    other_provider.save()
+
+    with pytest.raises(Http404) as exc_info:
+        _get_provider_for_webhook(server, "other_provider")
+
+    assert "not configured as a receive provider" in str(exc_info.value)
+
+
+####################################################################
+#
+def test_index(api_client, user_factory, email_account_factory, faker):
     password = faker.pystr(min_chars=8, max_chars=32)
     user = user_factory(password=password)
     user.save()
@@ -113,27 +202,37 @@ def test_index(
 ####################################################################
 #
 def test_incoming_webhook(
-    email_account_factory, email_factory, api_client, faker
+    email_account_factory, api_client, faker, mock_webhook_provider
 ):
+    """
+    Test that the incoming webhook view correctly calls the provider backend's
+    handle_incoming_webhook method with the correct arguments.
+    """
     ea = email_account_factory()
     ea.save()
     server = ea.server
 
-    # We only care about a few fields
+    # Mock the provider backend
     #
-    msg = email_factory(to=ea.email_address)
+    expected_response = JsonResponse(
+        {"status": "all good", "message": "test message"}
+    )
+    mock_provider = mock_webhook_provider(
+        "handle_incoming_webhook", expected_response
+    )
+
     incoming_message = {
         "OriginalRecipient": ea.email_address,
         "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
         "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
-        "RawEmail": msg.as_string(),
+        "RawEmail": "test email content",
     }
 
     url = (
         reverse(
             "as_email:hook_incoming",
             kwargs={
-                "provider_name": "postmark",
+                "provider_name": "dummy",
                 "domain_name": server.domain_name,
             },
         )
@@ -145,86 +244,18 @@ def test_incoming_webhook(
     r = client.post(
         url, json.dumps(incoming_message), content_type="application/json"
     )
-    assert r.status_code == 200
-    resp_data = r.json()
-    assert resp_data["status"] == "all good"
 
-    # The message should have been delivered to the ea' inbox since there are
-    # no mail filter rules. And it should be the only message in the mailbox.
+    # Verify the view returned the response from the provider backend
     #
-    mh = ea.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-    assert_email_equal(msg, stored_msg)
-
-
-####################################################################
-#
-def test_incoming_webhook_bad_json(
-    server_factory,
-    api_client,
-):
-    server = server_factory()
-    server.save()
-
-    url = (
-        reverse(
-            "as_email:hook_incoming",
-            kwargs={
-                "provider_name": "postmark",
-                "domain_name": server.domain_name,
-            },
-        )
-        + "?"
-        + urlencode({"api_key": server.api_key})
-    )
-
-    client = api_client()
-    r = client.post(url, "this is bad json'", content_type="application/json")
-    assert r.status_code == 400
-
-
-####################################################################
-#
-def test_incoming_webhook_no_such_emailaccount(
-    email_factory,
-    server_factory,
-    api_client,
-    faker,
-):
-    server = server_factory()
-    server.save()
-    addr = faker.email()
-
-    msg = email_factory(to=addr)
-    incoming_message = {
-        "OriginalRecipient": addr,
-        "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
-        "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
-        "RawEmail": msg.as_string(),
-    }
-
-    url = (
-        reverse(
-            "as_email:hook_incoming",
-            kwargs={
-                "provider_name": "postmark",
-                "domain_name": server.domain_name,
-            },
-        )
-        + "?"
-        + urlencode({"api_key": server.api_key})
-    )
-
-    client = api_client()
-    r = client.post(
-        url, json.dumps(incoming_message), content_type="application/json"
-    )
     assert r.status_code == 200
     resp_data = r.json()
-    assert "status" in resp_data
     assert resp_data["status"] == "all good"
-    assert resp_data["message"] == f"no such email account '{addr}'"
+
+    # Verify the provider backend's method was called with correct arguments
+    #
+    mock_provider.backend.handle_incoming_webhook.assert_called_once()
+    call_args = mock_provider.backend.handle_incoming_webhook.call_args
+    assert call_args[0][1] == server  # Second argument should be the server
 
 
 ####################################################################
@@ -245,7 +276,38 @@ def test_incoming_webhook_no_such_server(
     url = (
         reverse(
             "as_email:hook_incoming",
-            kwargs={"provider_name": "postmark", "domain_name": domain_name},
+            kwargs={"provider_name": "dummy", "domain_name": domain_name},
+        )
+        + "?"
+        + urlencode({"api_key": api_key})
+    )
+
+    client = api_client()
+    r = client.post(
+        url, json.dumps(incoming_message), content_type="application/json"
+    )
+    assert r.status_code == 404
+
+
+####################################################################
+#
+def test_incoming_webhook_no_such_provider_backend(
+    api_client,
+    faker,
+):
+    domain_name = faker.domain_name()
+    api_key = faker.pystr()
+    addr = faker.email()
+    incoming_message = {
+        "OriginalRecipient": addr,
+        "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
+        "Date": "Fri, 1 Aug 2014 16:45:32 -04:00",
+    }
+
+    url = (
+        reverse(
+            "as_email:hook_incoming",
+            kwargs={"provider_name": "foobar", "domain_name": domain_name},
         )
         + "?"
         + urlencode({"api_key": api_key})
@@ -264,13 +326,15 @@ def test_bounce_webhook(
     email_account_factory,
     api_client,
     faker,
-    postmark_request,
-    postmark_request_bounce,
+    mock_webhook_provider,
 ):
+    """
+    Test that the bounce webhook view correctly calls the provider backend's
+    handle_bounce_webhook method with the correct arguments.
+    """
     ea = email_account_factory()
     ea.save()
     server = ea.server
-    assert ea.num_bounces == 0
 
     bounce_data = {
         "ID": 4323372036854775807,
@@ -292,10 +356,17 @@ def test_bounce_webhook(
         "Subject": "Test subject",
     }
 
-    # Make sure when we query postmark for the bounce info it matches what we
-    # are expecting here.
+    # Mock the provider backend
     #
-    postmark_request_bounce(email_account=ea, **bounce_data)
+    expected_response = JsonResponse(
+        {
+            "status": "all good",
+            "message": f"received bounce for {server.domain_name}/{ea.email_address}",
+        }
+    )
+    mock_provider = mock_webhook_provider(
+        "handle_bounce_webhook", expected_response
+    )
 
     url = (
         reverse(
@@ -313,63 +384,19 @@ def test_bounce_webhook(
     r = client.post(
         url, json.dumps(bounce_data), content_type="application/json"
     )
+
+    # Verify the view returned the response from the provider backend
+    #
     assert r.status_code == 200
     resp_data = r.json()
     assert "status" in resp_data
     assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"received bounce for {server.domain_name}/{ea.email_address}"
-    )
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
 
-    # If we get a bounce message from an address that is not covered by our
-    # server, we get a different message from the response.
+    # Verify the provider backend's method was called with correct arguments
     #
-    bounce_data["From"] = faker.email()
-    r = client.post(
-        url, json.dumps(bounce_data), content_type="application/json"
-    )
-    assert r.status_code == 200
-    resp_data = r.json()
-    assert "status" in resp_data
-    assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"`from` address '{bounce_data['From']}' is not an EmailAccount on server {server.domain_name}. Bounce message ignored."
-    )
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
-
-    # Requests with bad data return 400 - bad request
-    #
-    r = client.post(url, "HAHANO", content_type="application/json")
-    assert r.status_code == 400
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
-
-    # Make sure for requests to servers that do not exist return a 404
-    #
-    url = (
-        reverse(
-            "as_email:hook_bounce",
-            kwargs={
-                "provider_name": "postmark",
-                "domain_name": faker.domain_name(),
-            },
-        )
-        + "?"
-        + urlencode({"api_key": server.api_key})
-    )
-
-    bounce_data["From"] = faker.email()
-    r = client.post(
-        url, json.dumps(bounce_data), content_type="application/json"
-    )
-    assert r.status_code == 404
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
+    mock_provider.backend.handle_bounce_webhook.assert_called_once()
+    call_args = mock_provider.backend.handle_bounce_webhook.call_args
+    assert call_args[0][1] == server  # Second argument should be the server
 
 
 ####################################################################
@@ -378,12 +405,15 @@ def test_postmark_spam_webhook(
     email_account_factory,
     api_client,
     faker,
-    postmark_request,
-    postmark_request_bounce,
+    mock_webhook_provider,
 ):
+    """
+    Test that the spam webhook view correctly calls the provider backend's
+    handle_spam_webhook method with the correct arguments.
+    """
     ea = email_account_factory()
     ea.save()
-    server = ea.server  # noqa: F841
+    server = ea.server
     to_addr = faker.email()
 
     spam_data = {
@@ -409,6 +439,18 @@ def test_postmark_spam_webhook(
         "Content": "<Abuse report dump>",
     }
 
+    # Mock the provider backend
+    #
+    expected_response = JsonResponse(
+        {
+            "status": "all good",
+            "message": f"received spam for {server.domain_name}/{ea.email_address}",
+        }
+    )
+    mock_provider = mock_webhook_provider(
+        "handle_spam_webhook", expected_response
+    )
+
     url = (
         reverse(
             "as_email:hook_spam",
@@ -423,14 +465,19 @@ def test_postmark_spam_webhook(
 
     client = api_client()
     r = client.post(url, json.dumps(spam_data), content_type="application/json")
+
+    # Verify the view returned the response from the provider backend
+    #
     assert r.status_code == 200
     resp_data = r.json()
     assert "status" in resp_data
     assert resp_data["status"] == "all good"
-    assert (
-        resp_data["message"]
-        == f"received spam for {server.domain_name}/{ea.email_address}"
-    )
+
+    # Verify the provider backend's method was called with correct arguments
+    #
+    mock_provider.backend.handle_spam_webhook.assert_called_once()
+    call_args = mock_provider.backend.handle_spam_webhook.call_args
+    assert call_args[0][1] == server  # Second argument should be the server
 
 
 ########################################################################
@@ -546,7 +593,7 @@ class TestEmailAccountEndpoints:
         #
         ea_dest = email_account_factory(owner=user)
         ea_dest.save()
-        ea.delivery_method = EmailAccount.ALIAS
+        ea.delivery_method = EmailAccount.DeliveryMethods.ALIAS
         ea.alias_for.add(ea_dest)
         ea.save()
 
@@ -575,7 +622,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -591,7 +638,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [],
             "autofile_spam": True,
-            "delivery_method": EmailAccount.LOCAL_DELIVERY,
+            "delivery_method": EmailAccount.DeliveryMethods.LOCAL_DELIVERY,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -613,7 +660,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_alias1.email_address, ea_alias2.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -657,7 +704,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -712,7 +759,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -762,7 +809,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -774,7 +821,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -792,7 +839,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "alias_for": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -805,7 +852,7 @@ class TestEmailAccountEndpoints:
         ea_new = {
             "aliases": [ea_dest.email_address],
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,
@@ -834,7 +881,7 @@ class TestEmailAccountEndpoints:
             "owner": "john@example.com",
             "server": "blackhole.example.com",
             "autofile_spam": False,
-            "delivery_method": EmailAccount.ALIAS,
+            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
             "forward_to": faker.email(),
             "spam_delivery_folder": "Spam",
             "spam_score_threshold": 10,

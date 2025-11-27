@@ -19,11 +19,18 @@ from email.utils import make_msgid
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Tuple, Union
 
+import redis
+from django.conf import settings
+
 if TYPE_CHECKING:
     from _typeshed import StrPath
 
+DATETIME_FMT_STR = "%Y.%m.%d-%H.%M.%S.%f%z"
+
 logger = logging.getLogger("as_email.utils")
 
+# XXX This should go in the postmark provider backend.
+#
 # postmark has various bounce types. Some are permament, some are transient.
 # The transient ones do not increase the number of bounces an email account
 # has made (they are transient after all).
@@ -161,12 +168,7 @@ def spool_message(spool_dir: Union[str, Path], message: bytes) -> None:
         spool_dir: Directory path to write the spooled message
         message: The email message as bytes
     """
-    import pytz
-    from django.conf import settings
-
-    fname = datetime.now(pytz.timezone(settings.TIME_ZONE)).strftime(
-        "%Y.%m.%d-%H.%M.%S.%f%z"
-    )
+    fname = utc_now_str()
     spool_dir = spool_dir if isinstance(spool_dir, Path) else Path(spool_dir)
     spool_file = spool_dir / fname
     # XXX we should create a db object for each email we
@@ -433,7 +435,7 @@ def sendmail(
 
 ####################################################################
 #
-def msg_froms(msg: EmailMessage) -> str:
+def msg_froms(msg: EmailMessage) -> list[str]:
     """
     Given an email message return a string that is all the "from"s of the
     message concatenated in to a single list. Almost always there will be a
@@ -445,3 +447,34 @@ def msg_froms(msg: EmailMessage) -> str:
         for addr in msg["from"].addresses
     ]
     return msg_from
+
+
+# XXX We are using the same redis server for huey & these connections. This
+#     should probably be two different settings (even if they point to the same
+#     redis server) and it should include in the setting info which db to use.
+#
+REDIS_CONNECTION_POOL = redis.ConnectionPool(
+    host=settings.REDIS_SERVER, port=6379, db=2
+)
+
+
+####################################################################
+#
+def redis_client() -> redis.Redis:
+    """
+    Get a redis client from our global redis connection pool
+    """
+    return redis.StrictRedis(connection_pool=REDIS_CONNECTION_POOL)
+
+
+####################################################################
+#
+def utc_now_str() -> str:
+    utc_now = datetime.now(UTC)
+    return utc_now.strftime(DATETIME_FMT_STR)
+
+
+####################################################################
+#
+def now_str_datetime(datetime_str: str) -> datetime:
+    return datetime.strptime(datetime_str, DATETIME_FMT_STR)
