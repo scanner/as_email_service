@@ -29,7 +29,7 @@ from ..management.commands.aiosmtpd import (
 )
 from ..models import InactiveEmail
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 ########################################################################
