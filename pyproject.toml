@@ -23,6 +23,7 @@ dependencies = [
     "django-guardian",
     "django-model-utils>=5.0.0",
     "django-ordered-model",
+    "django-polymorphic",
     "django-passkeys",
     "django-settings-export",
     "django-simple-bulma==2.6.0",

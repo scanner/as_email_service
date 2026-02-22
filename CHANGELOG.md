@@ -7,9 +7,178 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-11-27
+
 ### Added
 
-- Support for disabling SMTP ports in aiosmtpd daemon by specifying "off" for `--submission_port` or `--smtp_port` arguments, allowing flexible port configuration
+- GH-178: ForwardEmail receive-only provider support
+- GH-177: Email provider abstraction layer with configurable send and receive providers, supporting multiple simultaneous receive providers
+- Selective enabling/disabling of SMTP (port 25) and submission (port 587) listeners via `--smtp_port off` / `--submission_port off`
+
+## [0.2.6] - 2025-10-21
+
+### Changed
+
+- aiosmtpd now listens on both SMTP port 25 and submission port 587 simultaneously
+- Update to Python 3.13
+
+## [0.2.5] - 2025-10-20
+
+### Added
+
+- CLI script for checking spam scores on individual messages
+
+## [0.2.4] - 2025-10-12
+
+### Fixed
+
+- Properly dispatch Huey background tasks from async aiosmtpd handlers
+
+## [0.2.3] - 2025-10-12
+
+### Fixed
+
+- Pre-load related fields on async ORM lookups to avoid additional database queries
+
+## [0.2.2] - 2025-10-11
+
+### Fixed
+
+- Allow local addresses to send email to other local addresses
+
+## [0.2.1] - 2025-10-11
+
+### Changed
+
+- Move IP blocklist rejection to CONNECT phase for earlier and more efficient rejection
+
+## [0.2.0] - 2025-10-11
+
+### Fixed
+
+- `start_smtpd.sh` startup script
+
+## [0.1.23] - 2025-10-11
+
+### Fixed
+
+- Tweaks and test fixes following the incoming email daemon changes
+
+## [0.1.22] - 2025-10-10
+
+### Added
+
+- GH-141: Separate aiosmtpd-based daemon for receiving and delivering incoming email, with spam filtering and DNS blocklist checking
+- GH-164: Switch to `uv` for dependency management
+- Link to Django admin from the web UI
+
+### Fixed
+
+- Password change button in the web UI
+
+## [0.1.21] - 2024-09-22
+
+### Added
+
+- Automatically re-attempt failed message deliveries
+
+## [0.1.20] - 2024-07-07
+
+### Fixed
+
+- GH-156: Retry delivery on `FileExistsError` instead of failing
+
+## [0.1.19] - 2024-06-30
+
+### Fixed
+
+- GH-153: Message Filter Rule REST endpoint not filtering by email account correctly
+
+## [0.1.18] - 2024-06-30
+
+### Added
+
+- GH-153: Additional filterable header fields in Message Filter Rules
+
+### Fixed
+
+- GH-153: Message Filter Rule list now only shows rules belonging to the requested email account
+
+## [0.1.17] - 2024-06-26
+
+### Fixed
+
+- GH-149: Unicode error when converting message to bytes during delivery
+
+## [0.1.16] - 2024-06-24
+
+### Changed
+
+- GH-149: Move failed incoming deliveries to a dedicated directory instead of discarding them
+
+## [0.1.15] - 2024-06-23
+
+### Fixed
+
+- GH-149: Handle unicode errors when encoding email messages for delivery
+
+## [0.1.14] - 2024-06-16
+
+### Added
+
+- GH-144: Script to import a `.maildelivery` file and convert its rules to Message Filter Rules
+- GH-138: Allow email attachments up to 10 MB
+
+## [0.1.13] - 2024-02-01
+
+### Fixed
+
+- GH-121: Admin search fields now work correctly on models without foreign key relations
+
+## [0.1.12] - 2024-02-01
+
+### Fixed
+
+- GH-132: Bounce ID collision when retrying delivery after a delay
+
+## [0.1.11] - 2024-02-01
+
+### Fixed
+
+- GH-130: Lowercase incoming `to` address before lookup to prevent case-sensitivity mismatches
+- GH-126: Break out of encoding loop once a working encoding is found
+
+## [0.1.9] - 2024-01-31
+
+### Fixed
+
+- GH-126: Try ascii → utf-8 → latin-1 encoding fallback chain when sending messages
+
+## [0.1.8] - 2024-01-30
+
+### Fixed
+
+- GH-126: Use direct binary conversion when sending messages to correctly handle latin-1 encoded content
+
+## [0.1.7] - 2024-01-29
+
+### Added
+
+- GH-116: Standard mail folders (Drafts, Sent, Trash, Junk) created automatically for new maildirs
+
+### Fixed
+
+- GH-123: Log a warning instead of crashing when `EmailAccount.DoesNotExist` during delivery
+
+## [0.1.6] - 2024-01-28
+
+### Added
+
+- GH-117: Sync external password file when EmailAccounts are created, updated, or deleted
+
+### Changed
+
+- Update to Python 3.12, updated requirements
 
 ## [0.1.5 - 2023-11-28]
 
