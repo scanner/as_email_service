@@ -101,6 +101,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "deactivated",
             "deactivated_reason",
             "email_address",
+            "enabled",
             "message_filter_rules",
             "modified_at",
             "num_bounces",

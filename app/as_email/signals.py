@@ -58,6 +58,23 @@ def email_account_pre_save(
 
 ####################################################################
 #
+@receiver(post_save, sender=LocalDelivery)
+def create_local_delivery_mailbox(
+    sender: Type[LocalDelivery],
+    instance: LocalDelivery,
+    created: bool,
+    **kwargs,
+) -> None:
+    """
+    When a LocalDelivery is created, ensure the MH mailbox directory
+    (and default folders) exist.
+    """
+    if created:
+        instance.MH()
+
+
+####################################################################
+#
 @receiver(post_save, sender=EmailAccount)
 def fire_off_async_task_update_emailaccount_pwfile(
     sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs

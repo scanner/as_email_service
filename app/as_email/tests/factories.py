@@ -412,17 +412,6 @@ class EmailAccountFactory(DjangoModelFactory):
     )
 
     @post_generation
-    def password(
-        self: EmailAccount,
-        create: bool,
-        extracted: Sequence[Any],
-        **kwargs: Any,
-    ) -> None:
-        password = extracted if extracted else "XXX"
-        do_save = password != "XXX"
-        self.set_password(password, save=do_save)
-
-    @post_generation
     def local_delivery(
         self: EmailAccount,
         create: bool,
@@ -432,12 +421,27 @@ class EmailAccountFactory(DjangoModelFactory):
         """
         Create a default LocalDelivery for every new EmailAccount unless
         `local_delivery=False` is passed explicitly.
+
+        NOTE: This must run before the `password` post-generation so that
+              LocalDelivery exists when the pwfile update task fires on
+              password save.
         """
         if not create:
             return
         if extracted is False:
             return
         LocalDelivery.objects.create(email_account=self)
+
+    @post_generation
+    def password(
+        self: EmailAccount,
+        create: bool,
+        extracted: Sequence[Any],
+        **kwargs: Any,
+    ) -> None:
+        password = extracted if extracted else "XXX"
+        do_save = password != "XXX"
+        self.set_password(password, save=do_save)
 
     class Meta:
         model = EmailAccount

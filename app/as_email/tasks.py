@@ -590,7 +590,7 @@ def check_update_pwfile_for_emailaccount(ea_pk: int) -> None:
             logger.info(
                 "Updating '%s''s mail dir to: '%s' in external password file",
                 ea.email_address,
-                ea.mail_dir,
+                ea_mail_dir,
             )
             write = True
         if account.pw_hash != ea.password:

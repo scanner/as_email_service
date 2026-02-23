@@ -12,8 +12,6 @@ from urllib.parse import urlencode, urlparse
 #
 import pytest
 from dirty_equals import IsPartialDict
-from django.contrib.auth.models import Permission
-from django.contrib.contenttypes.models import ContentType
 from django.http import JsonResponse
 from django.urls import resolve, reverse
 
@@ -82,25 +80,15 @@ def _expected_for_email_account(ea: EmailAccount) -> dict:
     EmailAccount such that it should match what we get back via the REST API
     when using IsPartialDict.
     """
-    alias_for = [x.email_address for x in ea.alias_for.all()]
-    aliases = [x.email_address for x in ea.aliases.all()]
-
-    expected = {
-        "alias_for": alias_for,
-        "aliases": aliases,
-        "autofile_spam": ea.autofile_spam,
+    return {
         "deactivated": ea.deactivated,
         "deactivated_reason": ea.deactivated_reason,
-        "delivery_method": ea.delivery_method,
         "email_address": ea.email_address,
-        "forward_to": ea.forward_to,
+        "enabled": ea.enabled,
         "num_bounces": ea.num_bounces,
         "owner": ea.owner.username,
         "server": ea.server.domain_name,
-        "spam_delivery_folder": ea.spam_delivery_folder,
-        "spam_score_threshold": ea.spam_score_threshold,
     }
-    return expected
 
 
 ####################################################################
@@ -570,7 +558,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_retrieve(self, api_client, email_account_factory, setup):
+    def test_retrieve(self, api_client, setup):
         client = api_client()
         ea = setup["email_account"]
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
@@ -582,329 +570,57 @@ class TestEmailAccountEndpoints:
 
         # Change to logged in client
         #
-        user = setup["user"]
         client = setup["client"]
         resp = client.get(url)
         assert resp.status_code == 200
         expected = _expected_for_email_account(ea)
         assert resp.data == IsPartialDict(expected)
 
-        # What if `ea` is an alias for a different email account?
-        #
-        ea_dest = email_account_factory(owner=user)
-        ea_dest.save()
-        ea.delivery_method = EmailAccount.DeliveryMethods.ALIAS
-        ea.alias_for.add(ea_dest)
-        ea.save()
-
-        resp = client.get(url)
-        assert resp.status_code == 200
-        expected = _expected_for_email_account(ea)
-        assert resp.data == IsPartialDict(expected)
-
     ####################################################################
     #
-    def test_update(self, faker, email_account_factory, setup):
+    def test_update(self, setup):
         """
-        Testing PUT of all writeable fields (and also testing that readonly
-        fields are not writeable.)
-        """
-        client = setup["client"]
-        user = setup["user"]
-        ea = setup["email_account"]
-        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
-
-        ea_dest = email_account_factory(owner=user)
-        ea_dest.save()
-
-        # Try setting the account to be an alias for `ea_dest`
-        #
-        ea_new = {
-            "alias_for": [ea_dest.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 200
-        ea.refresh_from_db()
-        expected = _expected_for_email_account(ea)
-        assert resp.data == IsPartialDict(expected)
-
-        # Also make sure we can remove alias_for's.
-        #
-        ea_new = {
-            "alias_for": [],
-            "autofile_spam": True,
-            "delivery_method": EmailAccount.DeliveryMethods.LOCAL_DELIVERY,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new, format="json")
-        assert resp.status_code == 200
-        assert resp.data == IsPartialDict(ea_new)
-        ea.refresh_from_db()
-        expected = _expected_for_email_account(ea)
-        assert resp.data == IsPartialDict(expected)
-
-        # Also test setting `aliases` (the reverse relationship for
-        # `alias_for`)
-        #
-        ea_alias1 = email_account_factory(owner=user)
-        ea_alias1.save()
-        ea_alias2 = email_account_factory(owner=user)
-        ea_alias2.save()
-        ea_new = {
-            "aliases": [ea_alias1.email_address, ea_alias2.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 200
-        assert resp.data == IsPartialDict(ea_new)
-        ea.refresh_from_db()
-        expected = _expected_for_email_account(ea)
-        assert resp.data == IsPartialDict(expected)
-
-    ####################################################################
-    #
-    def test_update_bad_aliases(
-        self,
-        faker,
-        email_account_factory,
-        setup,
-        message_filter_rule_factory,
-    ):
-        """
-        The `alias_for` attribute is custom `update()` code for the
-        EmailAccountViewSet so make sure to test its various failure modes.
-        """
-        client = setup["client"]
-        ea = setup["email_account"]
-        url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
-        orig_ea_data = _expected_for_email_account(ea)
-
-        # Make an EmailAccount that is NOT owned by this user.  (by not
-        # specifying `owner` in the creation)
-        #
-        ea_dest = email_account_factory()
-        ea_dest.save()
-
-        # Try setting the account to be an alias for `ea_dest`. This should
-        # fail with a 403, not permitted (because you are not permitted to add
-        # as an alias an EmailAccount that is not owned by the same owner as
-        # the EmailAccount you are adding the alias to.
-        #
-        ea_new = {
-            "alias_for": [ea_dest.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 403
-        # The response has a key for each invalid field in our PUT request
-        #
-        assert "alias_for" in resp.data
-
-        # And make sure that the EmailAccount was not changed.
-        #
-        ea.refresh_from_db()
-        assert resp.data != IsPartialDict(ea_new)
-        assert _expected_for_email_account(ea) == orig_ea_data
-
-        # Let us point at an email address that is not even in the system.
-        #
-        ea_new["alias_for"] = [faker.email()]
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 400
-        assert "alias_for" in resp.data
-
-        # And make sure that the EmailAccount was not changed.
-        #
-        ea.refresh_from_db()
-        assert resp.data != IsPartialDict(ea_new)
-        assert _expected_for_email_account(ea) == orig_ea_data
-
-        # Also make sure that if we send garbage it also fails as a bad request.
-        #
-        ea_new["alias_for"] = ["booboobimap"]
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 400
-
-        # And make sure that the EmailAccount was not changed.
-        #
-        ea.refresh_from_db()
-        assert resp.data != IsPartialDict(ea_new)
-        assert _expected_for_email_account(ea) == orig_ea_data
-
-        # Make sure `aliases` follows the same rules: point at an email address
-        # that is not even in the system.
-        #
-        ea_new["aliases"] = [faker.email(), faker.email()]
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 400
-        assert "aliases" in resp.data
-
-        # Make sure you can not add an alias that is not owned by the same user
-        #
-        ea_new = {
-            "aliases": [ea_dest.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 403
-        # The response has a key for each invalid field in our PUT request
-        #
-        assert "aliases" in resp.data
-
-        # And make sure that the EmailAccount was not changed.
-        #
-        ea.refresh_from_db()
-        assert resp.data != IsPartialDict(ea_new)
-        assert _expected_for_email_account(ea) == orig_ea_data
-
-    ####################################################################
-    #
-    def test_update_foreign_alias_permission(
-        self,
-        faker,
-        email_account_factory,
-        setup,
-        message_filter_rule_factory,
-    ):
-        """
-        Test to make sure an EmailAccount can not alias or alias_for
-        another EmailAccount that has a different owner. Unless the
-        EmailAccount doing the aliasing has the
-        `as_email.can_have_foreign_aliases` permission.
+        All EmailAccount fields are read-only via the REST API. A PUT
+        returns 200 but the account is unchanged (enabled is admin-only).
         """
         client = setup["client"]
         ea = setup["email_account"]
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
 
-        # Make an EmailAccount that is NOT owned by this user.  (by not
-        # specifying `owner` in the creation)
+        # Attempt to change enabled — should be silently ignored
         #
-        ea_dest = email_account_factory()
-        ea_dest.save()
-
-        # Try setting the account to be an alias for `ea_dest`. This should
-        # fail with a 403, not permitted (because you are not permitted to add
-        # as an alias an EmailAccount that is not owned by the same owner as
-        # the EmailAccount you are adding the alias to.
-        #
-        ea_new = {
-            "alias_for": [ea_dest.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 403
-
-        # Ditto for `aliases``
-        ea_new = {
-            "aliases": [ea_dest.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 403
-
-        # Now grant `ea` the permission to have foreign aliases
-        #
-        ct = ContentType.objects.get_for_model(EmailAccount)
-        foreign_alias_perm = Permission.objects.get(
-            codename="can_have_foreign_aliases", content_type=ct
-        )
-        ea.owner.user_permissions.add(foreign_alias_perm)
-        ea_new = {
-            "alias_for": [ea_dest.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
+        resp = client.put(url, data={"enabled": not ea.enabled}, format="json")
         assert resp.status_code == 200
-        assert ea.alias_for.filter(email_address=ea_dest.email_address).exists()
-
-        # Ditto for `aliases``
-        ea_new = {
-            "aliases": [ea_dest.email_address],
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
-        }
-        resp = client.put(url, data=ea_new)
-        assert resp.status_code == 200
-        assert ea.aliases.filter(email_address=ea_dest.email_address).exists()
+        ea.refresh_from_db()
+        expected = _expected_for_email_account(ea)
+        assert resp.data == IsPartialDict(expected)
 
     ####################################################################
     #
     def test_update_readonly_fields(self, faker, setup):
         """
-        make sure trying to set the read only fields does not update them.
+        All EmailAccount fields are read-only via the REST API. Attempting
+        to change any of them via PUT should be silently ignored.
         """
         client = setup["client"]
         ea = setup["email_account"]
         orig_ea_data = _expected_for_email_account(ea)
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
-        ea_new = {
-            "alias_for": [],
-            "aliases": [],
-            "deactivated": True,  # This attribute is read-only.
+        attempt = {
+            "deactivated": True,
             "deactivated_reason": "no reason. haha.",
             "email_address": "boogie@example.com",
+            "enabled": not ea.enabled,
             "num_bounces": 2000,
             "owner": "john@example.com",
             "server": "blackhole.example.com",
-            "autofile_spam": False,
-            "delivery_method": EmailAccount.DeliveryMethods.ALIAS,
-            "forward_to": faker.email(),
-            "spam_delivery_folder": "Spam",
-            "spam_score_threshold": 10,
         }
-        resp = client.put(url, data=ea_new, format="json")
+        resp = client.put(url, data=attempt, format="json")
         assert resp.status_code == 200
         ea.refresh_from_db()
-        expected = _expected_for_email_account(ea)
-        assert resp.data == IsPartialDict(expected)
-        # All the read only fields that we tried to change should not be changed
+        # All fields should be unchanged
         #
-        ro_fields = [
-            "deactivated",
-            "deactivated_reason",
-            "email_address",
-            "num_bounces",
-            "owner",
-            "server",
-        ]
-        expected_unchanged = {
-            k: v for k, v in resp.data.items() if k in ro_fields
-        }
-        assert orig_ea_data == IsPartialDict(expected_unchanged)
+        assert _expected_for_email_account(ea) == orig_ea_data
 
     ####################################################################
     #
@@ -924,80 +640,25 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_partial_update(
-        self, api_client, faker, email_account_factory, setup
-    ):
+    def test_partial_update(self, setup):
         """
-        Test patching a bunch of writeable fields one by one.
+        All EmailAccount fields are read-only via the REST API. A PATCH
+        attempting to change any field should be silently ignored and
+        return 200 with the unchanged account data.
         """
         client = setup["client"]
-        user = setup["user"]
         ea = setup["email_account"]
+        orig_ea_data = _expected_for_email_account(ea)
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
 
-        patch_data = {"autofile_spam": not ea.autofile_spam}
-        resp = client.patch(url, data=patch_data)
+        # Attempt to change enabled (admin-only) — ignored
+        #
+        resp = client.patch(
+            url, data={"enabled": not ea.enabled}, format="json"
+        )
         assert resp.status_code == 200
         ea.refresh_from_db()
-        assert ea.autofile_spam == resp.data["autofile_spam"]
-
-        # set the alias_for to this new account.
-        #
-        ea_dest = email_account_factory(owner=user)
-        ea_dest.save()
-
-        # Try setting the account to be an alias for `ea_dest`
-        #
-        patch_data = {
-            "alias_for": [ea_dest.email_address],
-        }
-
-        # Try both as html encoded form and as a json patch.
-        #
-        resp = client.patch(url, data=patch_data)
-        assert resp.status_code == 200
-        ea.refresh_from_db()
-
-        # The URL's for the objects do not have the netloc, strip that off.
-        #
-        alias_for = [x.email_address for x in ea.alias_for.all()]
-        assert alias_for == patch_data["alias_for"]
-        assert alias_for == resp.data["alias_for"]
-
-        # And if we submit an different alias is replaces what we already have
-        #
-        ea_dest = email_account_factory(owner=user)
-        ea_dest.save()
-
-        # Try setting the account to be an alias for `ea_dest`
-        #
-        patch_data = {
-            "alias_for": [ea_dest.email_address],
-        }
-
-        resp = client.patch(url, data=patch_data, format="json")
-        assert resp.status_code == 200
-        ea.refresh_from_db()
-
-        # The URL's for the objects do not have the netloc, strip that off.
-        #
-        alias_for = [x.email_address for x in ea.alias_for.all()]
-        assert alias_for == patch_data["alias_for"]
-        assert alias_for == resp.data["alias_for"]
-
-        # and submitting an empty string clears the alias_for
-        #
-        patch_data = {"alias_for": []}
-
-        # NOTE: By default the client submits html/formdata. This has no way of
-        #       representing an empty list so in this case we specifically tell
-        #       it to use json for submitting data.
-        #
-        resp = client.patch(url, data=patch_data, format="json")
-        assert resp.status_code == 200
-        ea.refresh_from_db()
-        assert ea.alias_for.count() == 0
-        assert len(resp.data["alias_for"]) == 0
+        assert _expected_for_email_account(ea) == orig_ea_data
 
     ####################################################################
     #
@@ -1052,10 +713,11 @@ class TestEmailAccountEndpoints:
         resp = client.options(url)
         assert resp.status_code == 200
 
-        # We are just going to test that the `aliases` attribute is defined for
-        # `PUT` operations and that it is of type `field`.
+        # Verify that the `email_address` field is present in PUT options
+        # and reported as read-only (all EmailAccount fields are read-only
+        # via the API).
         #
-        assert resp.data["actions"]["PUT"]["aliases"]["type"] == "field"
+        assert resp.data["actions"]["PUT"]["email_address"]["read_only"] is True
 
 
 ########################################################################
