@@ -6,6 +6,11 @@ URLS for the AS Email app
 # 3rd party imports
 #
 from django.urls import include, path
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
 from rest_framework_nested import routers
 
 # Project imports
@@ -65,6 +70,17 @@ app_name = "as_email"
 urlpatterns = [
     path("", index, name="index"),
     path("api/v1/", include(api_urls)),
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/schema/swagger-ui/",
+        SpectacularSwaggerView.as_view(url_name="as_email:schema"),
+        name="swagger-ui",
+    ),
+    path(
+        "api/schema/redoc/",
+        SpectacularRedocView.as_view(url_name="as_email:schema"),
+        name="redoc",
+    ),
     # Generic webhook handlers - work with any provider
     # Existing Postmark webhooks at hook/postmark/* will continue to work
     #

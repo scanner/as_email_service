@@ -130,6 +130,7 @@ INSTALLED_APPS = [
     "ordered_model",
     "polymorphic",
     "rest_framework",
+    "drf_spectacular",
     "dry_rest_permissions",
     "crispy_forms",
     "crispy_bulma",
@@ -174,7 +175,22 @@ REST_FRAMEWORK = {
     # All access to the as_email API requires authentication. Additional
     # permissions are defined on each of the models.
     #
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"]
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated"
+    ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "AS Email Service API",
+    "DESCRIPTION": (
+        "REST API for managing email accounts, message filter rules, "
+        "and delivery methods in the Apricot Systematic Email Service."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": "/as_email/api/",
 }
 
 # Database

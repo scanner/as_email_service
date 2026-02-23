@@ -11,6 +11,7 @@ A Django app and smtp relay service for working with 3rd party email services (w
 
 - [Setup](#setup)
 - [Configuration](#configuration)
+- [API Documentation](#api-documentation)
 - [Administration](#administration)
 - [Design](#design)
 - [Local Development](#local-development)
@@ -64,6 +65,21 @@ HOST_SSL_DIR=/mnt/ssl
 # What docker tag to pull and run
 #
 RELEASE_VERSION=latest
+```
+
+## API Documentation
+
+The REST API is documented via [OpenAPI 3.0](https://www.openapis.org/). The full reference is available in [`docs/api.md`](docs/api.md) and the machine-readable spec in [`docs/openapi.yaml`](docs/openapi.yaml).
+
+When the development server is running you can also browse the interactive docs:
+
+- **Swagger UI**: `/as_email/api/schema/swagger-ui/`
+- **ReDoc**: `/as_email/api/schema/redoc/`
+
+To regenerate the docs after making API changes:
+
+```bash
+make api-docs
 ```
 
 ## Administration

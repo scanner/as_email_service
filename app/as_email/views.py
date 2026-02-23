@@ -30,11 +30,18 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
+from drf_spectacular.utils import (
+    PolymorphicProxySerializer,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
 from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
 )
-from rest_framework import mixins, serializers, status
+from rest_framework import fields as drf_fields, mixins, serializers, status
 from rest_framework.authentication import (
     BasicAuthentication,
     SessionAuthentication,
@@ -328,6 +335,17 @@ class CSRFExemptSessionAuthentication(SessionAuthentication):
         return  # To not perform the csrf check previously happening
 
 
+class CSRFExemptSessionScheme(OpenApiAuthenticationExtension):
+    """Tell drf-spectacular that CSRFExemptSessionAuthentication is
+    just session auth (cookie-based)."""
+
+    target_class = "as_email.views.CSRFExemptSessionAuthentication"
+    name = "sessionAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {"type": "apiKey", "in": "cookie", "name": "sessionid"}
+
+
 ########################################################################
 ########################################################################
 #
@@ -381,6 +399,15 @@ class EmailAccountViewSet(
     # XXX We should use python version of zxcvbn to make sure a password
     #     that is too weak is not used.
     #
+    @extend_schema(
+        request=PasswordSerializer,
+        responses={
+            200: inline_serializer(
+                "SetPasswordResponse",
+                fields={"status": drf_fields.CharField()},
+            )
+        },
+    )
     @action(detail=True, methods=["post"])
     def set_password(self, request, pk=None):
         ea = self.get_object()
@@ -436,6 +463,19 @@ class MessageFilterRuleViewSet(ModelViewSet):
 
     ####################################################################
     #
+    @extend_schema(
+        request=MoveOrderSerializer,
+        responses={
+            200: inline_serializer(
+                "MoveResponse",
+                fields={
+                    "status": drf_fields.CharField(),
+                    "url": drf_fields.URLField(),
+                    "order": drf_fields.IntegerField(),
+                },
+            )
+        },
+    )
     @action(detail=True, methods=["post"])
     def move(self, request, **kwargs):
         """
@@ -534,6 +574,39 @@ class DeliveryMethodOwnerFilterBackend(DRYPermissionFiltersBase):
 ########################################################################
 ########################################################################
 #
+_delivery_method_polymorphic = PolymorphicProxySerializer(
+    component_name="DeliveryMethodPolymorphic",
+    serializers=[LocalDeliverySerializer, AliasToDeliverySerializer],
+    resource_type_field_name="delivery_type",
+)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        responses=_delivery_method_polymorphic,
+        description="List all delivery methods for the email account.",
+    ),
+    retrieve=extend_schema(
+        responses=_delivery_method_polymorphic,
+        description="Retrieve a specific delivery method.",
+    ),
+    create=extend_schema(
+        request=_delivery_method_polymorphic,
+        responses=_delivery_method_polymorphic,
+        description=(
+            "Create a new delivery method. Include `delivery_type` "
+            '("LocalDelivery" or "AliasToDelivery") to select the subtype.'
+        ),
+    ),
+    update=extend_schema(
+        request=_delivery_method_polymorphic,
+        responses=_delivery_method_polymorphic,
+    ),
+    partial_update=extend_schema(
+        request=_delivery_method_polymorphic,
+        responses=_delivery_method_polymorphic,
+    ),
+)
 class DeliveryMethodViewSet(ModelViewSet):
     """
     CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.

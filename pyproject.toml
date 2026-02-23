@@ -49,6 +49,7 @@ dependencies = [
     "uvicorn",
     "wait-for-it",
     "whitenoise",
+    "drf-spectacular>=0.29.0",
 ]
 
 [dependency-groups]
