@@ -1036,6 +1036,47 @@ class DeliveryMethod(PolymorphicModel):
 
     ####################################################################
     #
+    @staticmethod
+    def has_write_permission(request):
+        """
+        A user can only create delivery methods for email accounts they own.
+        """
+        func, args, kwargs = resolve(request.get_full_path())
+        ea = EmailAccount.objects.get(pk=int(kwargs["email_account_pk"]))
+        return request.user == ea.owner
+
+    ####################################################################
+    #
+    @staticmethod
+    def has_read_permission(request):
+        return True
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_read_permission(self, request):
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_write_permission(self, request):
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_update_permission(self, request):
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
+    @authenticated_users
+    def has_object_destroy_permission(self, request):
+        return request.user == self.email_account.owner
+
+    ####################################################################
+    #
     def deliver(
         self,
         msg: email.message.EmailMessage,

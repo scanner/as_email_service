@@ -65,7 +65,7 @@ def remove_delivery_methods(apps, schema_editor):
     Reverse migration: remove all DeliveryMethod instances. The legacy fields
     on EmailAccount remain untouched, so rolling back to 0009 is safe.
     """
-    DeliveryMethod = apps.get_registry().get_model("as_email", "DeliveryMethod")
+    DeliveryMethod = apps.get_model("as_email", "DeliveryMethod")
     DeliveryMethod.objects.all().delete()
 
 

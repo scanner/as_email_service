@@ -568,14 +568,27 @@ class DeliveryMethodViewSet(ModelViewSet):
         For instance-based read/write actions, the actual type of the object
         is used. For create, the client supplies `delivery_type` in the
         request body to select the subtype.
+
+        NOTE: We deliberately avoid calling get_object() here because DRY
+        REST Permissions invokes get_serializer_class() during both
+        has_permission() and has_object_permission(), and get_object()
+        itself calls check_object_permissions() → has_object_permission() →
+        get_serializer_class(), causing infinite recursion. Instead we look
+        up the concrete type directly from the queryset using just the pk.
         """
-        # For instance-based actions use the actual concrete type.
+        # For instance-based actions, determine the concrete subtype from
+        # the DB without going through the full get_object() pipeline.
         #
         if self.action in ("retrieve", "update", "partial_update", "destroy"):
-            instance = self.get_object()
-            entry = _DELIVERY_TYPE_MAP.get(type(instance).__name__)
-            if entry:
-                return entry[1]
+            pk = self.kwargs.get("pk")
+            if pk:
+                try:
+                    instance = self.get_queryset().get(pk=pk)
+                    entry = _DELIVERY_TYPE_MAP.get(type(instance).__name__)
+                    if entry:
+                        return entry[1]
+                except DeliveryMethod.DoesNotExist:
+                    pass
 
         # For create (and list fallback) use the delivery_type in the request.
         #

@@ -17,7 +17,13 @@ from django.urls import resolve, reverse
 
 # Project imports
 #
-from ..models import EmailAccount, MessageFilterRule
+from ..models import (
+    AliasToDelivery,
+    DeliveryMethod,
+    EmailAccount,
+    LocalDelivery,
+    MessageFilterRule,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -1131,3 +1137,373 @@ class TestMessageFilterRuleEndpoints:
         )
         resp = client.options(url)
         assert resp.status_code == 200
+
+
+########################################################################
+########################################################################
+#
+class TestDeliveryMethodEndpoints:
+    """Tests for the DeliveryMethod REST API endpoints nested under EmailAccount."""
+
+    ####################################################################
+    #
+    @pytest.fixture(autouse=True, scope="function")
+    def setup(
+        self,
+        api_client,
+        user_factory,
+        email_account_factory,
+        faker,
+    ):
+        """
+        Set up a user with two email accounts:
+        - ea: the primary account (has a LocalDelivery created by the factory)
+        - ea_other_user: an account owned by a different user (for permission tests)
+        """
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        user.save()
+        ea = email_account_factory(owner=user)
+        ea.save()
+
+        client = api_client()
+        resp = client.login(username=user.username, password=password)
+        assert resp
+
+        # A second account owned by a different user for permission checks.
+        #
+        ea_other_user = email_account_factory()
+
+        return {
+            "password": password,
+            "user": user,
+            "email_account": ea,
+            "client": client,
+            "ea_other_user": ea_other_user,
+        }
+
+    ####################################################################
+    #
+    def _list_url(self, ea):
+        return reverse(
+            "as_email:delivery-method-list",
+            kwargs={"email_account_pk": ea.pk},
+        )
+
+    ####################################################################
+    #
+    def _detail_url(self, ea, dm):
+        return reverse(
+            "as_email:delivery-method-detail",
+            kwargs={"email_account_pk": ea.pk, "pk": dm.pk},
+        )
+
+    ####################################################################
+    #
+    def test_list_unauthenticated_is_forbidden(self, api_client, setup):
+        """
+        GIVEN an unauthenticated client
+        WHEN  the delivery-method list endpoint is requested
+        THEN  403 is returned
+        """
+        ea = setup["email_account"]
+        client = api_client()
+        resp = client.get(self._list_url(ea))
+        assert resp.status_code == 403
+
+    ####################################################################
+    #
+    def test_list_returns_own_delivery_methods(self, setup):
+        """
+        GIVEN an authenticated user with one LocalDelivery on their account
+        WHEN  the delivery-method list endpoint is requested
+        THEN  exactly one delivery method is returned for that account
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        resp = client.get(self._list_url(ea))
+        assert resp.status_code == 200
+        assert len(resp.data) == 1
+        assert resp.data[0]["delivery_type"] == "LocalDelivery"
+
+    ####################################################################
+    #
+    def test_list_does_not_return_other_users_methods(self, setup):
+        """
+        GIVEN two accounts owned by different users
+        WHEN  the authenticated user lists delivery methods for the other account
+        THEN  an empty list is returned — not the other user's methods
+        """
+        client = setup["client"]
+        ea_other = setup["ea_other_user"]
+        resp = client.get(self._list_url(ea_other))
+        # The filter backend restricts to the requesting user's accounts;
+        # querying another user's ea_pk returns an empty list (not 403).
+        assert resp.status_code == 200
+        assert len(resp.data) == 0
+
+    ####################################################################
+    #
+    def test_retrieve_local_delivery(self, setup):
+        """
+        GIVEN an account with a LocalDelivery
+        WHEN  the detail endpoint is requested
+        THEN  the correct delivery method is returned with expected fields
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ld = LocalDelivery.objects.get(email_account=ea)
+        resp = client.get(self._detail_url(ea, ld))
+        assert resp.status_code == 200
+        assert resp.data["delivery_type"] == "LocalDelivery"
+        assert resp.data["pk"] == ld.pk
+        assert resp.data["enabled"] is True
+        assert "maildir_path" in resp.data
+
+    ####################################################################
+    #
+    def test_retrieve_unauthenticated_is_forbidden(self, api_client, setup):
+        """
+        GIVEN an unauthenticated client
+        WHEN  the delivery-method detail endpoint is requested
+        THEN  403 is returned
+        """
+        ea = setup["email_account"]
+        ld = LocalDelivery.objects.get(email_account=ea)
+        client = api_client()
+        resp = client.get(self._detail_url(ea, ld))
+        assert resp.status_code == 403
+
+    ####################################################################
+    #
+    def test_create_alias_to_delivery(self, email_account_factory, setup):
+        """
+        GIVEN an account with no alias delivery methods
+        WHEN  an AliasToDelivery is created via POST
+        THEN  201 is returned and the alias delivery method exists in the DB
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ea_target = email_account_factory()
+        data = {
+            "delivery_type": "AliasToDelivery",
+            "target_account": ea_target.email_address,
+        }
+        resp = client.post(self._list_url(ea), data=data, format="json")
+        assert resp.status_code == 201
+        assert resp.data["delivery_type"] == "AliasToDelivery"
+        assert resp.data["target_account"] == ea_target.email_address
+        assert AliasToDelivery.objects.filter(
+            email_account=ea, target_account=ea_target
+        ).exists()
+
+    ####################################################################
+    #
+    def test_create_second_local_delivery_is_rejected(self, setup):
+        """
+        GIVEN an account that already has a LocalDelivery
+        WHEN  a second LocalDelivery is POSTed
+        THEN  400 is returned with a descriptive error
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        data = {"delivery_type": "LocalDelivery"}
+        resp = client.post(self._list_url(ea), data=data, format="json")
+        assert resp.status_code == 400
+        assert "LocalDelivery" in str(resp.data)
+
+    ####################################################################
+    #
+    def test_create_without_delivery_type_is_rejected(self, setup):
+        """
+        GIVEN a POST body with no delivery_type field
+        WHEN  the create endpoint is called
+        THEN  400 is returned
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        resp = client.post(
+            self._list_url(ea), data={"enabled": True}, format="json"
+        )
+        assert resp.status_code == 400
+        assert "delivery_type" in resp.data
+
+    ####################################################################
+    #
+    def test_create_with_invalid_delivery_type_is_rejected(self, setup):
+        """
+        GIVEN a POST body with an unrecognised delivery_type
+        WHEN  the create endpoint is called
+        THEN  400 is returned
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        resp = client.post(
+            self._list_url(ea),
+            data={"delivery_type": "BogusDelivery"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    ####################################################################
+    #
+    def test_create_for_other_users_account_is_forbidden(
+        self, email_account_factory, setup
+    ):
+        """
+        GIVEN a user authenticated as user A
+        WHEN  they try to POST a delivery method on user B's account
+        THEN  403 is returned
+        """
+        client = setup["client"]
+        ea_other = setup["ea_other_user"]
+        ea_target = email_account_factory()
+        data = {
+            "delivery_type": "AliasToDelivery",
+            "target_account": ea_target.email_address,
+        }
+        resp = client.post(self._list_url(ea_other), data=data, format="json")
+        assert resp.status_code == 403
+
+    ####################################################################
+    #
+    def test_update_local_delivery_spam_settings(self, setup):
+        """
+        GIVEN a LocalDelivery
+        WHEN  autofile_spam and spam_score_threshold are updated via PUT
+        THEN  200 is returned and the changes are persisted
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ld = LocalDelivery.objects.get(email_account=ea)
+        data = {
+            "delivery_type": "LocalDelivery",
+            "enabled": True,
+            "autofile_spam": True,
+            "spam_delivery_folder": "Junk",
+            "spam_score_threshold": 3,
+        }
+        resp = client.put(self._detail_url(ea, ld), data=data, format="json")
+        assert resp.status_code == 200
+        ld.refresh_from_db()
+        assert ld.autofile_spam is True
+        assert ld.spam_delivery_folder == "Junk"
+        assert ld.spam_score_threshold == 3
+
+    ####################################################################
+    #
+    def test_partial_update_local_delivery(self, setup):
+        """
+        GIVEN a LocalDelivery
+        WHEN  only autofile_spam is patched
+        THEN  200 is returned and only that field changes
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ld = LocalDelivery.objects.get(email_account=ea)
+        original_threshold = ld.spam_score_threshold
+        resp = client.patch(
+            self._detail_url(ea, ld),
+            data={"autofile_spam": True},
+            format="json",
+        )
+        assert resp.status_code == 200
+        ld.refresh_from_db()
+        assert ld.autofile_spam is True
+        assert ld.spam_score_threshold == original_threshold
+
+    ####################################################################
+    #
+    def test_maildir_path_is_read_only(self, setup):
+        """
+        GIVEN a LocalDelivery
+        WHEN  a PATCH attempt is made to change maildir_path
+        THEN  the field is silently ignored (read-only)
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ld = LocalDelivery.objects.get(email_account=ea)
+        original_path = ld.maildir_path
+        resp = client.patch(
+            self._detail_url(ea, ld),
+            data={"maildir_path": "/tmp/evil_path"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        ld.refresh_from_db()
+        assert ld.maildir_path == original_path
+
+    ####################################################################
+    #
+    def test_update_alias_to_delivery(self, email_account_factory, setup):
+        """
+        GIVEN an AliasToDelivery pointing at target_a
+        WHEN  it is updated via PUT to point at target_b
+        THEN  200 is returned and the target_account changes
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ea_target_a = email_account_factory()
+        ea_target_b = email_account_factory()
+        atd = AliasToDelivery.objects.create(
+            email_account=ea, target_account=ea_target_a
+        )
+        data = {
+            "delivery_type": "AliasToDelivery",
+            "enabled": True,
+            "target_account": ea_target_b.email_address,
+        }
+        resp = client.put(self._detail_url(ea, atd), data=data, format="json")
+        assert resp.status_code == 200
+        atd.refresh_from_db()
+        assert atd.target_account == ea_target_b
+
+    ####################################################################
+    #
+    def test_delete_alias_to_delivery(self, email_account_factory, setup):
+        """
+        GIVEN an AliasToDelivery
+        WHEN  it is deleted via DELETE
+        THEN  204 is returned and the object no longer exists in the DB
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ea_target = email_account_factory()
+        atd = AliasToDelivery.objects.create(
+            email_account=ea, target_account=ea_target
+        )
+        atd_pk = atd.pk
+        resp = client.delete(self._detail_url(ea, atd))
+        assert resp.status_code == 204
+        assert not DeliveryMethod.objects.filter(pk=atd_pk).exists()
+
+    ####################################################################
+    #
+    def test_delete_local_delivery(self, setup):
+        """
+        GIVEN an account with a LocalDelivery
+        WHEN  the LocalDelivery is deleted via DELETE
+        THEN  204 is returned and the object no longer exists
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        ld = LocalDelivery.objects.get(email_account=ea)
+        ld_pk = ld.pk
+        resp = client.delete(self._detail_url(ea, ld))
+        assert resp.status_code == 204
+        assert not DeliveryMethod.objects.filter(pk=ld_pk).exists()
+
+    ####################################################################
+    #
+    def test_delete_other_users_delivery_method_is_forbidden(self, setup):
+        """
+        GIVEN a delivery method owned by another user
+        WHEN  the current user tries to delete it
+        THEN  403 is returned and the method still exists
+        """
+        client = setup["client"]
+        ea_other = setup["ea_other_user"]
+        ld_other = LocalDelivery.objects.get(email_account=ea_other)
+        resp = client.delete(self._detail_url(ea_other, ld_other))
+        assert resp.status_code == 403
+        assert DeliveryMethod.objects.filter(pk=ld_other.pk).exists()

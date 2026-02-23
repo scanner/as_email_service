@@ -183,15 +183,19 @@ class InactiveEmailSerializer(serializers.HyperlinkedModelSerializer):
 ########################################################################
 ########################################################################
 #
-class DeliveryMethodSerializer(serializers.HyperlinkedModelSerializer):
+class DeliveryMethodSerializer(NestedHyperlinkedModelSerializer):
     """
     Base serializer for DeliveryMethod. The `delivery_type` field exposes the
     concrete subclass name so clients can distinguish LocalDelivery from
     AliasToDelivery.
     """
 
-    url = serializers.HyperlinkedIdentityField(
-        view_name="as_email:delivery-method-detail", read_only=True
+    parent_lookup_kwargs = {"email_account_pk": "email_account__pk"}
+
+    url = NestedHyperlinkedIdentityField(
+        view_name="as_email:delivery-method-detail",
+        lookup_field="pk",
+        parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
     )
     delivery_type = serializers.SerializerMethodField()
 
