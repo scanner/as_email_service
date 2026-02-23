@@ -6,13 +6,7 @@ For adminstrative functions this is supported by the django admin interface.
 These views are for users. It needs to provide functions to:
 - list their email accounts
 - update/set password for their email accounts
-- set blocked message policy, delivery folder
-- set account type: delivery, alias, forwarding
-- for alias let them add and remove aliases (to other email accounts that they
-  control.)
-- for forwarding - set a forwarding address
-- test forwarding address
-- examine blocked messages and choose to deliver them
+- manage delivery methods (local delivery, alias delivery)
 - create mail filter rules for an email account
   - import maildelivery file for creation of mail filter rules
 - order mail filter rules (for an email account)
@@ -22,7 +16,6 @@ These views are for users. It needs to provide functions to:
 # System imports
 #
 import logging
-from collections import defaultdict
 
 # 3rd party imports
 #
@@ -32,7 +25,6 @@ from django.http import (
     Http404,
     HttpResponse,
     HttpResponseBadRequest,
-    QueryDict,
 )
 from django.shortcuts import render
 from django.urls import reverse
@@ -48,7 +40,6 @@ from rest_framework.authentication import (
     SessionAuthentication,
 )
 from rest_framework.decorators import action
-from rest_framework.exceptions import ErrorDetail
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
@@ -57,9 +48,20 @@ from .forms import EmailAccountForm
 
 # Project imports
 #
-from .models import EmailAccount, MessageFilterRule, Provider, Server
+from .models import (
+    AliasToDelivery,
+    DeliveryMethod,
+    EmailAccount,
+    LocalDelivery,
+    MessageFilterRule,
+    Provider,
+    Server,
+)
 from .serializers import (
+    AliasToDeliverySerializer,
+    DeliveryMethodSerializer,
     EmailAccountSerializer,
+    LocalDeliverySerializer,
     MessageFilterRuleSerializer,
     MoveOrderSerializer,
     PasswordSerializer,
@@ -392,48 +394,6 @@ class EmailAccountViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    ####################################################################
-    #
-    def update(self, request, *args, **kwargs):
-        """
-        Since we have the alias_for ManyToManyField with a through
-        relationship where the user can only add email accounts to aliases and
-        alias_for where the email account owner == instance.owner we have to
-        enforce that check here.
-        """
-
-        # Make sure all the EmailAccounts aliases and alias_fors listed are
-        # ones owned by the same owner as this EmailAccount object.
-        #
-        # NOTE: if the owner of the EmailAccount instance has the perm
-        #       "can_have_foreign_aliases" this this EmailAccount is allowed to
-        #       have aliases to EmailAccounts that do not have the same owner.
-        #
-        instance = self.get_object()
-        if not instance.owner.has_perms(["as_email.can_have_foreign_aliases"]):
-            bad_fields = defaultdict(list)
-            for field in ["alias_for", "aliases"]:
-                if field in request.data:
-                    if isinstance(request.data, QueryDict):
-                        addrs = request.data.getlist(field)
-                    else:
-                        addrs = request.data[field]
-                    eas = EmailAccount.objects.filter(email_address__in=addrs)
-                    for ea in eas:
-                        if ea.owner != instance.owner:
-                            bad_fields[field].append(
-                                ErrorDetail(
-                                    f"{ea.email_address}: can only alias email "
-                                    "accounts owned by the same user: "
-                                    f"{instance.owner}",
-                                    code="permission_denied",
-                                )
-                            )
-            if bad_fields:
-                return Response(bad_fields, status.HTTP_403_FORBIDDEN)
-
-        return super().update(request, *args, **kwargs)
-
 
 ########################################################################
 ########################################################################
@@ -534,6 +494,131 @@ class MessageFilterRuleViewSet(ModelViewSet):
         belongs to. So we need to make sure that this value is set when
         creating.
         """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.validated_data["email_account_id"] = kwargs[
+            "email_account_pk"
+        ]
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
+
+########################################################################
+########################################################################
+#
+# Map the delivery_type request field to the concrete model and serializer.
+#
+_DELIVERY_TYPE_MAP: dict[
+    str, tuple[type[DeliveryMethod], type[DeliveryMethodSerializer]]
+] = {
+    "LocalDelivery": (LocalDelivery, LocalDeliverySerializer),
+    "AliasToDelivery": (AliasToDelivery, AliasToDeliverySerializer),
+}
+
+
+########################################################################
+########################################################################
+#
+class DeliveryMethodOwnerFilterBackend(DRYPermissionFiltersBase):
+    def filter_list_queryset(self, request, queryset, view):
+        """
+        Limits list requests to delivery methods belonging to the requesting
+        user's email accounts.
+        """
+        return queryset.filter(email_account__owner=request.user)
+
+
+########################################################################
+########################################################################
+#
+class DeliveryMethodViewSet(ModelViewSet):
+    """
+    CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
+
+    Supports LocalDelivery and AliasToDelivery subtypes. The request body
+    must include a `delivery_type` field (e.g. "LocalDelivery") to select
+    the correct subtype serializer on create/update.
+    """
+
+    permission_classes = (IsAuthenticated, DRYPermissions)
+    serializer_class = DeliveryMethodSerializer
+    filter_backends = (DeliveryMethodOwnerFilterBackend,)
+    queryset = DeliveryMethod.objects.all()
+    authentication_classes = (
+        CSRFExemptSessionAuthentication,
+        BasicAuthentication,
+    )
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        return DeliveryMethod.objects.filter(
+            email_account=self.kwargs["email_account_pk"]
+        )
+
+    ####################################################################
+    #
+    def get_serializer_class(self):
+        """
+        Return the correct serializer based on the concrete subtype.
+
+        For instance-based read/write actions, the actual type of the object
+        is used. For create, the client supplies `delivery_type` in the
+        request body to select the subtype.
+        """
+        # For instance-based actions use the actual concrete type.
+        #
+        if self.action in ("retrieve", "update", "partial_update", "destroy"):
+            instance = self.get_object()
+            entry = _DELIVERY_TYPE_MAP.get(type(instance).__name__)
+            if entry:
+                return entry[1]
+
+        # For create (and list fallback) use the delivery_type in the request.
+        #
+        delivery_type = self.request.data.get("delivery_type")
+        if delivery_type and delivery_type in _DELIVERY_TYPE_MAP:
+            return _DELIVERY_TYPE_MAP[delivery_type][1]
+
+        return DeliveryMethodSerializer
+
+    ####################################################################
+    #
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new DeliveryMethod under the specified EmailAccount.
+
+        The `delivery_type` field selects the concrete subtype
+        (LocalDelivery or AliasToDelivery).
+        """
+        delivery_type = request.data.get("delivery_type")
+        if not delivery_type or delivery_type not in _DELIVERY_TYPE_MAP:
+            return Response(
+                {
+                    "delivery_type": (
+                        f"Must be one of: {list(_DELIVERY_TYPE_MAP.keys())}"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Enforce max-one LocalDelivery per account.
+        #
+        if delivery_type == "LocalDelivery":
+            ea_pk = kwargs["email_account_pk"]
+            if LocalDelivery.objects.filter(email_account_id=ea_pk).exists():
+                return Response(
+                    {
+                        "delivery_type": (
+                            "An account may have at most one LocalDelivery."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.validated_data["email_account_id"] = kwargs[

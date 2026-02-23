@@ -29,8 +29,10 @@ from faker import Faker
 # Project imports
 #
 from ..models import (
+    AliasToDelivery,
     EmailAccount,
     InactiveEmail,
+    LocalDelivery,
     MessageFilterRule,
     Provider,
     Server,
@@ -420,10 +422,50 @@ class EmailAccountFactory(DjangoModelFactory):
         do_save = password != "XXX"
         self.set_password(password, save=do_save)
 
+    @post_generation
+    def local_delivery(
+        self: EmailAccount,
+        create: bool,
+        extracted: Sequence[Any],
+        **kwargs: Any,
+    ) -> None:
+        """
+        Create a default LocalDelivery for every new EmailAccount unless
+        `local_delivery=False` is passed explicitly.
+        """
+        if not create:
+            return
+        if extracted is False:
+            return
+        LocalDelivery.objects.create(email_account=self)
+
     class Meta:
         model = EmailAccount
         skip_postgeneration_save = True
         django_get_or_create = ("owner", "email_address", "server")
+
+
+########################################################################
+########################################################################
+#
+class LocalDeliveryFactory(DjangoModelFactory):
+    email_account = factory.SubFactory(
+        EmailAccountFactory, local_delivery=False
+    )
+
+    class Meta:
+        model = LocalDelivery
+
+
+########################################################################
+########################################################################
+#
+class AliasToDeliveryFactory(DjangoModelFactory):
+    email_account = factory.SubFactory(EmailAccountFactory)
+    target_account = factory.SubFactory(EmailAccountFactory)
+
+    class Meta:
+        model = AliasToDelivery
 
 
 ########################################################################

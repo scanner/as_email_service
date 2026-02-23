@@ -128,6 +128,7 @@ INSTALLED_APPS = [
     "django_extensions",
     "huey.contrib.djhuey",
     "ordered_model",
+    "polymorphic",
     "rest_framework",
     "dry_rest_permissions",
     "crispy_forms",

@@ -12,7 +12,6 @@ import email.message
 import logging
 import mailbox
 import shlex
-from enum import StrEnum
 from typing import List
 
 # 3rd party imports
@@ -23,11 +22,13 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import QuerySet
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
 from model_utils import FieldTracker
 from ordered_model.models import OrderedModel
+from polymorphic.models import PolymorphicModel
 from postmarker.core import PostmarkClient
 
 # project imports
@@ -347,27 +348,8 @@ class EmailAccount(models.Model):
     User's can have multiple mail accounts. A single mail account
     maps to an email address that can receive and store email.
 
-    XXX Should "forward" and "alias" be the same thing? ie: you just set an
-        email address and the code figures out if it needs to forward it as
-        email, or just deliver it to a different mail account.
-
-    NOTE: This class is a bit messy because we actually have three account
-          types: an account, a forward, and an alias.
-
-          If ALIAS then email is delivered to the account indicated by
-          `alias_for`
-
-          If FORWARDING then the message being delivered is sent as a new a new
-          email to the `forward_to` address.
-
-    NOTE: Even if an account is "forwarding" or "alias" you can still connect
-          to the SMTP relay and send email! You can still connect to the IMAP
-          server as well. Just as long as forwarding and aliasing is setup
-          properly no new mail will be delivered to this account.
-
-    NOTE: Forwarding can potentially create bounces. If too many bounces are
-          received the account will be deactivated and messages will be
-          delivered locally instead of being forwarded!
+    Email is delivered to an EmailAccount via one or more `DeliveryMethod`
+    objects. See `LocalDelivery` and `AliasToDelivery`.
     """
 
     # The number of bounced emails that you are allowed before your account
@@ -377,22 +359,6 @@ class EmailAccount(models.Model):
     NUM_EMAIL_BOUNCE_LIMIT = 10
     DEACTIVATED_DUE_TO_BOUNCES_REASON = "Deactivated due to excessive bounces"
     DEACTIVATED_BY_POSTMARK = "Postmark deactivated due to bounced email"
-    DEACTIVATED_DUE_TO_BAD_FORWARD_TO = (
-        "Deactivated due to bounce when sending email to `forward_to` address"
-    )
-
-    # EmailAccount delivery methods - local, imap, alias, forwarding
-    #
-    class DeliveryMethods(StrEnum):
-        LOCAL_DELIVERY = "LD"
-        # IMAP_DELIVERY = "IM"  # XXX coming soon
-        ALIAS = "AL"
-        FORWARDING = "FW"
-
-    # Max number of levels you can nest an alias. There is no easy way to check
-    # this except for traversing all the aliases.
-    #
-    MAX_ALIAS_DEPTH = 3
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     server = models.ForeignKey(
@@ -412,36 +378,6 @@ class EmailAccount(models.Model):
             "It must have the same domin name as the associated server"
         ),
     )
-    delivery_method = models.CharField(
-        max_length=2,
-        choices=[(tag.value, tag.name) for tag in DeliveryMethods],
-        default=DeliveryMethods.LOCAL_DELIVERY,
-        help_text=_(
-            "Delivery method indicates how email for this account is "
-            "delivered. This is either delivery to a local mailbox, delivery "
-            "to an IMAP mailbox, an alias to another email account on this "
-            "system or forwarding to an email address by encapsulating the "
-            "message or rewriting the headers."
-        ),
-    )
-
-    # NOTE: In a system with arbitrary user's this field should not be settable
-    #       by users. Probably should not even be visible. So I guess make sure
-    #       it is not in the serializer, not in any forms. (ie: mark it
-    #       disabled in user forms)
-    #
-    mail_dir = models.CharField(
-        help_text=_(
-            "The root folder for the local mail delivery for this email "
-            "account. This should be left blank and it will be auto-filled "
-            "in when the email account is created. Only fill it in if you "
-            "have a specific location in the file system you want this user's "
-            "local mailbox to be stored at."
-        ),
-        max_length=1000,
-        null=True,
-        blank=True,
-    )
     password = models.CharField(
         max_length=200,
         help_text=_(
@@ -450,105 +386,14 @@ class EmailAccount(models.Model):
         ),
         default="XXX",
     )
-    autofile_spam = models.BooleanField(
+    # Whether this email account is enabled. Disabled accounts do not accept
+    # email — treating them as if the account does not exist.
+    #
+    enabled = models.BooleanField(
         default=True,
         help_text=_(
-            "When incoming mail exceeds the threshold set in "
-            "`spam_score_threshold` then this email will "
-            "automatically be filed in the `spam_delivery_folder` mailbox "
-            "if delivery method is `Local Delivery` or `IMAP`. This option has no effect "
-            "if the delivery method is `Alias` or `Forwarding`."
-        ),
-    )
-    spam_delivery_folder = models.CharField(
-        default="Junk",
-        max_length=1024,
-        help_text=_(
-            "For delivery methods of `Local Delivery` and `IMAP`, if this "
-            "message is considered spam it and `Autofile Spam` is set then "
-            "this message will be delivered to this folder, overriding and "
-            "message filter rules."
-        ),
-    )
-    spam_score_threshold = models.IntegerField(
-        default=15,
-        help_text=_(
-            "This is the value at which an incoming message is considered "
-            "spam or not. The higher the value the more tolerant the rules. "
-            "15 is a good default. Lower may cause more false positives. If "
-            "the delivery method is `Local delivery` or `IMAP` then incoming "
-            "spam will be filed in the `spam delivery folder`. If the delivery "
-            "method is `Forwrding` then instead of just re-sending the email "
-            "to the forwarding address the message will be encapsulated and "
-            "attached as a `message/rfc822` when being forwarded."
-        ),
-    )
-
-    # If delivery_method is ALIAS then messages are not delivered to this
-    # account. Instead they are delivered to the accounts in the `alias_for`
-    # attribute.
-    #
-    # NOTE: This means you can alias across domains as long as those domains
-    #       are hosted by this app.
-    #
-    # NOTE: We have no restrictions about what email account you can add to
-    #       alias_for. There are a number of valid cases where you want an
-    #       email address to alias for several different email addresses that
-    #       belong to EmailAccount's that are not the same one that is being
-    #       aliased from. In the world of this app there is very little chance
-    #       for abuse (it is just me, my family, and my friends) but if this
-    #       were a more open service it could be abused become someone could
-    #       make an account, alias_for your account, and then add you to many
-    #       email lists filling your account with unwanted mail and you have no
-    #       way to turn it off. So, this should be something requiring approval
-    #       by the account your adding to alias_for.
-    #
-    alias_for = models.ManyToManyField(
-        "self",
-        related_name="aliases",
-        related_query_name="alias",
-        through="Alias",
-        symmetrical=False,
-        help_text=_(
-            "If the delivery method is `Alias` this is a list of the email "
-            "accounts that the email will be delivered to instead of this "
-            "email account. You are declaring that this account is an "
-            "`alias for` these other accounts. So, say `root@example.com` "
-            "is an alias for `admin@example.com`, or `thetwoofus@example.com` "
-            "is an alis for `me@example.com` and `you@example.com`. NOTE: "
-            "you can only alias to email accounts that are managed by this "
-            "system. If you want to have email forwarded to a email address "
-            "not managed by this system you need to choose the delivery method "
-            "`Forwarding` and properly specify the destination address in the "
-            "`forward_to` field. NOTE: `alias_for` is only relevant when "
-            "the delivery method is `Alias`. The field is otherwise ignored."
-        ),
-    )
-
-    # If delivery_method is FORWARDING then messages are not delivered
-    # locally. Instead a new email message is generated and sent to the
-    # `forward_to` address.
-    #
-    # NOTE: Unlike 'alias' you can only forward to a single address.
-    #
-    # NOTE: We need to make a 'forward check' system. If you set a
-    #       forward, the system will send a test email to the
-    #       forwarded address. The test email has a link back to a
-    #       form on this system that acknowldges the forward.
-    #
-    #       How does that work in terms of UX? We should not
-    #       automatically send a test email when the email account is
-    #       saved. We should have some indicator along with a button
-    #       you press to actually send the test email.
-    #
-    forward_to = models.EmailField(
-        null=True,
-        blank=True,
-        help_text=_(
-            "When the email account delivery method is set to `Forwarding` "
-            "this is the email address that this email is forwarded to. NOTE: "
-            "`forward_to` is only relevant when the delivery method is "
-            "`Forwarding`. The field is otherwise ignored."
+            "If an account is not enabled, email for this account will not be "
+            "accepted. This is equivalent to the email account not existing."
         ),
     )
 
@@ -607,17 +452,10 @@ class EmailAccount(models.Model):
     # We want to track when certain fields change so we can do additional
     # operations that only need to happen when those fields change.
     #
-    tracker = FieldTracker(fields=["password", "mail_dir"])
+    tracker = FieldTracker(fields=["password"])
 
     class Meta:
-        # If an EmailAccount has the permission "can_have_foreign_aliases" then
-        # when the EmailAccount is being modified via a view we will allow it
-        # to have `alais_for` and `aliases` that are owned by a different
-        # acount.
-        #
-        permissions = [("can_have_foreign_aliases", "Can have foreign aliases")]
         indexes = [
-            models.Index(fields=["forward_to"]),
             models.Index(fields=["email_address"]),
             models.Index(fields=["server"]),
             models.Index(fields=["owner"]),
@@ -755,31 +593,6 @@ class EmailAccount(models.Model):
 
     ####################################################################
     #
-    def MH(self, create: bool = True) -> mailbox.MH:
-        """
-        Return a mailbox.MH instance for this user's mail
-        dir. Attempts to create it if it does not already exist.
-        Also make sure that the inbox also exists.
-        """
-        # NOTE: Various bits of code treats the object we get from MH as an
-        #       EmailMessage. Thus we need to make sure when we read the
-        #       message from a binary file we get back an EmailMessage. That is
-        #       what the email.policy.default is for (otherwise it uses
-        #       compat32 which would give us an email.Message object.)
-        #
-        mh = mailbox.MH(
-            self.mail_dir,
-            factory=lambda x: email.message_from_binary_file(
-                x, policy=email.policy.default
-            ),
-            create=create,
-        )
-        for folder in settings.DEFAULT_FOLDERS:
-            mh.add_folder(folder)
-        return mh
-
-    ####################################################################
-    #
     def send_email_via_smtp(
         self,
         rcpt_tos: List[str],
@@ -796,36 +609,29 @@ class EmailAccount(models.Model):
             spool_on_retryable=spool_on_retryable,
         )
 
+    ####################################################################
+    #
+    def deliver(
+        self,
+        msg: email.message.EmailMessage,
+        visited_accounts: set[int] | None = None,
+    ) -> None:
+        """
+        Deliver the given message to this account using all enabled delivery
+        methods in order. The `visited_accounts` set is threaded through alias
+        chains to detect loops and enforce the hop limit.
 
-########################################################################
-########################################################################
-#
-class Alias(models.Model):
-    """
-    Through relation for EmailAccount aliases. Make sure we do not alias to
-    ourselves.
-    """
+        Args:
+            msg: The email message to deliver
+            visited_accounts: PKs of EmailAccounts already visited in this
+                delivery chain; initialised to an empty set on first call.
+        """
+        if visited_accounts is None:
+            visited_accounts = set()
+        for method in self.delivery_methods.filter(enabled=True):
+            method.deliver(msg, visited_accounts)
 
-    from_email_account = models.ForeignKey(
-        EmailAccount, on_delete=models.CASCADE, related_name="+"
-    )
-    to_email_account = models.ForeignKey(
-        EmailAccount, on_delete=models.CASCADE, related_name="+"
-    )
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                name="%(app_label)s_%(class)s_unique_relationships",
-                fields=["from_email_account", "to_email_account"],
-            ),
-            models.CheckConstraint(
-                name="%(app_label)s_%(class)s_prevent_self_alias",
-                condition=~models.Q(
-                    from_email_account=models.F("to_email_account")
-                ),
-            ),
-        ]
+    delivery_methods: QuerySet["DeliveryMethod"]
 
 
 ########################################################################
@@ -1199,3 +1005,216 @@ class InactiveEmail(models.Model):
         ):
             inacts.append(inact)
         return inacts
+
+
+########################################################################
+########################################################################
+#
+class DeliveryMethod(PolymorphicModel):
+    """
+    Base class for delivery methods. An EmailAccount can have multiple
+    delivery methods. Each enabled delivery method receives a copy of
+    every incoming message.
+
+    Subclasses provide delivery logic via `deliver()`.
+    """
+
+    email_account = models.ForeignKey(
+        EmailAccount,
+        on_delete=models.CASCADE,
+        related_name="delivery_methods",
+    )
+    enabled = models.BooleanField(
+        default=True,
+        help_text=_(
+            "When disabled, this delivery method is skipped during message "
+            "delivery."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    ####################################################################
+    #
+    def deliver(
+        self,
+        msg: email.message.EmailMessage,
+        visited_accounts: set[int],
+    ) -> None:
+        """
+        Deliver the given message. Must be implemented by subclasses.
+
+        Args:
+            msg: The email message to deliver
+            visited_accounts: PKs of EmailAccounts already visited in this
+                delivery chain; used by AliasToDelivery for loop detection.
+        """
+        raise NotImplementedError
+
+
+########################################################################
+########################################################################
+#
+class LocalDelivery(DeliveryMethod):
+    """
+    Delivers messages to a local MH mailbox on the filesystem.
+
+    Spam filtering is applied before filing: messages above the score
+    threshold are filed in `spam_delivery_folder` when `autofile_spam`
+    is enabled.
+    """
+
+    maildir_path = models.CharField(
+        max_length=1000,
+        null=True,
+        blank=True,
+        help_text=_(
+            "Root folder for the local MH mailbox. Left blank it will be "
+            "auto-filled from the account's email address when first saved."
+        ),
+    )
+    autofile_spam = models.BooleanField(
+        default=True,
+        help_text=_(
+            "When enabled, messages above the spam score threshold are "
+            "automatically filed in the spam delivery folder."
+        ),
+    )
+    spam_delivery_folder = models.CharField(
+        default="Junk",
+        max_length=1024,
+        help_text=_(
+            "Folder to deliver spam into when autofile_spam is enabled."
+        ),
+    )
+    spam_score_threshold = models.IntegerField(
+        default=15,
+        help_text=_(
+            "Messages with an X-Spam-Score at or above this value are "
+            "considered spam. 15 is a reasonable default."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "Local Delivery"
+        verbose_name_plural = "Local Deliveries"
+
+    ####################################################################
+    #
+    def __str__(self) -> str:
+        return f"LocalDelivery({self.maildir_path})"
+
+    ####################################################################
+    #
+    def save(self, *args, **kwargs) -> None:
+        """
+        Auto-fill maildir_path from the email account address if not set.
+        """
+        if not self.maildir_path and self.email_account_id:
+            ea = self.email_account
+            self.maildir_path = str(
+                settings.MAIL_DIRS / ea.server.domain_name / ea.email_address
+            )
+        super().save(*args, **kwargs)
+
+    ####################################################################
+    #
+    def MH(self, create: bool = True) -> mailbox.MH:
+        """
+        Return a mailbox.MH instance for this delivery method's maildir.
+        Creates the mailbox and default folders if `create` is True.
+        """
+        mh = mailbox.MH(
+            self.maildir_path,
+            factory=lambda x: email.message_from_binary_file(
+                x, policy=email.policy.default
+            ),
+            create=create,
+        )
+        for folder in settings.DEFAULT_FOLDERS:
+            mh.add_folder(folder)
+        return mh
+
+    ####################################################################
+    #
+    def deliver(
+        self,
+        msg: email.message.EmailMessage,
+        visited_accounts: set[int],
+    ) -> None:
+        """
+        Deliver the message to the local MH mailbox.
+
+        Args:
+            msg: The email message to deliver
+            visited_accounts: Unused for local delivery; required by interface
+        """
+        # Inline import to avoid circular: deliver.py → models → LocalDelivery
+        from .deliver import deliver_message_locally
+
+        deliver_message_locally(self, msg)
+
+
+########################################################################
+########################################################################
+#
+class AliasToDelivery(DeliveryMethod):
+    """
+    Forwards messages to another EmailAccount on this system.
+
+    Alias chains are limited to MAX_HOPS to prevent runaway delivery.
+    Loops are detected by tracking visited account PKs.
+    """
+
+    MAX_HOPS = 10
+
+    target_account = models.ForeignKey(
+        EmailAccount,
+        on_delete=models.CASCADE,
+        related_name="aliased_from",
+        help_text=_("The EmailAccount messages will be aliased to."),
+    )
+
+    class Meta:
+        verbose_name = "Alias-To Delivery"
+        verbose_name_plural = "Alias-To Deliveries"
+
+    ####################################################################
+    #
+    def __str__(self) -> str:
+        return f"AliasToDelivery(-> {self.target_account})"
+
+    ####################################################################
+    #
+    def deliver(
+        self,
+        msg: email.message.EmailMessage,
+        visited_accounts: set[int],
+    ) -> None:
+        """
+        Deliver the message to the target account, with loop detection.
+
+        Args:
+            msg: The email message to deliver
+            visited_accounts: PKs of accounts already in this chain; prevents
+                loops and enforces the MAX_HOPS limit.
+        """
+        if len(visited_accounts) >= self.MAX_HOPS:
+            logger.warning(
+                "Alias hop limit (%d) reached delivering to %s via %s, "
+                "stopping",
+                self.MAX_HOPS,
+                self.target_account.email_address,
+                self.email_account.email_address,
+            )
+            return
+
+        if self.target_account_id in visited_accounts:
+            logger.warning(
+                "Alias loop detected: %s already visited, stopping delivery",
+                self.target_account.email_address,
+            )
+            return
+
+        visited_accounts.add(self.target_account_id)
+        self.target_account.deliver(msg, visited_accounts)

@@ -23,7 +23,13 @@ from huey.contrib.djhuey import HUEY
 
 # Project imports
 #
-from .models import EmailAccount, Provider, Server
+from .models import (
+    AliasToDelivery,
+    EmailAccount,
+    LocalDelivery,
+    Provider,
+    Server,
+)
 from .tasks import (
     check_update_pwfile_for_emailaccount,
     delete_emailaccount_from_pwfile,
@@ -187,14 +193,16 @@ def check_create_maintenance_email_accounts(
         )
         eas.append(ea)
 
-    # Set `alias_for`` all the email accounts to the first one.
+    # The first account gets a LocalDelivery. All subsequent accounts get an
+    # AliasToDelivery pointing to the first.
     #
     first = eas[0]
     first.save()
+    local_delivery = LocalDelivery.objects.create(email_account=first)
+    local_delivery.MH()
     for ea in eas[1:]:
-        ea.delivery_method = "AL"
         ea.save()
-        ea.alias_for.add(first)
+        AliasToDelivery.objects.create(email_account=ea, target_account=first)
 
 
 ####################################################################
@@ -243,36 +251,6 @@ def server_pre_save(sender: Type[Server], instance: Server, **kwargs):
         Path(instance.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(instance.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(instance.mail_dir_parent).mkdir(parents=True, exist_ok=True)
-
-
-####################################################################
-#
-@receiver(pre_save, sender=EmailAccount)
-def emailaccount_pre_save(
-    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
-):
-    """
-    Pre-save signal handler for EmailAccount that:
-    1. Sets the mail_dir if not set on new instances
-    2. Creates the mail directory when:
-       - The object is being created (new instance)
-       - OR the mail_dir field has been changed
-
-    This replaces the previous _pre_save_logic method.
-    """
-    # Determine if this is a new instance
-    is_new = instance.pk is None
-
-    # Set mail_dir if not set and this is a new instance
-    if is_new and not instance.mail_dir:
-        md = Path(instance.server.mail_dir_parent) / instance.email_address
-        instance.mail_dir = str(md)
-
-    # Create the mail directory if:
-    # - This is a new instance, OR
-    # - The mail_dir field has changed (using FieldTracker)
-    if is_new or instance.tracker.has_changed("mail_dir"):
-        instance.MH()
 
 
 @receiver(m2m_changed, sender=Server.receive_providers.through)
