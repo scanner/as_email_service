@@ -81,10 +81,10 @@ exec_shell: ## Make a bash shell in the docker-compose running devweb container
 	@docker compose exec devweb /bin/bash
 
 manage_shell:	## Run `manage.py shell_plus` in a devweb container.
-	@docker compose run --rm devweb python /app/manage.py shell_plus
+	@docker compose run --rm devweb /venv/bin/python /app/manage.py shell_plus
 
 migrate:	## Run `manage.py migrate` to run all necessary migrations
-	@docker compose run --rm devweb python /app/manage.py migrate
+	@docker compose run --rm devweb /venv/bin/python /app/manage.py migrate
 
 makemigrations: build	## Run `manage.py makemigrations` for the as_email app
 	@docker compose run --rm devweb python /app/manage.py makemigrations as_email
@@ -93,7 +93,7 @@ createadmin: migrate   ## Create django admin account `admin` with password `tes
 	@docker compose run -e DJANGO_SUPERUSER_EMAIL=admin@example.com \
                             -e DJANGO_SUPERUSER_PASSWORD=testpass1234 \
                             --rm devweb \
-                            python /app/manage.py createsuperuser --username admin --no-input
+                            /venv/bin/python /app/manage.py createsuperuser --username admin --no-input
 
 logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
 	@docker compose logs -f worker devweb devsmtpd mailhog

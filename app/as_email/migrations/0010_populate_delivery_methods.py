@@ -21,6 +21,20 @@ def create_delivery_methods(apps, schema_editor):
     EmailAccount = apps.get_model("as_email", "EmailAccount")
     LocalDelivery = apps.get_model("as_email", "LocalDelivery")
     AliasToDelivery = apps.get_model("as_email", "AliasToDelivery")
+    ContentType = apps.get_model("contenttypes", "ContentType")
+
+    # NOTE: apps.get_model() bypasses the polymorphic model's save(), so
+    # polymorphic_ctype_id is NOT set automatically. We must set it explicitly
+    # on every create() call, otherwise all rows are left with a NULL
+    # polymorphic_ctype_id and django-polymorphic raises PolymorphicTypeUndefined
+    # when it tries to resolve the concrete subtype.
+    #
+    local_ct = ContentType.objects.get(
+        app_label="as_email", model="localdelivery"
+    )
+    alias_ct = ContentType.objects.get(
+        app_label="as_email", model="aliastodelivery"
+    )
 
     for ea in EmailAccount.objects.all():
         # Skip accounts that already have delivery methods.
@@ -33,6 +47,7 @@ def create_delivery_methods(apps, schema_editor):
         if delivery_method in ("LD", "FW"):
             # Local delivery (and forwarding fallback).
             LocalDelivery.objects.create(
+                polymorphic_ctype=local_ct,
                 email_account=ea,
                 maildir_path=ea.mail_dir or "",
                 autofile_spam=ea.autofile_spam,
@@ -43,6 +58,7 @@ def create_delivery_methods(apps, schema_editor):
             # Alias — create an AliasToDelivery for each alias_for target.
             for target in ea.alias_for.all():
                 AliasToDelivery.objects.create(
+                    polymorphic_ctype=alias_ct,
                     email_account=ea,
                     target_account=target,
                 )
@@ -50,6 +66,7 @@ def create_delivery_methods(apps, schema_editor):
             # account still has at least one delivery method.
             if not ea.alias_for.exists():
                 LocalDelivery.objects.create(
+                    polymorphic_ctype=local_ct,
                     email_account=ea,
                     maildir_path=ea.mail_dir or "",
                     autofile_spam=ea.autofile_spam,

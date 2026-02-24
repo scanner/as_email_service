@@ -122,8 +122,6 @@ export default {
       addingType.value = null;
     };
 
-    ////////////////////////////////////////////////////////////////////////
-    //
     onMounted(fetchDeliveryMethods);
 
     return {
