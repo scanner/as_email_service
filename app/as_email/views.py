@@ -51,8 +51,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from .forms import EmailAccountForm
-
 # Project imports
 #
 from .models import (
@@ -106,21 +104,18 @@ def index(request):
     """
     user = request.user
     email_accounts = EmailAccount.objects.filter(owner=user)
-    email_accounts_data = {
+    email_accounts_serialized = {
         ea.pk: EmailAccountSerializer(ea, context={"request": request})
         for ea in email_accounts
     }
-    email_accounts_w_forms = [
-        (ea, EmailAccountForm(instance=ea)) for ea in email_accounts
-    ]
 
-    # Create a dicdtionary that gives the field info from the django rest
+    # Create a dictionary that gives the field info from the django rest
     # framework for an EmailAccount object so that our UI knows how to
-    # represent them and what info to include in the forms.
+    # represent them and what info to include in the forms (used for tooltips).
     #
     actions = {}
-    if email_accounts_data:
-        serializer = list(email_accounts_data.values())[0]
+    if email_accounts_serialized:
+        serializer = list(email_accounts_serialized.values())[0]
         eavs = EmailAccountViewSet()
         md = eavs.metadata_class()
         actions = {
@@ -130,17 +125,22 @@ def index(request):
         }
 
     vue_data = {
-        "email_account_list_url": reverse("as_email:email-account-list"),
         "email_accounts_data": {
-            f"pk{k}": v.data for k, v in email_accounts_data.items()
+            f"pk{k}": {
+                **dict(v.data),
+                "delivery_methods_url": reverse(
+                    "as_email:delivery-method-list",
+                    kwargs={"email_account_pk": k},
+                ),
+            }
+            for k, v in email_accounts_serialized.items()
         },
-        "num_email_accounts": len(email_accounts_data),
+        "num_email_accounts": len(email_accounts_serialized),
         "valid_email_addresses": [x.email_address for x in email_accounts],
         "email_account_field_info": actions,
-        "myTitle": "Hello Vue!",
     }
     context = {
-        "email_accounts": email_accounts_w_forms,
+        "email_accounts": list(email_accounts),
         "vue_data": vue_data,
     }
     return render(request, "as_email/index.html", context)
