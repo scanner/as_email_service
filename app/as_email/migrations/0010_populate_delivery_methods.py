@@ -12,6 +12,8 @@ Accounts that already have at least one DeliveryMethod are left untouched.
 """
 # system imports
 #
+from django.apps import apps as real_apps
+from django.contrib.contenttypes.management import create_contenttypes
 from django.db import migrations
 
 
@@ -22,13 +24,23 @@ def create_delivery_methods(apps, schema_editor):
     LocalDelivery = apps.get_model("as_email", "LocalDelivery")
     AliasToDelivery = apps.get_model("as_email", "AliasToDelivery")
     ContentType = apps.get_model("contenttypes", "ContentType")
-
     # NOTE: apps.get_model() bypasses the polymorphic model's save(), so
     # polymorphic_ctype_id is NOT set automatically. We must set it explicitly
     # on every create() call, otherwise all rows are left with a NULL
     # polymorphic_ctype_id and django-polymorphic raises PolymorphicTypeUndefined
     # when it tries to resolve the concrete subtype.
     #
+    # NOTE: Django's post_migrate signal normally populates content type rows,
+    # but it fires after ALL migrations complete — so at the point this data
+    # migration runs during test setup, the rows for our concrete subtypes don't
+    # exist yet. We call create_contenttypes() explicitly to seed them first;
+    # in production where they already exist, create_contenttypes() is a no-op.
+    # We use apps.get_model("contenttypes", "ContentType") (the historical model)
+    # rather than the real ContentType class so that FK assignment type-checks
+    # pass when Django validates the historical model graph.
+    #
+    create_contenttypes(real_apps.get_app_config("as_email"), verbosity=0)
+
     local_ct = ContentType.objects.get(
         app_label="as_email", model="localdelivery"
     )
