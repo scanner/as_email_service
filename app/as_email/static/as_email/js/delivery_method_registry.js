@@ -1,11 +1,11 @@
 // Delivery Method Registry
 //
-// Maps delivery_type strings to their Vue form components, display labels, and
-// default field values for new instances.
+// Maps delivery_type strings to their Vue form components, display labels,
+// icons, and default field values for new instances.
 //
 // To add a new delivery type (e.g. ImapDelivery):
 //   1. Import its form component here
-//   2. Add an entry to each of the three exports below
+//   2. Add an entry to each of the four exports below
 //   3. Nothing else needs to change
 //
 import LocalDeliveryForm from "./local_delivery_form.js";
@@ -27,9 +27,19 @@ export const DELIVERY_TYPE_COMPONENTS = {
 // Human-readable labels for each delivery type, used in the UI.
 //
 export const DELIVERY_TYPE_LABELS = {
-  LocalDelivery: "Local Mailbox",
-  AliasToDelivery: "Alias To",
-  // ImapDelivery: "IMAP",
+  LocalDelivery: "Local Delivery",
+  AliasToDelivery: "Alias-To",
+  ImapDelivery: "IMAP Delivery",
+};
+
+////////////////////////////////////////////////////////////////////////////
+//
+// Emoji icons for each delivery type, shown in the card header.
+//
+export const DELIVERY_TYPE_ICONS = {
+  LocalDelivery: "📁",
+  AliasToDelivery: "↪️",
+  ImapDelivery: "📧",
 };
 
 ////////////////////////////////////////////////////////////////////////////
@@ -51,10 +61,6 @@ export const DELIVERY_TYPE_DEFAULTS = {
     enabled: true,
     target_account: "",
   },
-  // ImapDelivery stub — fields defined here even though the backend schema
-  // does not yet exist, so the registry slot is reserved and the auth_type
-  // discriminator is present from day one.
-  //
   // ImapDelivery: {
   //   delivery_type: "ImapDelivery",
   //   enabled: true,

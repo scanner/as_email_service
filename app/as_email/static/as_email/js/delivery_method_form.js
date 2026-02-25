@@ -2,11 +2,13 @@
 //
 // Wraps a single DeliveryMethod object. Uses the registry to render the
 // correct sub-form for the delivery type, and owns all API communication
-// for that one delivery method: save (PATCH or POST) and delete (DELETE).
+// for that one delivery method: save (PATCH or POST), delete (DELETE), and
+// the quick enabled-toggle (PATCH of just the `enabled` field).
 //
 import { ref, computed } from "vue";
 import {
   DELIVERY_TYPE_COMPONENTS,
+  DELIVERY_TYPE_ICONS,
   DELIVERY_TYPE_LABELS,
 } from "./delivery_method_registry.js";
 
@@ -47,9 +49,14 @@ export default {
     const deleting = ref(false);
     const errors = ref({});
 
+    // View/edit mode for existing methods. New methods start in edit mode
+    // immediately (they have no saved state to display).
+    //
+    const isEditing = ref(props.isNew);
+
     ////////////////////////////////////////////////////////////////////////
     //
-    // Pick the right sub-form component from the registry.
+    // Pick the right sub-form component and display info from the registry.
     //
     const subFormComponent = computed(
       () => DELIVERY_TYPE_COMPONENTS[props.deliveryMethod.delivery_type],
@@ -59,6 +66,10 @@ export default {
       () =>
         DELIVERY_TYPE_LABELS[props.deliveryMethod.delivery_type] ??
         props.deliveryMethod.delivery_type,
+    );
+
+    const deliveryTypeIcon = computed(
+      () => DELIVERY_TYPE_ICONS[props.deliveryMethod.delivery_type] ?? "📬",
     );
 
     ////////////////////////////////////////////////////////////////////////
@@ -73,28 +84,25 @@ export default {
     //
     // Save: POST for new, PATCH for existing.
     //
-    // NOTE: delivery_type is included in formData (spread from the prop) but
-    // the backend does not require it on PATCH — it resolves the serializer
-    // from the DB using the pk. It is harmless to send it.
-    //
     const save = async () => {
       saving.value = true;
       errors.value = {};
       try {
         let res;
+        const body = JSON.stringify(formData.value);
         if (props.isNew) {
           res = await fetch(props.deliveryMethodsUrl, {
             method: "POST",
             credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(formData.value),
+            body,
           });
         } else {
           res = await fetch(props.deliveryMethod.url, {
             method: "PATCH",
             credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(formData.value),
+            body,
           });
         }
 
@@ -103,17 +111,17 @@ export default {
           if (props.isNew) {
             ctx.emit("created", data);
           } else {
+            isEditing.value = false;
             ctx.emit("saved", data);
           }
         } else {
-          // Try to parse a JSON error body; fall back to a plain status string
-          // if the server returns no body (e.g. 500).
-          //
+          let errBody;
           try {
-            errors.value = await res.json();
+            errBody = await res.json();
           } catch {
-            errors.value = { detail: `HTTP ${res.status}: ${res.statusText}` };
+            errBody = { detail: `HTTP ${res.status}: ${res.statusText}` };
           }
+          errors.value = errBody;
           if (res.status === 401 || res.status === 403) {
             errors.value = {
               detail: "Session expired — please reload the page.",
@@ -124,6 +132,55 @@ export default {
         // Brief debounce so the button does not get hammered on double-click.
         //
         await new Promise((r) => setTimeout(r, 750));
+      } finally {
+        saving.value = false;
+      }
+    };
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Enter / exit edit mode for existing methods.
+    //
+    const startEdit = () => {
+      isEditing.value = true;
+    };
+
+    const cancelEdit = () => {
+      formData.value = { ...props.deliveryMethod };
+      errors.value = {};
+      isEditing.value = false;
+    };
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Toggle enabled: immediately PATCHes just the `enabled` field.
+    // Used by the clickable Enabled/Disabled tag in the card header.
+    //
+    const toggleEnabled = async () => {
+      if (saving.value || deleting.value) return;
+      saving.value = true;
+      errors.value = {};
+      try {
+        const newEnabled = !formData.value.enabled;
+        const res = await fetch(props.deliveryMethod.url, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: newEnabled }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          formData.value = { ...formData.value, enabled: data.enabled };
+          ctx.emit("saved", data);
+        } else {
+          let errBody;
+          try {
+            errBody = await res.json();
+          } catch {
+            errBody = { detail: `HTTP ${res.status}: ${res.statusText}` };
+          }
+          errors.value = errBody;
+        }
       } finally {
         saving.value = false;
       }
@@ -175,9 +232,14 @@ export default {
       saving,
       deleting,
       errors,
+      isEditing,
       subFormComponent,
       deliveryTypeLabel,
+      deliveryTypeIcon,
       save,
+      startEdit,
+      cancelEdit,
+      toggleEnabled,
       destroy,
       onFieldUpdate,
     };

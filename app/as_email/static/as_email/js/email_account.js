@@ -26,6 +26,14 @@ export default {
       type: String,
       required: true,
     },
+    // Future: display_name field — when the backend adds it, pass it in here.
+    // For now this is always an empty string.
+    //
+    displayName: {
+      type: String,
+      default: "",
+      required: false,
+    },
     // URL for the nested delivery_methods collection, e.g.:
     // /as_email/api/v1/email_accounts/1/delivery_methods/
     deliveryMethodsUrl: {
@@ -86,16 +94,33 @@ export default {
   ////////////////////////////////////////////////////////////////////////////
   //
   setup(props) {
-    const emailAccountPassword = ref("");
-    const emailAccountPasswordConfirm = ref("");
-    const emailAccountPasswordStatus = ref("");
+    // Card expand/collapse state.
+    //
+    const isExpanded = ref(false);
 
-    // Error messages for the password modal only. Delivery method field errors
-    // are handled inside DeliveryMethodForm.
+    // Badge counts updated by the DeliveryMethodList after it fetches.
+    // Null means not yet loaded (badges hidden until first expand).
+    //
+    const methodCount = ref(null);
+    const enabledMethodCount = ref(null);
+
+    // Account Settings inline edit state.
+    //
+    const isEditingSettings = ref(false);
+    // Future: display_name editing. Wired up here so the form is ready when
+    // the backend adds the field.
+    //
+    const editDisplayName = ref(props.displayName || "");
+    const editPassword = ref("");
+    const showEditPassword = ref(false);
+    const settingsSaving = ref(false);
+    const settingsError = ref("");
+
+    // Error messages for deactivated / bounce warnings shown at the top of
+    // the expanded card content.
     //
     const labelErrorMessages = ref({
       detail: "",
-      set_password: "",
     });
 
     // Extract field help text for tooltips on the fields that remain at the
@@ -118,136 +143,132 @@ export default {
 
     ////////////////////////////////////////////////////////////////////////
     //
-    // Check to see if the password is strong enough to let the user use it. It
-    // is used on key up to highlight the password field if it is or is not
-    // good enough. It also is used by the setPassword method to make sure that
-    // the password is good enough before posting it to the server.
+    // Invoked by the card header click to toggle expand/collapse.
     //
-    const checkPassword = function (target) {
-      const result = zxcvbn(emailAccountPassword.value);
+    const toggleExpanded = () => {
+      isExpanded.value = !isExpanded.value;
+    };
 
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Called by DeliveryMethodList via @counts-updated when the list is
+    // loaded or modified.
+    //
+    const onCountsUpdated = ({ total, enabled }) => {
+      methodCount.value = total;
+      enabledMethodCount.value = enabled;
+    };
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Check password strength using zxcvbn. Returns true if strong enough.
+    // Updates the input element's CSS classes and settingsError.
+    //
+    const checkPasswordStrength = (inputEl) => {
+      const result = zxcvbn(editPassword.value);
       if (result.score <= 2) {
-        target.classList.add("is-danger");
-        target.classList.remove("is-warning", "is-success");
-
-        let suggestions = result.feedback.suggestions.join(", ");
-        let feedback =
+        inputEl.classList.add("is-danger");
+        inputEl.classList.remove("is-warning", "is-success");
+        const suggestions = result.feedback.suggestions.join(", ");
+        settingsError.value =
           result.feedback.warning.length > 0
             ? `${result.feedback.warning}: ${suggestions}`
             : suggestions;
+        return false;
+      }
+      inputEl.classList.remove("is-danger");
+      inputEl.classList.add(result.score === 3 ? "is-warning" : "is-success");
+      inputEl.classList.remove(
+        result.score === 3 ? "is-success" : "is-warning",
+      );
+      settingsError.value = "";
+      return true;
+    };
 
-        labelErrorMessages.value["set_password"] = feedback;
-      } else {
-        // If the score is above 3 there will be no result.feedback. We check
-        // if the confirm password is the same or not at this point.
-        //
-        if (emailAccountPassword.value != emailAccountPasswordConfirm.value) {
-          labelErrorMessages.value["set_password"] =
-            "Password and Confirm password do not match.";
-          target.classList.add("is-danger");
-          target.classList.remove("is-warning", "is-success");
-          return;
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Save Account Settings:
+    //   - POST to set_password if a new password was entered
+    //   - Future: PATCH display_name when backend supports it
+    //
+    const saveAccountSettings = async () => {
+      settingsError.value = "";
+      settingsSaving.value = true;
+      try {
+        if (editPassword.value) {
+          const result = zxcvbn(editPassword.value);
+          if (result.score <= 2) {
+            const suggestions = result.feedback.suggestions.join(", ");
+            settingsError.value =
+              result.feedback.warning.length > 0
+                ? `${result.feedback.warning}: ${suggestions}`
+                : suggestions || "Password is too weak.";
+            return;
+          }
+          const set_password_url = new URL(props.setPasswordAction, props.url);
+          const res = await fetch(set_password_url.href, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json; charset=UTF-8" },
+            body: JSON.stringify({ password: editPassword.value }),
+          });
+          if (!res.ok) {
+            if (res.status === 401 || res.status === 403) {
+              settingsError.value = "Session expired — please reload the page.";
+            } else {
+              try {
+                const err = await res.json();
+                settingsError.value =
+                  err.details || err.detail || `HTTP ${res.status}`;
+              } catch {
+                settingsError.value = `HTTP ${res.status}: ${res.statusText}`;
+              }
+            }
+            return;
+          }
         }
 
-        target.classList.remove("is-danger");
-        if (result.score == 3) {
-          target.classList.remove("is-success");
-          target.classList.add("is-warning");
-        } else {
-          target.classList.remove("is-warning");
-          target.classList.add("is-success");
-        }
-        labelErrorMessages.value["set_password"] = "";
+        // TODO: PATCH display_name when backend adds the field.
+        // if (editDisplayName.value !== props.displayName) { ... }
+
+        isEditingSettings.value = false;
+        editPassword.value = "";
+        showEditPassword.value = false;
+      } finally {
+        settingsSaving.value = false;
       }
     };
 
     ////////////////////////////////////////////////////////////////////////
     //
-    const setPassword = async function ($event) {
-      const modal = $event.target.dataset.target;
-      const $target = document.getElementById(modal);
-      const set_password_url = new URL(props.setPasswordAction, props.url);
-      const result = zxcvbn(emailAccountPassword.value);
-
-      // Disable the button while we are checking values and talking to the
-      // server.
-      //
-      $event.target.setAttribute("disabled", true);
-
-      // If the score is 2 or less then idle for a bit, re-enable the set
-      // password button, and return. Do not even bother trying to set the
-      // password.
-      //
-      if (result.score <= 2) {
-        await new Promise((r) => setTimeout(r, 1500));
-        $event.target.removeAttribute("disabled");
-        return;
-      }
-
-      labelErrorMessages.value["set_password"] = "";
-
-      try {
-        emailAccountPasswordStatus.value = "Setting...";
-
-        if (emailAccountPassword.value != emailAccountPasswordConfirm.value) {
-          labelErrorMessages.value["set_password"] =
-            "Password and Confirm password do not match.";
-          return;
-        }
-
-        let res = await fetch(set_password_url.href, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json; charset=UTF-8" },
-          body: JSON.stringify({ password: emailAccountPassword.value }),
-        });
-
-        if (res.ok) {
-          if ($target) {
-            emailAccountPasswordStatus.value = "Password set successfully";
-            // Sleep for a bit so our button goes inactive for a short
-            // bit.. mostly to prevent multiple slams on the button in quick
-            // succession.
-            //
-            await new Promise((r) => setTimeout(r, 1500));
-            $target.classList.remove("is-active");
-          }
-        } else {
-          emailAccountPasswordStatus.value = "";
-          if (res.status === 401 || res.status === 403) {
-            labelErrorMessages.value["set_password"] =
-              "Session expired — please reload the page.";
-          } else {
-            try {
-              let errors = await res.json();
-              labelErrorMessages.value["set_password"] = errors["details"];
-            } catch {
-              labelErrorMessages.value["set_password"] =
-                `HTTP ${res.status}: ${res.statusText}`;
-            }
-          }
-          await new Promise((r) => setTimeout(r, 750));
-        }
-      } finally {
-        emailAccountPasswordStatus.value = "";
-        $event.target.removeAttribute("disabled");
-      }
+    const cancelEditSettings = () => {
+      isEditingSettings.value = false;
+      editDisplayName.value = props.displayName || "";
+      editPassword.value = "";
+      showEditPassword.value = false;
+      settingsError.value = "";
     };
 
     //////////////////////////////////////////////////////////////////////
     //
-    // Return the public attributes and methods on the EmailAccount component.
-    //
-    //////////////////////////////////////////////////////////////////////
     return {
+      isExpanded,
+      methodCount,
+      enabledMethodCount,
+      isEditingSettings,
+      editDisplayName,
+      editPassword,
+      showEditPassword,
+      settingsSaving,
+      settingsError,
       labelErrorMessages,
       labelTooltips,
       filteredValidEmailAddrs,
-      emailAccountPassword,
-      emailAccountPasswordConfirm,
-      emailAccountPasswordStatus,
-      checkPassword,
-      setPassword,
+      toggleExpanded,
+      onCountsUpdated,
+      checkPasswordStrength,
+      saveAccountSettings,
+      cancelEditSettings,
       props,
     };
   },

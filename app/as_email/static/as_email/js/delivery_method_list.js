@@ -5,10 +5,8 @@
 // its local array in response to events from child DeliveryMethodForm
 // components.
 //
-// NOTE: The description for GH-161 mentioned ordering delivery methods, but
-// the backend never implemented it — DeliveryMethod does not extend
-// OrderedModel and DeliveryMethodViewSet has no `move` action. Ordering
-// controls are omitted until the backend supports them.
+// Emits `countsUpdated` whenever the total or enabled count changes so the
+// parent EmailAccount can show badges in its collapsed header.
 //
 import { ref, computed, onMounted } from "vue";
 import DeliveryMethodForm from "./delivery_method_form.js";
@@ -35,9 +33,11 @@ export default {
     validEmailAddresses: { type: Array, default: () => [] },
   },
 
+  emits: ["countsUpdated"],
+
   ////////////////////////////////////////////////////////////////////////////
   //
-  setup(props) {
+  setup(props, ctx) {
     const deliveryMethods = ref([]);
     const loading = ref(false);
     const error = ref("");
@@ -46,6 +46,18 @@ export default {
     // added. Its form is rendered below the existing list.
     //
     const addingType = ref(null);
+    const showAddMenu = ref(false);
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Emit the current counts to the parent EmailAccount so it can update
+    // its header badges.
+    //
+    const emitCounts = () => {
+      const total = deliveryMethods.value.length;
+      const enabled = deliveryMethods.value.filter((dm) => dm.enabled).length;
+      ctx.emit("countsUpdated", { total, enabled });
+    };
 
     ////////////////////////////////////////////////////////////////////////
     //
@@ -60,6 +72,7 @@ export default {
         });
         if (res.ok) {
           deliveryMethods.value = await res.json();
+          emitCounts();
         } else {
           error.value = `Failed to load delivery methods: ${res.status} ${res.statusText}`;
         }
@@ -88,6 +101,7 @@ export default {
       if (idx !== -1) {
         deliveryMethods.value[idx] = updated;
       }
+      emitCounts();
     };
 
     ////////////////////////////////////////////////////////////////////////
@@ -98,6 +112,7 @@ export default {
       deliveryMethods.value = deliveryMethods.value.filter(
         (dm) => dm.pk !== pk,
       );
+      emitCounts();
     };
 
     ////////////////////////////////////////////////////////////////////////
@@ -108,6 +123,7 @@ export default {
     const onDeliveryMethodCreated = (created) => {
       deliveryMethods.value.push(created);
       addingType.value = null;
+      emitCounts();
     };
 
     ////////////////////////////////////////////////////////////////////////
@@ -116,6 +132,7 @@ export default {
     //
     const startAdd = (deliveryType) => {
       addingType.value = deliveryType;
+      showAddMenu.value = false;
     };
 
     const cancelAdd = () => {
@@ -129,6 +146,7 @@ export default {
       loading,
       error,
       addingType,
+      showAddMenu,
       hasLocalDelivery,
       DELIVERY_TYPE_LABELS,
       DELIVERY_TYPE_DEFAULTS,
