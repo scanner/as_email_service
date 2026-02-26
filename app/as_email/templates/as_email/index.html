@@ -29,7 +29,9 @@
     <div class="card mb-4">
 
       {# Card header — click anywhere to expand/collapse #}
-      <header class="card-header" style="cursor: pointer;" @click="toggleExpanded">
+      <header class="card-header has-tooltip-arrow has-tooltip-right"
+              :data-tooltip="isExpanded ? 'Click to collapse' : 'Click to expand'"
+              style="cursor: pointer;" @click="toggleExpanded">
         <p class="card-header-title">
           <span class="mr-2">[[ isExpanded ? '▼' : '▶' ]]</span>
           <span>[[ props.emailAddress ]]</span>
@@ -86,7 +88,9 @@
               <p class="help">Used for SMTP (sending) and IMAP (reading local mail)</p>
             </div>
 
-            <button class="button is-info" @click="isEditingSettings = true">
+            <button class="button is-info has-tooltip-arrow has-tooltip-top"
+                    data-tooltip="Change your account password"
+                    @click="isEditingSettings = true">
               Edit Account Settings
             </button>
           </div>
@@ -112,9 +116,9 @@
                          @keyup="checkPasswordStrength($event.target)">
                 </div>
                 <div class="control">
-                  <button class="button" type="button"
-                          @click="showEditPassword = !showEditPassword"
-                          :title="showEditPassword ? 'Hide password' : 'Show password'">
+                  <button class="button has-tooltip-arrow has-tooltip-top" type="button"
+                          :data-tooltip="showEditPassword ? 'Hide password' : 'Show password'"
+                          @click="showEditPassword = !showEditPassword">
                     <span>[[ showEditPassword ? '🙈' : '👁' ]]</span>
                   </button>
                 </div>
@@ -124,12 +128,15 @@
             </div>
 
             <div class="buttons mt-3">
-              <button class="button is-success"
+              <button class="button is-success has-tooltip-arrow has-tooltip-top"
+                      data-tooltip="Save your password change"
                       @click="saveAccountSettings"
                       :disabled="settingsSaving">
                 [[ settingsSaving ? 'Saving...' : 'Save Changes' ]]
               </button>
-              <button class="button" @click="cancelEditSettings">
+              <button class="button has-tooltip-arrow has-tooltip-top"
+                      data-tooltip="Discard changes and return to view"
+                      @click="cancelEditSettings">
                 Cancel
               </button>
             </div>
@@ -149,11 +156,15 @@
         {# Message Filter Rules modal button (secondary action) #}
         <div class="field mt-4">
           <div class="control">
-            <button class="button is-small is-light modal-button"
-                    disabled
-                    :data-target="`message-filter-rules-modal-${props.pk}`">
-              Message Filter Rules
-            </button>
+            {# Tooltip on the wrapper span because CSS :hover doesn't fire on disabled buttons #}
+            <span class="has-tooltip-arrow has-tooltip-top"
+                  data-tooltip="Message filter rules allow routing or discarding messages by header (coming soon)">
+              <button class="button is-small is-light modal-button"
+                      disabled
+                      :data-target="`message-filter-rules-modal-${props.pk}`">
+                Message Filter Rules
+              </button>
+            </span>
           </div>
         </div>
 
@@ -222,7 +233,8 @@
       <div class="mt-3" v-if="!addingType">
         <div :class="['dropdown', showAddMenu ? 'is-active' : '']">
           <div class="dropdown-trigger">
-            <button class="button is-primary"
+            <button class="button is-primary has-tooltip-arrow has-tooltip-top"
+                    data-tooltip="Add a new delivery method for this account"
                     @click="showAddMenu = !showAddMenu"
                     aria-haspopup="true"
                     aria-controls="add-delivery-dropdown">
@@ -232,14 +244,15 @@
           </div>
           <div class="dropdown-menu" id="add-delivery-dropdown" role="menu">
             <div class="dropdown-content">
-              <button class="dropdown-item"
+              <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
                       :disabled="hasLocalDelivery"
                       :class="{ 'has-text-grey-light': hasLocalDelivery }"
-                      :title="hasLocalDelivery ? 'This account already has a local mailbox delivery' : ''"
+                      :data-tooltip="hasLocalDelivery ? 'This account already has a local delivery — only one is allowed' : 'Deliver email to a local mailbox folder on this server'"
                       @click="startAdd('LocalDelivery')">
                 [[ DELIVERY_TYPE_LABELS.LocalDelivery ]]
               </button>
-              <button class="dropdown-item"
+              <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
+                      data-tooltip="Forward all incoming email to another account on this server"
                       @click="startAdd('AliasToDelivery')">
                 [[ DELIVERY_TYPE_LABELS.AliasToDelivery ]]
               </button>
@@ -268,7 +281,8 @@
         </p>
         {# Clickable Enabled/Disabled tag — only shown for saved methods #}
         <button v-if="!isNew"
-                class="card-header-icon"
+                class="card-header-icon has-tooltip-arrow has-tooltip-left"
+                :data-tooltip="formData.enabled ? 'Click to disable this delivery method' : 'Click to enable this delivery method'"
                 @click="toggleEnabled"
                 :disabled="saving || deleting"
                 aria-label="toggle enabled"
@@ -288,9 +302,6 @@
 
           {# LocalDelivery summary #}
           <div v-if="formData.delivery_type === 'LocalDelivery'" class="content is-small mb-3">
-            <p v-if="formData.maildir_path">
-              <strong>Folder:</strong> [[ formData.maildir_path ]]
-            </p>
             <p><strong>Auto-file spam:</strong> [[ formData.autofile_spam ? 'Yes' : 'No' ]]</p>
             <template v-if="formData.autofile_spam">
               <p><strong>Spam folder:</strong> [[ formData.spam_delivery_folder ]]</p>
@@ -309,7 +320,9 @@
             <p><strong>Auth:</strong> [[ formData.auth_type === 'oauth2' ? 'OAuth' : 'Username / Password' ]]</p>
           </div>
 
-          <button class="button is-info is-small" @click="startEdit">
+          <button class="button is-info is-small has-tooltip-arrow has-tooltip-top"
+                  data-tooltip="Edit the settings for this delivery method"
+                  @click="startEdit">
             Edit Mail Delivery
           </button>
         </div>
@@ -337,14 +350,16 @@
 
           <div class="field is-grouped mt-4">
             <div class="control">
-              <button class="button is-primary"
+              <button class="button is-primary has-tooltip-arrow has-tooltip-top"
+                      :data-tooltip="isNew ? 'Create this new delivery method' : 'Save changes to this delivery method'"
                       @click="save"
                       :disabled="saving">
                 [[ saving ? 'Saving...' : (isNew ? 'Create' : 'Save') ]]
               </button>
             </div>
             <div class="control">
-              <button class="button"
+              <button class="button has-tooltip-arrow has-tooltip-top"
+                      :data-tooltip="isNew ? 'Cancel adding this delivery method' : 'Discard changes and return to view'"
                       @click="isNew ? $emit('cancel') : cancelEdit()">
                 Cancel
               </button>
@@ -355,7 +370,8 @@
 
       {# Card footer: Delete (only for saved methods) #}
       <footer class="card-footer" v-if="!isNew">
-        <button class="card-footer-item button is-danger is-light"
+        <button class="card-footer-item button is-danger is-light has-tooltip-arrow has-tooltip-top"
+                data-tooltip="Permanently remove this delivery method (will ask for confirmation)"
                 style="border: none;"
                 @click="destroy"
                 :disabled="deleting">
@@ -370,15 +386,6 @@
   {# ------------------------------------------------------------------ #}
   <template id="template-local-delivery-form">
     <div class="box">
-      <div class="field" v-if="formData.maildir_path">
-        <label class="label">Delivery Folder</label>
-        <div class="control">
-          <input type="text" class="input"
-                 :value="formData.maildir_path" disabled readonly>
-        </div>
-        <p class="help">Automatically specified delivery folder</p>
-      </div>
-
       <div class="field">
         <label class="checkbox">
           <input type="checkbox"
@@ -414,7 +421,7 @@
           <p v-if="errors.spam_score_threshold" class="help is-danger">
             [[ errors.spam_score_threshold ]]
           </p>
-          <p class="help">Maximum number of emails to auto-file as spam</p>
+          <p class="help">Messages with an X-Spam-Score at or above this value are considered spam. 15 is a reasonable default.</p>
         </div>
       </div>
     </div>
@@ -558,6 +565,7 @@
       {% if email_accounts %}
         {% for email_account in email_accounts %}
           <email-account
+            :initial-expanded="initialData.num_email_accounts === 1"
             v-model:pk="emailAccountsData.pk{{ email_account.pk }}.pk"
             v-model:url="emailAccountsData.pk{{ email_account.pk }}.url"
             v-model:email-address="emailAccountsData.pk{{ email_account.pk }}.email_address"

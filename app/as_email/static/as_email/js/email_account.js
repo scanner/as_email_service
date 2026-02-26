@@ -18,6 +18,10 @@ export default {
       type: Number,
       required: true,
     },
+    // When true the card starts expanded. Set by the parent when there is
+    // only one account so the user lands directly in the detail view.
+    //
+    initialExpanded: { type: Boolean, default: false },
     url: {
       type: String,
       required: true,
@@ -92,9 +96,10 @@ export default {
   ////////////////////////////////////////////////////////////////////////////
   //
   setup(props) {
-    // Card expand/collapse state.
+    // Card expand/collapse state — seeded from prop so single-account users
+    // land with the card already open.
     //
-    const isExpanded = ref(false);
+    const isExpanded = ref(props.initialExpanded);
 
     // Badge counts — seeded from server-rendered data so they appear on the
     // collapsed card immediately. DeliveryMethodList updates them via
