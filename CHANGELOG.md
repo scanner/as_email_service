@@ -7,15 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-02-25
+
 ### Added
 
 - GH-161: Multiple delivery methods per email account — each account can now have any combination of `LocalDelivery` (store to MH mailbox) and `AliasToDelivery` (forward to another account) methods, each independently enabled/disabled
 - GH-161: REST API endpoints for managing delivery methods at `/api/v1/email_accounts/{pk}/delivery_methods/`
 - OpenAPI 3.0 schema generation via drf-spectacular with Swagger UI and ReDoc endpoints
+- Email Service Manager UI redesigned around the multiple-delivery-method model with inline edit/save/cancel for both account settings and delivery methods
+- Delivery method counts shown on collapsed account cards without requiring expansion
 
 ### Changed
 
 - GH-161: Email account delivery configuration migrated from single `delivery_method` field to polymorphic `DeliveryMethod` subclasses (`LocalDelivery`, `AliasToDelivery`)
+
+### Fixed
+
+- Delivery method list API now returns subtype-specific fields (e.g. `autofile_spam`, `target_account`) so the UI correctly reflects saved values on page load
+- Account cards auto-expand when a user has only one email account
 
 ## [0.3.0] - 2025-11-27
 
