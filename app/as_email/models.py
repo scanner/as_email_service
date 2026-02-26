@@ -398,8 +398,7 @@ class EmailAccount(models.Model):
     )
 
     # If an account is deactivated it can still receive email. However it is no
-    # longer allowed to send email. Also, no forwarding or aliasing is allowed.
-    # All email received by a deactivated account is delivered locally.
+    # longer allowed to send email (via SMTP)
     #
     # (and if an account does not exist the email will be dropped, again we
     # need to add logging and metrics for when we receive emails for accounts
