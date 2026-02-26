@@ -32,12 +32,7 @@
       <header class="card-header" style="cursor: pointer;" @click="toggleExpanded">
         <p class="card-header-title">
           <span class="mr-2">[[ isExpanded ? '▼' : '▶' ]]</span>
-          <span v-if="props.displayName" class="has-text-weight-semibold mr-1">
-            [[ props.displayName ]]
-          </span>
-          <span :class="props.displayName ? 'has-text-grey' : ''">
-            [[ props.displayName ? '&lt;' + props.emailAddress + '&gt;' : props.emailAddress ]]
-          </span>
+          <span>[[ props.emailAddress ]]</span>
         </p>
         <div class="card-header-icon" style="gap: 0.4rem;">
           <span v-if="methodCount !== null"
@@ -84,15 +79,6 @@
             </div>
 
             <div class="field">
-              <label class="label">Display Name</label>
-              <div class="control">
-                <input class="input" type="text"
-                       :value="props.displayName || '(not set)'" disabled>
-              </div>
-              <p class="help">Name shown to email recipients</p>
-            </div>
-
-            <div class="field">
               <label class="label">Account Password</label>
               <div class="control">
                 <input class="input" type="password" value="placeholder" disabled>
@@ -113,17 +99,6 @@
                 <input class="input" type="text" :value="props.emailAddress" disabled>
               </div>
               <p class="help">Email address cannot be changed</p>
-            </div>
-
-            <div class="field">
-              <label class="label">Display Name</label>
-              <div class="control">
-                <input class="input" type="text"
-                       v-model="editDisplayName"
-                       placeholder="Display name"
-                       disabled>
-              </div>
-              <p class="help">Name shown to email recipients (editing coming soon)</p>
             </div>
 
             <div class="field">
@@ -591,6 +566,8 @@
             v-model:num-bounces="emailAccountsData.pk{{ email_account.pk }}.num_bounces"
             v-model:deactivated="emailAccountsData.pk{{ email_account.pk }}.deactivated"
             v-model:deactivated-reason="emailAccountsData.pk{{ email_account.pk }}.deactivated_reason"
+            :dm-total="emailAccountsData.pk{{ email_account.pk }}.dm_total"
+            :dm-enabled="emailAccountsData.pk{{ email_account.pk }}.dm_enabled"
             :valid-email-addresses="initialData.valid_email_addresses"
             :field-info="initialData.email_account_field_info"
           ></email-account>

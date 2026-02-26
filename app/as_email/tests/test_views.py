@@ -1218,13 +1218,21 @@ class TestDeliveryMethodEndpoints:
         GIVEN an authenticated user with one LocalDelivery on their account
         WHEN  the delivery-method list endpoint is requested
         THEN  exactly one delivery method is returned for that account
+             including LocalDelivery-specific fields (not just base fields)
         """
         ea = setup["email_account"]
         client = setup["client"]
         resp = client.get(self._list_url(ea))
         assert resp.status_code == 200
         assert len(resp.data) == 1
-        assert resp.data[0]["delivery_type"] == "LocalDelivery"
+        dm = resp.data[0]
+        assert dm["delivery_type"] == "LocalDelivery"
+        # Subclass-specific fields must be present so the UI form can
+        # display and edit them correctly on first load.
+        assert "autofile_spam" in dm
+        assert "spam_delivery_folder" in dm
+        assert "spam_score_threshold" in dm
+        assert "maildir_path" in dm
 
     ####################################################################
     #

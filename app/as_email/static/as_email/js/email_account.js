@@ -26,14 +26,6 @@ export default {
       type: String,
       required: true,
     },
-    // Future: display_name field — when the backend adds it, pass it in here.
-    // For now this is always an empty string.
-    //
-    displayName: {
-      type: String,
-      default: "",
-      required: false,
-    },
     // URL for the nested delivery_methods collection, e.g.:
     // /as_email/api/v1/email_accounts/1/delivery_methods/
     deliveryMethodsUrl: {
@@ -60,6 +52,12 @@ export default {
       default: "",
       required: true,
     },
+    // Server-rendered initial delivery method counts. These seed the header
+    // badges immediately on page load; DeliveryMethodList updates them via
+    // @counts-updated whenever the list is loaded or modified.
+    //
+    dmTotal: { type: Number, default: null },
+    dmEnabled: { type: Number, default: null },
     validEmailAddresses: {
       type: Array,
       default: [],
@@ -98,19 +96,16 @@ export default {
     //
     const isExpanded = ref(false);
 
-    // Badge counts updated by the DeliveryMethodList after it fetches.
-    // Null means not yet loaded (badges hidden until first expand).
+    // Badge counts — seeded from server-rendered data so they appear on the
+    // collapsed card immediately. DeliveryMethodList updates them via
+    // @counts-updated after any fetch, create, save, or delete.
     //
-    const methodCount = ref(null);
-    const enabledMethodCount = ref(null);
+    const methodCount = ref(props.dmTotal);
+    const enabledMethodCount = ref(props.dmEnabled);
 
     // Account Settings inline edit state.
     //
     const isEditingSettings = ref(false);
-    // Future: display_name editing. Wired up here so the form is ready when
-    // the backend adds the field.
-    //
-    const editDisplayName = ref(props.displayName || "");
     const editPassword = ref("");
     const showEditPassword = ref(false);
     const settingsSaving = ref(false);
@@ -187,9 +182,7 @@ export default {
 
     ////////////////////////////////////////////////////////////////////////
     //
-    // Save Account Settings:
-    //   - POST to set_password if a new password was entered
-    //   - Future: PATCH display_name when backend supports it
+    // Save Account Settings: POST to set_password if a new password was entered.
     //
     const saveAccountSettings = async () => {
       settingsError.value = "";
@@ -228,9 +221,6 @@ export default {
           }
         }
 
-        // TODO: PATCH display_name when backend adds the field.
-        // if (editDisplayName.value !== props.displayName) { ... }
-
         isEditingSettings.value = false;
         editPassword.value = "";
         showEditPassword.value = false;
@@ -243,7 +233,6 @@ export default {
     //
     const cancelEditSettings = () => {
       isEditingSettings.value = false;
-      editDisplayName.value = props.displayName || "";
       editPassword.value = "";
       showEditPassword.value = false;
       settingsError.value = "";
@@ -256,7 +245,6 @@ export default {
       methodCount,
       enabledMethodCount,
       isEditingSettings,
-      editDisplayName,
       editPassword,
       showEditPassword,
       settingsSaving,

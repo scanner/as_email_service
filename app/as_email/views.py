@@ -21,6 +21,7 @@ import logging
 #
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count, Q
 from django.http import (
     Http404,
     HttpResponse,
@@ -103,7 +104,13 @@ def index(request):
     returns a simple view of the email accounts that belong to the user
     """
     user = request.user
-    email_accounts = EmailAccount.objects.filter(owner=user)
+    email_accounts = EmailAccount.objects.filter(owner=user).annotate(
+        dm_total=Count("delivery_methods"),
+        dm_enabled=Count(
+            "delivery_methods",
+            filter=Q(delivery_methods__enabled=True),
+        ),
+    )
     email_accounts_serialized = {
         ea.pk: EmailAccountSerializer(ea, context={"request": request})
         for ea in email_accounts
@@ -126,14 +133,16 @@ def index(request):
 
     vue_data = {
         "email_accounts_data": {
-            f"pk{k}": {
-                **dict(v.data),
+            f"pk{ea.pk}": {
+                **dict(email_accounts_serialized[ea.pk].data),
                 "delivery_methods_url": reverse(
                     "as_email:delivery-method-list",
-                    kwargs={"email_account_pk": k},
+                    kwargs={"email_account_pk": ea.pk},
                 ),
+                "dm_total": ea.dm_total,
+                "dm_enabled": ea.dm_enabled,
             }
-            for k, v in email_accounts_serialized.items()
+            for ea in email_accounts
         },
         "num_email_accounts": len(email_accounts_serialized),
         "valid_email_addresses": [x.email_address for x in email_accounts],
@@ -670,6 +679,28 @@ class DeliveryMethodViewSet(ModelViewSet):
             return _DELIVERY_TYPE_MAP[delivery_type][1]
 
         return DeliveryMethodSerializer
+
+    ####################################################################
+    #
+    def list(self, request, *args, **kwargs):
+        """
+        Return each delivery method serialized with its concrete subtype
+        serializer so that type-specific fields (autofile_spam,
+        target_account, etc.) are included alongside the base fields.
+
+        The default get_serializer_class() returns the base
+        DeliveryMethodSerializer for list actions (no pk, no delivery_type
+        in the GET request), which omits all subclass fields — causing the
+        UI to show wrong values on page load.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        ctx = self.get_serializer_context()
+        data = []
+        for instance in queryset:
+            entry = _DELIVERY_TYPE_MAP.get(type(instance).__name__)
+            serializer_cls = entry[1] if entry else DeliveryMethodSerializer
+            data.append(serializer_cls(instance, context=ctx).data)
+        return Response(data)
 
     ####################################################################
     #
