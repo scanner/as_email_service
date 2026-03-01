@@ -7,9 +7,9 @@ LATEST_TAG := $(shell git describe --abbrev=0)
 
 .PHONY: clean test logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs sync lock add add-dev upgrade help api-schema api-docs
 
-build:	## `docker compose build` for both `prod` and `dev` profiles
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile prod build
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile dev build
+build:	## Build prod and dev Docker images
+	@DOCKER_BUILDKIT=1 docker build --target prod -t as_email_service_app:latest .
+	@DOCKER_BUILDKIT=1 docker build --target dev -t as_email_service_app_dev:latest .
 
 uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
 	@uv sync

@@ -92,10 +92,12 @@ Assuming that you have mounted a directory as a volume in the "spamassassin" con
 
 ```
 sa-update
-sa-learn --spam --username=debian-spamd <path to spam directory>
-sa-learn --ham --username=debian-spamd <path to ham directory>
+sa-learn --spam --username=debian-spamd /mnt/training/spam
+sa-learn --ham --username=debian-spamd /mnt/training/ham
 sa-learn --sync --username=debian-spamd
 ```
+
+The default docker-compose mounts the training & ham data under `/mnt/training/`. If you mount it somewhere else you will need to change these commands.
 
 ## Design
 
