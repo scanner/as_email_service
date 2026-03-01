@@ -796,13 +796,6 @@ def provider_enable_all_aliases_for_server(
         )
         raise
 
-    from pprint import pprint
-
-    print("****** local addresses:")
-    pprint(local_addresses)
-    print("****** remote aliases:")
-    pprint(remote_aliases)
-
     # Build a map of remote aliases by their email address
     #
     remote_map = {alias.email: alias for alias in remote_aliases}
@@ -936,10 +929,8 @@ def provider_report_unused_domains() -> None:
     for provider in Provider.objects.all():
 
         for server in provider.receiving_servers.all():
-            print(f"**** for provider {provider}: server: {server}")
             unused_domains = []
             alias_count = server.email_accounts.count()
-            print(f"**** number of email accounts: {alias_count}")
             if alias_count == 0:
                 unused_domains.append((server.domain_name, 0))
             else:
@@ -949,7 +940,6 @@ def provider_report_unused_domains() -> None:
                 try:
                     backend = get_backend(provider.backend_name)
                     aliases = backend.list_email_accounts(server)
-                    print(f"**** aliases for server via backend: {aliases}")
                     enabled_count = sum(1 for alias in aliases if alias.enabled)
                     if enabled_count == 0:
                         unused_domains.append((server.domain_name, alias_count))
@@ -977,8 +967,6 @@ def provider_report_unused_domains() -> None:
 
         subject = f"AS Email Service: {total_unused} unused domain(s) detected"
         message = "\n".join(report_lines)
-        print("******* Unused domains report")
-        print(message)
         try:
             send_mail(
                 subject=subject,

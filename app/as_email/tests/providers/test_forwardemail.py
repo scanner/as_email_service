@@ -14,11 +14,16 @@ from urllib.error import HTTPError
 #
 import pytest
 from dirty_equals import IsPartialDict
-from django.http import Http404, HttpRequest
+from django.http import HttpRequest
 
 # Project imports
 #
-from as_email.providers.forwardemail import ForwardEmailBackend, HTTPMethod
+from as_email.providers.forwardemail import (
+    APIClient,
+    ForwardEmailBackend,
+    ForwardEmailCache,
+    HTTPMethod,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -480,8 +485,10 @@ class TestForwardEmailAPIMethods:
         # Use the fakeredis client from autouse fixture
         mock_redis = use_fakeredis
 
-        # Mock get_domain_id to raise Http404 (domain doesn't exist)
-        mocker.patch.object(backend, "get_domain_id", side_effect=Http404())
+        # Mock get_domain_id to raise KeyError (domain doesn't exist)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", side_effect=KeyError()
+        )
 
         # Mock API request for POST (create)
         domain_id = faker.uuid4()
@@ -498,7 +505,7 @@ class TestForwardEmailAPIMethods:
         result = backend.create_update_domain(server)
 
         # Verify get_domain_id was called
-        backend.get_domain_id.assert_called_once_with(server.domain_name)
+        backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
 
         # Verify API was called once with POST to create domain
         mock_req.assert_called_once()
@@ -534,7 +541,7 @@ class TestForwardEmailAPIMethods:
 
         # Mock get_domain_id to return existing domain ID
         mocker.patch.object(
-            backend, "get_domain_id", return_value=existing_domain_id
+            backend.cache, "get_domain_id", return_value=existing_domain_id
         )
 
         # Mock API request - GET returns domain info
@@ -551,7 +558,7 @@ class TestForwardEmailAPIMethods:
         result = backend.create_update_domain(server)
 
         # Verify get_domain_id was called
-        backend.get_domain_id.assert_called_once_with(server.domain_name)
+        backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
 
         # Verify API was called once with GET only (no POST)
         mock_req.assert_called_once()
@@ -668,8 +675,10 @@ class TestForwardEmailAPIMethods:
         backend = ForwardEmailBackend()
         server = server_factory()
 
-        # Mock get_domain_id to raise Http404
-        mocker.patch.object(backend, "get_domain_id", side_effect=Http404())
+        # Mock get_domain_id to raise KeyError (domain doesn't exist)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", side_effect=KeyError()
+        )
 
         # Mock API request - should not be called
         mock_req = mocker.patch.object(backend.api, "req")
@@ -703,7 +712,9 @@ class TestForwardEmailAPIMethods:
         mock_redis = use_fakeredis
 
         # Mock get_domain_id
-        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
 
         # Mock get_webhook_url
         webhook_url = (
@@ -713,15 +724,10 @@ class TestForwardEmailAPIMethods:
             backend, "get_webhook_url", return_value=webhook_url
         )
 
-        # Mock get_alias_id to raise 404 (alias doesn't exist)
-        mock_error = HTTPError(
-            url="http://test.com",
-            code=404,
-            msg="Not Found",
-            hdrs={},
-            fp=BytesIO(b""),
+        # Mock get_alias_id to raise KeyError (alias doesn't exist)
+        mocker.patch.object(
+            backend.cache, "get_alias_id", side_effect=KeyError()
         )
-        mocker.patch.object(backend, "get_alias_id", side_effect=mock_error)
 
         # Mock API request for POST (create)
         mock_response = mocker.MagicMock()
@@ -808,8 +814,10 @@ class TestForwardEmailAPIMethods:
         # Mock update_domains to avoid API calls
         mocker.patch.object(backend, "update_domains")
 
-        # Mock _get_domain_id
-        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+        # Mock get_domain_id on the cache
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
 
         # Mock API request
         mock_req = mocker.patch.object(backend.api, "req")
@@ -836,7 +844,9 @@ class TestForwardEmailAPIMethods:
         domain_id = faker.uuid4()
 
         # Mock get_domain_id
-        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
 
         # Mock API response - paginated_request expects headers
         aliases_list = [
@@ -884,7 +894,9 @@ class TestForwardEmailAPIMethods:
         alias_id = faker.uuid4()
 
         # Mock get_domain_id
-        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
 
         # Mock get_webhook_url
         webhook_url = (
@@ -894,15 +906,10 @@ class TestForwardEmailAPIMethods:
             backend, "get_webhook_url", return_value=webhook_url
         )
 
-        # Mock get_alias_id to raise 404 (alias doesn't exist)
-        mock_error = HTTPError(
-            url="http://test.com",
-            code=404,
-            msg="Not Found",
-            hdrs={},
-            fp=BytesIO(b""),
+        # Mock get_alias_id to raise KeyError (alias doesn't exist)
+        mocker.patch.object(
+            backend.cache, "get_alias_id", side_effect=KeyError()
         )
-        mocker.patch.object(backend, "get_alias_id", side_effect=mock_error)
 
         # Mock API request for POST (create)
         mock_response = mocker.MagicMock()
@@ -914,14 +921,14 @@ class TestForwardEmailAPIMethods:
             backend.api, "req", return_value=mock_response
         )
 
-        # Mock set_alias_info
-        mock_set_alias_info = mocker.patch.object(backend, "set_alias_info")
+        # Mock cache.set_alias
+        mock_set_alias = mocker.patch.object(backend.cache, "set_alias")
 
         # Call create_update_email_account
         backend.create_update_email_account(email_account)
 
         # Verify get_alias_id was called
-        backend.get_alias_id.assert_called_once_with(
+        backend.cache.get_alias_id.assert_called_once_with(
             domain_id, email_account.email_address
         )
 
@@ -937,8 +944,8 @@ class TestForwardEmailAPIMethods:
             description=f"Email account for {email_account.owner.username}",
         )
 
-        # Verify set_alias_info was called
-        mock_set_alias_info.assert_called_once()
+        # Verify cache.set_alias was called
+        mock_set_alias.assert_called_once()
 
         # Verify logging
         assert "Created forwardemail.net alias for" in caplog.text
@@ -960,7 +967,9 @@ class TestForwardEmailAPIMethods:
         alias_id = faker.uuid4()
 
         # Mock get_domain_id
-        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
 
         # Mock get_webhook_url
         webhook_url = (
@@ -971,7 +980,9 @@ class TestForwardEmailAPIMethods:
         )
 
         # Mock get_alias_id to return existing alias ID
-        mocker.patch.object(backend, "get_alias_id", return_value=alias_id)
+        mocker.patch.object(
+            backend.cache, "get_alias_id", return_value=alias_id
+        )
 
         # Mock API request for PUT (update)
         mock_response = mocker.MagicMock()
@@ -983,14 +994,14 @@ class TestForwardEmailAPIMethods:
             backend.api, "req", return_value=mock_response
         )
 
-        # Mock set_alias_info
-        mock_set_alias_info = mocker.patch.object(backend, "set_alias_info")
+        # Mock cache.set_alias
+        mock_set_alias = mocker.patch.object(backend.cache, "set_alias")
 
         # Call create_update_email_account
         backend.create_update_email_account(email_account)
 
         # Verify get_alias_id was called
-        backend.get_alias_id.assert_called_once_with(
+        backend.cache.get_alias_id.assert_called_once_with(
             domain_id, email_account.email_address
         )
 
@@ -1006,8 +1017,8 @@ class TestForwardEmailAPIMethods:
             description=f"Email account for {email_account.owner.username}",
         )
 
-        # Verify set_alias_info was called
-        mock_set_alias_info.assert_called_once()
+        # Verify cache.set_alias was called
+        mock_set_alias.assert_called_once()
 
         # Verify logging
         assert "Updated forwardemail.net alias for" in caplog.text
@@ -1029,7 +1040,9 @@ class TestForwardEmailAPIMethods:
         domain_id = faker.uuid4()
 
         # Mock get_domain_id
-        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
 
         # Mock get_webhook_url
         webhook_url = (
@@ -1039,7 +1052,8 @@ class TestForwardEmailAPIMethods:
             backend, "get_webhook_url", return_value=webhook_url
         )
 
-        # Mock get_alias_id to raise 500 error (server error)
+        # Mock get_alias_id to raise 500 error (server error); cache.get_alias_id
+        # converts 404 → KeyError but re-raises other HTTPErrors unchanged
         mock_error = HTTPError(
             url="http://test.com",
             code=500,
@@ -1047,7 +1061,9 @@ class TestForwardEmailAPIMethods:
             hdrs={},
             fp=BytesIO(b""),
         )
-        mocker.patch.object(backend, "get_alias_id", side_effect=mock_error)
+        mocker.patch.object(
+            backend.cache, "get_alias_id", side_effect=mock_error
+        )
 
         # Call should raise the HTTPError
         with pytest.raises(HTTPError) as exc_info:
@@ -1071,7 +1087,9 @@ class TestForwardEmailAPIMethods:
         alias_id = faker.uuid4()
 
         # Mock get_domain_id
-        mocker.patch.object(backend, "get_domain_id", return_value=domain_id)
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
 
         # Mock get_webhook_url
         webhook_url = (
@@ -1082,7 +1100,9 @@ class TestForwardEmailAPIMethods:
         )
 
         # Mock get_alias_id to return existing alias ID
-        mocker.patch.object(backend, "get_alias_id", return_value=alias_id)
+        mocker.patch.object(
+            backend.cache, "get_alias_id", return_value=alias_id
+        )
 
         # Mock API request
         mock_response = mocker.MagicMock()
@@ -1094,8 +1114,8 @@ class TestForwardEmailAPIMethods:
             backend.api, "req", return_value=mock_response
         )
 
-        # Mock set_alias_info
-        mocker.patch.object(backend, "set_alias_info")
+        # Mock cache.set_alias
+        mocker.patch.object(backend.cache, "set_alias")
 
         # Call create_update_email_account
         backend.create_update_email_account(email_account)
@@ -1116,63 +1136,346 @@ class TestForwardEmailAPIMethods:
         assert alias_data["has_imap"] is False
         assert alias_data["has_pgp"] is False
 
+
+########################################################################
+########################################################################
+#
+class TestForwardEmailCache:
+    """Tests for the ForwardEmailCache Redis-backed cache layer."""
+
     ####################################################################
     #
-    def test_get_domain_id_raises_404_when_domain_not_found(
-        self, mocker, faker
+    @pytest.fixture
+    def mock_api(self, mocker):
+        return mocker.MagicMock(spec=APIClient)
+
+    ####################################################################
+    #
+    @pytest.fixture
+    def cache(self, use_fakeredis, mock_api):
+        return ForwardEmailCache(use_fakeredis, mock_api)
+
+    ####################################################################
+    #
+    def test_key_format(self, cache, faker) -> None:
+        """
+        GIVEN: a ForwardEmailCache instance
+        WHEN:  _key() is called with an ObjType and a name
+        THEN:  the key should follow the forwardemail:<obj_type>:<name> schema
+        """
+        from as_email.providers.forwardemail import ObjType
+
+        domain_name = faker.domain_name()
+        assert cache._key(ObjType.DOMAIN, domain_name) == (
+            f"forwardemail:domain:{domain_name}"
+        )
+
+        email = faker.email()
+        assert cache._key(ObjType.ALIAS, email) == (
+            f"forwardemail:alias:{email}"
+        )
+
+    ####################################################################
+    #
+    def test_set_domain_caches_id(self, cache, use_fakeredis, faker) -> None:
+        """
+        GIVEN: a domain info dict from the forwardemail.net API
+        WHEN:  set_domain() is called
+        THEN:  the domain ID is stored in Redis under the correct key
+        """
+        domain_name = faker.domain_name()
+        domain_id = faker.uuid4()
+        cache.set_domain({"name": domain_name, "id": domain_id})
+
+        key = f"forwardemail:domain:{domain_name}"
+        assert use_fakeredis.get(key) == domain_id.encode()
+
+    ####################################################################
+    #
+    def test_set_alias_caches_id(self, cache, use_fakeredis, faker) -> None:
+        """
+        GIVEN: an alias info dict and the domain name it belongs to
+        WHEN:  set_alias() is called
+        THEN:  the alias ID is stored keyed by the full email address
+        """
+        mailbox = faker.user_name()
+        domain_name = faker.domain_name()
+        alias_id = faker.uuid4()
+        cache.set_alias({"name": mailbox, "id": alias_id}, domain_name)
+
+        key = f"forwardemail:alias:{mailbox}@{domain_name}"
+        assert use_fakeredis.get(key) == alias_id.encode()
+
+    ####################################################################
+    #
+    def test_delete_domain_removes_from_cache(
+        self, cache, use_fakeredis, faker
     ) -> None:
         """
-        Given a domain name that doesn't exist on forwardemail.net
-        When get_domain_id is called
-        Then it should raise Http404
+        GIVEN: a domain ID already in the cache
+        WHEN:  delete_domain() is called
+        THEN:  the key is removed from Redis
         """
-        backend = ForwardEmailBackend()
         domain_name = faker.domain_name()
+        domain_id = faker.uuid4()
+        cache.set_domain({"name": domain_name, "id": domain_id})
 
-        # Mock API request to raise 404
-        mock_error = HTTPError(
+        cache.delete_domain(domain_name)
+
+        assert use_fakeredis.get(f"forwardemail:domain:{domain_name}") is None
+
+    ####################################################################
+    #
+    def test_delete_alias_removes_from_cache(
+        self, cache, use_fakeredis, faker
+    ) -> None:
+        """
+        GIVEN: an alias ID already in the cache
+        WHEN:  delete_alias() is called with the full email address
+        THEN:  the key is removed from Redis
+        """
+        mailbox = faker.user_name()
+        domain_name = faker.domain_name()
+        email_address = f"{mailbox}@{domain_name}"
+        alias_id = faker.uuid4()
+        cache.set_alias({"name": mailbox, "id": alias_id}, domain_name)
+
+        cache.delete_alias(email_address)
+
+        assert use_fakeredis.get(f"forwardemail:alias:{email_address}") is None
+
+    ####################################################################
+    #
+    def test_all_domains_fetched_timestamp(self, cache, use_fakeredis) -> None:
+        """
+        GIVEN: a fresh cache with no refresh timestamp
+        WHEN:  set_all_domains_fetched() is called
+        THEN:  get_all_domains_fetched() returns a non-None string, and before
+               the call it returns None
+        """
+        assert cache.get_all_domains_fetched() is None
+
+        cache.set_all_domains_fetched()
+
+        timestamp = cache.get_all_domains_fetched()
+        assert timestamp is not None
+        assert isinstance(timestamp, str)
+
+    ####################################################################
+    #
+    def test_get_cached_domain_id_returns_none_on_miss(
+        self, cache, faker
+    ) -> None:
+        """
+        GIVEN: a domain name not in the cache
+        WHEN:  get_cached_domain_id() is called
+        THEN:  it returns None without hitting the API
+        """
+        assert cache.get_cached_domain_id(faker.domain_name()) is None
+
+    ####################################################################
+    #
+    def test_get_cached_alias_id_returns_none_on_miss(
+        self, cache, faker
+    ) -> None:
+        """
+        GIVEN: an email address not in the cache
+        WHEN:  get_cached_alias_id() is called
+        THEN:  it returns None without hitting the API
+        """
+        assert cache.get_cached_alias_id(faker.email()) is None
+
+    ####################################################################
+    #
+    def test_get_domain_id_returns_cached_value(
+        self, cache, mock_api, faker
+    ) -> None:
+        """
+        GIVEN: a domain ID already in the cache
+        WHEN:  get_domain_id() is called
+        THEN:  it returns the cached value without calling the API
+        """
+        domain_name = faker.domain_name()
+        domain_id = faker.uuid4()
+        cache.set_domain({"name": domain_name, "id": domain_id})
+
+        result = cache.get_domain_id(domain_name)
+
+        assert result == domain_id
+        mock_api.req.assert_not_called()
+
+    ####################################################################
+    #
+    def test_get_domain_id_fetches_from_api_on_miss(
+        self, cache, mock_api, faker
+    ) -> None:
+        """
+        GIVEN: a domain not in the cache but existing on forwardemail.net
+        WHEN:  get_domain_id() is called
+        THEN:  it fetches the domain from the API, caches the ID, and returns it
+        """
+        domain_name = faker.domain_name()
+        domain_id = faker.uuid4()
+        mock_api.req.return_value.json.return_value = {
+            "id": domain_id,
+            "name": domain_name,
+        }
+
+        result = cache.get_domain_id(domain_name)
+
+        assert result == domain_id
+        mock_api.req.assert_called_once()
+        # Subsequent call should use the cache
+        mock_api.req.reset_mock()
+        assert cache.get_domain_id(domain_name) == domain_id
+        mock_api.req.assert_not_called()
+
+    ####################################################################
+    #
+    def test_get_domain_id_raises_key_error_when_not_found(
+        self, cache, mock_api, faker
+    ) -> None:
+        """
+        GIVEN: a domain that does not exist on forwardemail.net
+        WHEN:  get_domain_id() is called
+        THEN:  it raises KeyError (not Http404 or HTTPError)
+        """
+        domain_name = faker.domain_name()
+        mock_api.req.side_effect = HTTPError(
             url=f"https://api.forwardemail.net/v1/domains/{domain_name}",
             code=404,
             msg="Not Found",
             hdrs={},
             fp=BytesIO(b""),
         )
-        mocker.patch.object(backend.api, "req", side_effect=mock_error)
 
-        # Call should raise Http404
-        with pytest.raises(Http404) as exc_info:
-            backend.get_domain_id(domain_name)
+        with pytest.raises(KeyError) as exc_info:
+            cache.get_domain_id(domain_name)
 
         assert domain_name in str(exc_info.value)
         assert "does not exist on forwardemail.net" in str(exc_info.value)
 
     ####################################################################
     #
-    def test_get_alias_id_raises_404_when_alias_not_found(
-        self, mocker, faker
+    def test_get_domain_id_reraises_non_404_errors(
+        self, cache, mock_api, faker
     ) -> None:
         """
-        Given an email address that doesn't exist on forwardemail.net
-        When get_alias_id is called
-        Then it should raise Http404
+        GIVEN: the forwardemail.net API returns a non-404 error
+        WHEN:  get_domain_id() is called
+        THEN:  the HTTPError is re-raised unchanged
         """
-        backend = ForwardEmailBackend()
+        domain_name = faker.domain_name()
+        mock_api.req.side_effect = HTTPError(
+            url="http://test.com",
+            code=500,
+            msg="Internal Server Error",
+            hdrs={},
+            fp=BytesIO(b""),
+        )
+
+        with pytest.raises(HTTPError) as exc_info:
+            cache.get_domain_id(domain_name)
+
+        assert exc_info.value.code == 500
+
+    ####################################################################
+    #
+    def test_get_alias_id_returns_cached_value(
+        self, cache, mock_api, faker
+    ) -> None:
+        """
+        GIVEN: an alias ID already in the cache
+        WHEN:  get_alias_id() is called
+        THEN:  it returns the cached value without calling the API
+        """
+        mailbox = faker.user_name()
+        domain_name = faker.domain_name()
+        domain_id = faker.uuid4()
+        alias_id = faker.uuid4()
+        cache.set_alias({"name": mailbox, "id": alias_id}, domain_name)
+
+        result = cache.get_alias_id(domain_id, f"{mailbox}@{domain_name}")
+
+        assert result == alias_id
+        mock_api.req.assert_not_called()
+
+    ####################################################################
+    #
+    def test_get_alias_id_fetches_from_api_on_miss(
+        self, cache, mock_api, faker
+    ) -> None:
+        """
+        GIVEN: an alias not in the cache but existing on forwardemail.net
+        WHEN:  get_alias_id() is called
+        THEN:  it fetches the alias from the API, caches the ID, and returns it
+        """
+        mailbox = faker.user_name()
+        domain_name = faker.domain_name()
+        domain_id = faker.uuid4()
+        alias_id = faker.uuid4()
+        email_address = f"{mailbox}@{domain_name}"
+        mock_api.req.return_value.json.return_value = {
+            "id": alias_id,
+            "name": mailbox,
+        }
+
+        result = cache.get_alias_id(domain_id, email_address)
+
+        assert result == alias_id
+        mock_api.req.assert_called_once()
+        # Subsequent call should use the cache
+        mock_api.req.reset_mock()
+        assert cache.get_alias_id(domain_id, email_address) == alias_id
+        mock_api.req.assert_not_called()
+
+    ####################################################################
+    #
+    def test_get_alias_id_raises_key_error_when_not_found(
+        self, cache, mock_api, faker
+    ) -> None:
+        """
+        GIVEN: an alias that does not exist on forwardemail.net
+        WHEN:  get_alias_id() is called
+        THEN:  it raises KeyError (not Http404 or HTTPError)
+        """
         domain_id = faker.uuid4()
         email_address = faker.email()
-
-        # Mock API request to raise 404
-        mock_error = HTTPError(
+        mock_api.req.side_effect = HTTPError(
             url=f"https://api.forwardemail.net/v1/domains/{domain_id}/alias",
             code=404,
             msg="Not Found",
             hdrs={},
             fp=BytesIO(b""),
         )
-        mocker.patch.object(backend.api, "req", side_effect=mock_error)
 
-        # Call should raise Http404
-        with pytest.raises(Http404) as exc_info:
-            backend.get_alias_id(domain_id, email_address)
+        with pytest.raises(KeyError) as exc_info:
+            cache.get_alias_id(domain_id, email_address)
 
         assert email_address in str(exc_info.value)
         assert "does not exist on forwardemail.net" in str(exc_info.value)
+
+    ####################################################################
+    #
+    def test_get_alias_id_reraises_non_404_errors(
+        self, cache, mock_api, faker
+    ) -> None:
+        """
+        GIVEN: the forwardemail.net API returns a non-404 error
+        WHEN:  get_alias_id() is called
+        THEN:  the HTTPError is re-raised unchanged
+        """
+        domain_id = faker.uuid4()
+        email_address = faker.email()
+        mock_api.req.side_effect = HTTPError(
+            url="http://test.com",
+            code=503,
+            msg="Service Unavailable",
+            hdrs={},
+            fp=BytesIO(b""),
+        )
+
+        with pytest.raises(HTTPError) as exc_info:
+            cache.get_alias_id(domain_id, email_address)
+
+        assert exc_info.value.code == 503
