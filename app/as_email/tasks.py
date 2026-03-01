@@ -620,10 +620,11 @@ def delete_emailaccount_from_pwfile(email_address: str):
 ########################################################################
 ########################################################################
 #
-# Provider Domain and Alias Management Tasks
+# Provider Server and Email Account Management Tasks
 #
-# These tasks handle domain and alias creation/deletion/synchronization
-# across multiple email providers (forwardemail, postmark, etc.)
+# These tasks handle server registration and email account
+# creation/deletion/synchronization across multiple email providers
+# (forwardemail, postmark, etc.)
 #
 ########################################################################
 ########################################################################
@@ -632,13 +633,12 @@ def delete_emailaccount_from_pwfile(email_address: str):
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_create_domain(server_pk: int, provider_name: str) -> None:
+def provider_create_server(server_pk: int, provider_name: str) -> None:
     """
-    Create a domain on the specified provider when a server is configured
-    to use that provider.
+    Register a server's domain on the specified provider.
 
     This task is triggered when a provider is added to a Server's
-    receive_providers or set as send_provider.
+    receive_providers.
 
     Args:
         server_pk: Primary key of the Server instance
@@ -652,14 +652,13 @@ def provider_create_domain(server_pk: int, provider_name: str) -> None:
     try:
         backend.create_domain(server)
         logger.info(
-            "Created domain '%s' on provider '%s' for server %d",
+            "Registered server '%s' on provider '%s'",
             server.domain_name,
             provider_name,
-            server_pk,
         )
     except Exception as e:
         logger.exception(
-            "Failed to create domain '%s' on provider '%s': %r",
+            "Failed to register server '%s' on provider '%s': %r",
             server.domain_name,
             provider_name,
             e,
@@ -670,13 +669,14 @@ def provider_create_domain(server_pk: int, provider_name: str) -> None:
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_create_alias(email_account_pk: int, provider_name: str) -> None:
+def provider_create_email_account(
+    email_account_pk: int, provider_name: str
+) -> None:
     """
-    Create or update a domain alias on the specified provider for an EmailAccount.
+    Create or update an email account on the specified provider.
 
-    This task is triggered when an EmailAccount is created or updated and its
-    server has the specified provider configured. It will create the alias if it
-    doesn't exist, or update it if it does.
+    This task is triggered when an EmailAccount is created and its server has
+    the specified provider configured as a receive provider.
 
     Args:
         email_account_pk: Primary key of the EmailAccount instance
@@ -689,13 +689,13 @@ def provider_create_alias(email_account_pk: int, provider_name: str) -> None:
     try:
         backend.create_update_email_account(email_account)
         logger.info(
-            "Created/updated alias for '%s' on provider '%s'",
+            "Created/updated email account '%s' on provider '%s'",
             email_account.email_address,
             provider_name,
         )
     except Exception as e:
         logger.exception(
-            "Failed to create/update alias for '%s' on provider '%s': %r",
+            "Failed to create/update email account '%s' on provider '%s': %r",
             email_account.email_address,
             provider_name,
             e,
@@ -706,18 +706,18 @@ def provider_create_alias(email_account_pk: int, provider_name: str) -> None:
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_delete_alias(
+def provider_delete_email_account(
     email_address: str, domain_name: str, provider_name: str
 ) -> None:
     """
-    Delete a domain alias from the specified provider.
+    Delete an email account from the specified provider.
 
     This task is triggered when an EmailAccount is deleted. We pass the
     email_address and domain_name as strings rather than the EmailAccount
     pk because the EmailAccount may no longer exist when this task runs.
 
     Args:
-        email_address: The email address of the alias to delete
+        email_address: The email address of the email account to delete
         domain_name: The domain name of the server
         provider_name: Name of the provider backend (e.g., 'forwardemail', 'postmark')
     """
@@ -728,19 +728,19 @@ def provider_delete_alias(
         server = Server.objects.get(domain_name=domain_name)
         backend.delete_email_account_by_address(email_address, server)
         logger.info(
-            "Deleted alias for '%s' from provider '%s'",
+            "Deleted email account '%s' from provider '%s'",
             email_address,
             provider_name,
         )
     except Server.DoesNotExist:
         logger.warning(
-            "Cannot delete alias for '%s': server '%s' no longer exists",
+            "Cannot delete email account '%s': server '%s' no longer exists",
             email_address,
             domain_name,
         )
     except Exception as e:
         logger.exception(
-            "Failed to delete alias for '%s' from provider '%s': %r",
+            "Failed to delete email account '%s' from provider '%s': %r",
             email_address,
             provider_name,
             e,
@@ -751,16 +751,15 @@ def provider_delete_alias(
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_enable_all_aliases_for_server(
+def provider_enable_email_accounts_for_server(
     server_pk: int, provider_name: str, enabled: bool
 ) -> None:
     """
-    Enable or disable all domain aliases for a server on the specified
-    provider.
+    Enable or disable all email accounts for a server on the specified provider.
 
-    This task fetches the current state of all aliases from the provider,
-    compares with local EmailAccounts, and only updates aliases that need
-    changing. It will also create any missing aliases.
+    This task fetches the current state of all email accounts from the provider,
+    compares with local EmailAccounts, and only updates those that need changing.
+    It will also create any missing email accounts.
 
     This task is triggered when:
     - Provider is added to Server's receive_providers (enabled=True)
@@ -770,7 +769,7 @@ def provider_enable_all_aliases_for_server(
         server_pk: Primary key of the Server instance
         provider_name: Name of the provider backend (e.g., 'forwardemail',
                        'postmark')
-        enabled: True to enable aliases, False to disable them
+        enabled: True to enable email accounts, False to disable them
     """
     server = Server.objects.get(pk=server_pk)
     backend = get_backend(provider_name)
@@ -784,21 +783,21 @@ def provider_enable_all_aliases_for_server(
     email_accounts = EmailAccount.objects.filter(server=server)
     local_addresses = {ea.email_address: ea for ea in email_accounts}
 
-    # Fetch all existing aliases from the provider
+    # Fetch all existing email accounts from the provider
     try:
-        remote_aliases = backend.list_email_accounts(server)
+        remote_email_accounts = backend.list_email_accounts(server)
     except Exception as e:
         logger.exception(
-            "Failed to list aliases for server '%s' on provider '%s': %r",
+            "Failed to list email accounts for server '%s' on provider '%s': %r",
             server.domain_name,
             provider_name,
             e,
         )
         raise
 
-    # Build a map of remote aliases by their email address
+    # Build a map of remote email accounts by their email address
     #
-    remote_map = {alias.email: alias for alias in remote_aliases}
+    remote_map = {ea.email: ea for ea in remote_email_accounts}
 
     created_count = 0
     updated_count = 0
@@ -809,25 +808,25 @@ def provider_enable_all_aliases_for_server(
     for email_addr, email_account in local_addresses.items():
         try:
             if email_addr not in remote_map:
-                # Alias doesn't exist on provider, create it
+                # Email account doesn't exist on provider, create it
                 backend.create_email_account(email_account)
                 created_count += 1
                 logger.info(
-                    "Created missing alias for '%s' on provider '%s'",
+                    "Created missing email account '%s' on provider '%s'",
                     email_addr,
                     provider_name,
                 )
             else:
-                # Alias exists, check if enabled needs updating
-                remote_alias = remote_map[email_addr]
-                remote_enabled = remote_alias.enabled
+                # Email account exists, check if enabled needs updating
+                remote_email_account = remote_map[email_addr]
+                remote_enabled = remote_email_account.enabled
 
                 if remote_enabled != enabled:
                     # Need to update enabled flag
                     backend.enable_email_account(email_account, enabled=enabled)
                     updated_count += 1
                     logger.debug(
-                        "Updated enabled=%s for alias '%s' on provider '%s'",
+                        "Updated enabled=%s for email account '%s' on provider '%s'",
                         enabled,
                         email_addr,
                         provider_name,
@@ -839,14 +838,14 @@ def provider_enable_all_aliases_for_server(
         except Exception as e:
             error_count += 1
             logger.exception(
-                "Failed to process alias '%s' on provider '%s': %r",
+                "Failed to process email account '%s' on provider '%s': %r",
                 email_addr,
                 provider_name,
                 e,
             )
 
     logger.info(
-        "Bulk alias sync for server '%s' on provider '%s': "
+        "Bulk email account sync for server '%s' on provider '%s': "
         "%d created, %d updated, %d skipped, %d errors (target enabled=%s)",
         server.domain_name,
         provider_name,
@@ -861,15 +860,16 @@ def provider_enable_all_aliases_for_server(
 ####################################################################
 #
 @db_periodic_task(crontab(minute="0"))
-def provider_sync_aliases() -> None:
+def provider_sync_email_accounts() -> None:
     """
-    Hourly task to sync alias enabled state across all configured providers.
+    Hourly task to sync email account enabled state across all configured
+    providers.
 
-    This ensures that the enabled flag for all aliases on each provider
+    This ensures that the enabled flag for all email accounts on each provider
     matches the expected state based on whether that provider is configured
     as a receive provider for each server.
     """
-    # Process each provider that supports alias management
+    # Process each provider that supports email account management
     for provider in Provider.objects.all():
         try:
             get_backend(provider.backend_name)
@@ -887,14 +887,14 @@ def provider_sync_aliases() -> None:
 
         for server in servers_with_provider:
             try:
-                # Use the same logic as provider_enable_all_aliases
-                # to sync all aliases for this server (target: enabled=True)
-                provider_enable_all_aliases_for_server(
+                # Use the same logic as provider_enable_email_accounts_for_server
+                # to sync all email accounts for this server (target: enabled=True)
+                provider_enable_email_accounts_for_server(
                     server.pk, provider.backend_name, enabled=True
                 )
             except Exception as e:
                 logger.exception(
-                    "Failed to sync aliases for server '%s' on provider '%s': %r",
+                    "Failed to sync email accounts for server '%s' on provider '%s': %r",
                     server.domain_name,
                     provider.backend_name,
                     e,
@@ -904,68 +904,80 @@ def provider_sync_aliases() -> None:
 ####################################################################
 #
 @db_periodic_task(crontab(day="*", hour="2"))
-def provider_report_unused_domains() -> None:
+def provider_report_unused_servers() -> None:
     """
-    Daily task to report domains on all providers that have no active aliases.
+    Daily task to report servers on all providers that have no active email
+    accounts.
 
     This only looks at providers that can receive email that are assigned to at
     least one server.
 
     NOTE: This only bothers with backend providers that have support for
-          individual aliases per email account (ie: on the provider we can
-          specify specifc email addresses that are active and can receive
+          individual email accounts per server (ie: on the provider we can
+          specify specific email addresses that are active and can receive
           email. `forwardemail`, for instance, lets us specify which email
           addresses on your domain can accept email. All others are
           refused. However `postmark` has no way to say which email accounts
           will accept email: They all will.
 
     Sends an email report to ADMINISTRATIVE_EMAIL_ADDRESS with details of any
-    unused domains.
+    unused servers.
+
+    XXX: Review whether this report is still useful. Since every Server
+         automatically gets a set of administrative EmailAccounts on creation
+         (see check_create_maintenance_email_accounts signal), it is rare in
+         practice for a server to have zero email accounts.
     """
     all_unused = []
 
-    # Process each provider that supports domain management
+    # Process each provider that supports server management
     #
     for provider in Provider.objects.all():
 
         for server in provider.receiving_servers.all():
-            unused_domains = []
-            alias_count = server.email_accounts.count()
-            if alias_count == 0:
-                unused_domains.append((server.domain_name, 0))
+            unused_servers = []
+            email_account_count = server.email_accounts.count()
+            if email_account_count == 0:
+                unused_servers.append((server.domain_name, 0))
             else:
                 # Even if there are EmailAccounts, check if any are actually
                 # enabled
                 #
                 try:
                     backend = get_backend(provider.backend_name)
-                    aliases = backend.list_email_accounts(server)
-                    enabled_count = sum(1 for alias in aliases if alias.enabled)
+                    remote_email_accounts = backend.list_email_accounts(server)
+                    enabled_count = sum(
+                        1 for ea in remote_email_accounts if ea.enabled
+                    )
                     if enabled_count == 0:
-                        unused_domains.append((server.domain_name, alias_count))
+                        unused_servers.append(
+                            (server.domain_name, email_account_count)
+                        )
                 except Exception as e:
                     logger.warning(
-                        "Failed to check aliases for domain '%s' on provider '%s': %r",
+                        "Failed to check email accounts for server '%s' on provider '%s': %r",
                         server.domain_name,
                         provider.backend_name,
                         e,
                     )
 
-        if unused_domains:
-            all_unused.append((provider.backend_name, unused_domains))
+        if unused_servers:
+            all_unused.append((provider.backend_name, unused_servers))
 
     # Build email report
     if all_unused:
-        report_lines = ["Provider unused domains report:", ""]
+        report_lines = ["Provider unused servers report:", ""]
         total_unused = 0
-        for provider_name, domains in all_unused:
+        for provider_name, servers in all_unused:
             report_lines.append(f"Provider '{provider_name}':")
-            for domain, count in domains:
-                report_lines.append(f"  - {domain}: {count} alias(es)")
+            for domain_name, count in servers:
+                report_lines.append(
+                    f"  - {domain_name}: {count} email account(s)"
+                )
                 total_unused += 1
             report_lines.append("")
 
-        subject = f"AS Email Service: {total_unused} unused domain(s) detected"
+        subject = f"AS Email Service: {total_unused} unused server(s) detected"
         message = "\n".join(report_lines)
         try:
             send_mail(
@@ -976,13 +988,13 @@ def provider_report_unused_domains() -> None:
                 fail_silently=False,
             )
             logger.info(
-                "Sent unused domains report to %s: %d unused domain(s)",
+                "Sent unused servers report to %s: %d unused server(s)",
                 settings.ADMINISTRATIVE_EMAIL_ADDRESS,
                 total_unused,
             )
         except Exception as e:
             logger.exception(
-                "Failed to send unused domains report email: %r", e
+                "Failed to send unused servers report email: %r", e
             )
     else:
-        logger.debug("No unused domains found across all providers")
+        logger.debug("No unused servers found across all providers")
