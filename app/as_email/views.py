@@ -21,7 +21,7 @@ import logging
 #
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from django.http import (
     Http404,
     HttpResponse,
@@ -104,12 +104,23 @@ def index(request):
     returns a simple view of the email accounts that belong to the user
     """
     user = request.user
-    email_accounts = EmailAccount.objects.filter(owner=user).annotate(
-        dm_total=Count("delivery_methods"),
-        dm_enabled=Count(
-            "delivery_methods",
-            filter=Q(delivery_methods__enabled=True),
-        ),
+    email_accounts = (
+        EmailAccount.objects.filter(owner=user)
+        .annotate(
+            dm_total=Count("delivery_methods"),
+            dm_enabled=Count(
+                "delivery_methods",
+                filter=Q(delivery_methods__enabled=True),
+            ),
+        )
+        .prefetch_related(
+            Prefetch(
+                "aliased_from",
+                queryset=AliasToDelivery.objects.select_related(
+                    "email_account"
+                ),
+            )
+        )
     )
     email_accounts_serialized = {
         ea.pk: EmailAccountSerializer(ea, context={"request": request})
@@ -141,6 +152,13 @@ def index(request):
                 ),
                 "dm_total": ea.dm_total,
                 "dm_enabled": ea.dm_enabled,
+                "aliased_from": [
+                    {
+                        "email": atd.email_account.email_address,
+                        "enabled": atd.enabled,
+                    }
+                    for atd in ea.aliased_from.all()
+                ],
             }
             for ea in email_accounts
         },

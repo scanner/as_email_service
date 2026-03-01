@@ -143,6 +143,26 @@
           </div>
         </div>
 
+        {# ---- Aliased-from section (only shown when other accounts alias to this one) ---- #}
+        <div v-if="props.aliasedFrom && props.aliasedFrom.length" class="message is-info is-small mb-5">
+          <div class="message-body py-2 px-3">
+            <p class="mb-2">
+              <strong>Aliased from:</strong>
+              This account receives email sent to the following addresses:
+            </p>
+            <div class="tags mb-0">
+              <span v-for="alias in props.aliasedFrom"
+                    :key="alias.email"
+                    :class="['tag', alias.enabled ? 'is-info is-light' : 'is-light has-text-grey has-tooltip-arrow has-tooltip-top']"
+                    :data-tooltip="alias.enabled ? null : 'This alias delivery method is disabled'">
+                <span :style="alias.enabled ? {} : { textDecoration: 'line-through' }">
+                  [[ alias.email ]]
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+
         {# ---- Delivery Methods section ---- #}
         <h5 class="title is-5 mb-3">Delivery Methods</h5>
 
@@ -576,6 +596,7 @@
             v-model:deactivated-reason="emailAccountsData.pk{{ email_account.pk }}.deactivated_reason"
             :dm-total="emailAccountsData.pk{{ email_account.pk }}.dm_total"
             :dm-enabled="emailAccountsData.pk{{ email_account.pk }}.dm_enabled"
+            :aliased-from="emailAccountsData.pk{{ email_account.pk }}.aliased_from"
             :valid-email-addresses="initialData.valid_email_addresses"
             :field-info="initialData.email_account_field_info"
           ></email-account>

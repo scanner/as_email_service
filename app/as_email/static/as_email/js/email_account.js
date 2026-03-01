@@ -77,6 +77,13 @@ export default {
       default: "set_password/",
       required: false,
     },
+    // Email addresses of other accounts that alias (forward) to this account.
+    //
+    aliasedFrom: {
+      type: Array,
+      default: () => [],
+      required: false,
+    },
   },
 
   ////////////////////////////////////////////////////////////////////////////
