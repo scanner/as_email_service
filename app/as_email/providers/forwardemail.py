@@ -3,8 +3,42 @@
 """
 ForwardEmail provider backend implementation.
 
-Implements webhook handler for incoming email from forwardemail.net.
-This is a receive-only provider - it does not support sending email.
+This is a **receive-only** provider — it does not support sending email.
+
+**Incoming mail architecture**
+
+forwardemail.net routes incoming mail through per-alias webhook URLs, which
+is fundamentally different from a domain-level webhook (like Postmark).  The
+flow is:
+
+1. forwardemail.net receives an inbound message for a domain it manages.
+2. It looks up the destination alias record for the recipient address.
+3. It POSTs the raw message to the webhook URL stored on that alias.
+4. Our ``handle_incoming_webhook`` handler processes the POST and dispatches
+   delivery to the local EmailAccount.
+
+Because the webhook URL is stored per-alias, ``create_update_email_account``
+always includes it when creating or updating an alias via the API.
+
+**Domain and alias ID caching**
+
+The forwardemail.net API identifies domains and aliases by opaque ID strings.
+Most API calls (update alias, delete alias, list aliases) require those IDs.
+To avoid a lookup roundtrip on every operation, ``ForwardEmailCache`` stores
+the IDs in Redis keyed by domain name and email address respectively.  On a
+cache miss the cache falls back to the API and populates itself for future
+calls.  See ``ForwardEmailCache`` for the full Redis key schema.
+
+**Rate limiting**
+
+``APIClient`` implements header-driven throttling.  After each response it
+reads ``X-RateLimit-Remaining``, ``X-RateLimit-Reset``, and
+``X-RateLimit-Limit`` and updates a thread-safe ``RateLimitInfo`` dataclass.
+Before each request it checks whether the remaining capacity has fallen below
+``rate_limit_threshold_percent`` (default 10 %).  When throttling is needed it
+sleeps for ``min(seconds_until_reset / available_requests, 5.0)`` seconds,
+always keeping ``min_requests_reserved`` (default 5) requests in reserve so
+that urgent calls can still go through.
 
 References:
 - API Documentation: https://forwardemail.net/en/email-api
@@ -121,7 +155,17 @@ class RateLimitInfo:
 #
 class APIClient:
     """
-    Overkill for our use here, but I could not help myself
+    Thin HTTP client for the forwardemail.net REST API with rate-limit
+    throttling.
+
+    After each response the client reads ``X-RateLimit-Remaining``,
+    ``X-RateLimit-Reset``, and ``X-RateLimit-Limit`` headers into a
+    thread-safe ``RateLimitInfo`` dataclass.  Before each request it checks
+    whether remaining capacity has fallen below ``rate_limit_threshold_percent``
+    (default 10 %).  When throttling is needed it sleeps for at most 5 seconds,
+    always keeping ``min_requests_reserved`` (default 5) requests in reserve.
+
+    Non-200 responses are raised as ``urllib.error.HTTPError``.
     """
 
     API_ENDPOINT = "https://api.forwardemail.net/"
@@ -148,7 +192,9 @@ class APIClient:
     ####################################################################
     #
     def _calculate_sleep_time(self) -> float:
-        """Calculate optimal sleep time based on remaining requests and time."""
+        """
+        Calculate optimal sleep time based on remaining requests and time.
+        """
         if not self._rate_limit or self._rate_limit.is_expired:
             return 0
 
