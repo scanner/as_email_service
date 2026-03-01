@@ -308,6 +308,36 @@ class ForwardEmailBackend(ProviderBackend):
 
     PROVIDER_NAME = "forwardemail"
 
+    # Desired settings applied to every domain we manage.  These are
+    # compared against the live domain on every create_update_domain call
+    # and a PUT is issued for any field that has drifted.
+    #
+    # Protection notes (all protections hard-reject with SMTP 554 -- no tagging):
+    #   has_phishing_protection    -- blocks phishing and malware links; keep True
+    #   has_virus_protection       -- blocks virus attachments; keep True
+    #   has_adult_content_protection -- sub-case of phishing; only fires when
+    #                                  has_phishing_protection is also True; False
+    #                                  because a hard 554 reject is too aggressive
+    #   has_executable_protection  -- rejects executable attachments; False because
+    #                                  legitimate mail sometimes carries executables
+    #   has_catchall               -- False for now; will be True once we add sending
+    #                                  support so unrouted mail has somewhere to land
+    #   retention_days             -- outbound SMTP log retention (0–30 days);
+    #                                  relevant once we add sending support
+    #
+    # NOTE: `plan` is intentionally excluded -- it is managed via the
+    #       forwardemail.net website and must never be overwritten by code.
+    #
+    DEFAULT_DOMAIN_SETTINGS: dict[str, Any] = {
+        "has_adult_content_protection": False,
+        "has_phishing_protection": True,
+        "has_executable_protection": False,
+        "has_virus_protection": True,
+        "has_catchall": False,
+        "has_delivery_logs": True,
+        "retention_days": 7,
+    }
+
     ####################################################################
     #
     def __init__(self, *args, **kwargs) -> None:
@@ -710,8 +740,10 @@ class ForwardEmailBackend(ProviderBackend):
         """
         Create or update a domain in forwardemail.net.
 
-        This method checks if the domain exists and creates it if it doesn't,
-        or fetches its info if it does. This is an idempotent operation.
+        If the domain does not yet exist it is created with
+        DEFAULT_DOMAIN_SETTINGS.  If it already exists its live settings are
+        fetched and compared against DEFAULT_DOMAIN_SETTINGS; any settings that
+        differ are updated with a single PUT request.
 
         Args:
             server: The Server instance whose domain to create or update
@@ -721,31 +753,44 @@ class ForwardEmailBackend(ProviderBackend):
         """
         try:
             domain_id = self.get_domain_id(server.domain_name)
-            # Domain exists - fetch and return its info
+
+            # The domain exists -- fetch current settings and apply any updates
+            #
             r = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_id}")
             domain_info = r.json()
-            logger.info(
-                "Domain '%s' already exists on forwardemail.net (ID: %s)",
-                server.domain_name,
-                domain_id,
-            )
+
+            to_update = {
+                k: v
+                for k, v in self.DEFAULT_DOMAIN_SETTINGS.items()
+                if domain_info.get(k) != v
+            }
+
+            if to_update:
+                logger.info(
+                    "Domain '%s' settings updated: %r",
+                    server.domain_name,
+                    to_update,
+                )
+                r = self.api.req(
+                    HTTPMethod.PUT, f"v1/domains/{domain_id}", data=to_update
+                )
+                domain_info = r.json()
+            else:
+                logger.debug(
+                    "Domain '%s' already exists on forwardemail.net (ID: %s)",
+                    server.domain_name,
+                    domain_id,
+                )
+
             return domain_info
 
         except Http404:
             # Domain doesn't exist, create it
             pass
 
-        # Create the domain
+        # Create the domain with our desired settings.
         #
-        data = {
-            "domain": server.domain_name,
-            "plan": "enhanced_protection",
-            "has_catchall": False,
-            "has_delivery_logs": True,  # XXX only while making sure it works
-            "has_phishing_protection": True,
-            "has_executable_protection": True,
-            "has_virus_protection": True,
-        }
+        data = {"domain": server.domain_name, **self.DEFAULT_DOMAIN_SETTINGS}
         r = self.api.req(HTTPMethod.POST, "v1/domains", data=data)
         domain_info = r.json()
         self.set_domain_info(domain_info)

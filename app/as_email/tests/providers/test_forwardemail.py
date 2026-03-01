@@ -470,20 +470,17 @@ class TestForwardEmailAPIMethods:
         self, server_factory, use_fakeredis, mocker, faker
     ) -> None:
         """
-        Given a server with a domain that doesn't exist on forwardemail.net
-        When create_update_domain is called
-        Then it should create the domain and cache the domain ID
+        GIVEN: a server whose domain does not exist on forwardemail.net
+        WHEN:  create_update_domain is called
+        THEN:  a single POST is issued with DEFAULT_DOMAIN_SETTINGS (no plan),
+               the domain ID is cached, and the domain info is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
-
-        # Use the fakeredis client from autouse fixture
         mock_redis = use_fakeredis
 
-        # Mock get_domain_id to raise Http404 (domain doesn't exist)
         mocker.patch.object(backend, "get_domain_id", side_effect=Http404())
 
-        # Mock API request for POST (create)
         domain_id = faker.uuid4()
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = {
@@ -494,78 +491,116 @@ class TestForwardEmailAPIMethods:
             backend.api, "req", return_value=mock_response
         )
 
-        # Call create_update_domain
         result = backend.create_update_domain(server)
 
-        # Verify get_domain_id was called
         backend.get_domain_id.assert_called_once_with(server.domain_name)
 
-        # Verify API was called once with POST to create domain
         mock_req.assert_called_once()
         call_args = mock_req.call_args
         assert call_args[0][0] == HTTPMethod.POST
         assert call_args[0][1] == "v1/domains"
+        # plan must not appear in the POST data
+        assert "plan" not in call_args[1]["data"]
+        # all DEFAULT_DOMAIN_SETTINGS fields must be present
         assert call_args[1]["data"] == IsPartialDict(
-            domain=server.domain_name, plan="enhanced_protection"
+            domain=server.domain_name,
+            **ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS,
         )
 
-        # Verify domain ID was cached
         redis_key = f"forwardemail:domain:{server.domain_name}"
         assert mock_redis.get(redis_key) == domain_id.encode()
-
-        # Verify result was returned
         assert result["id"] == domain_id
         assert result["name"] == server.domain_name
 
     ####################################################################
     #
-    def test_create_update_domain_fetches_existing_domain(
-        self, server_factory, mocker, faker, caplog
+    def test_create_update_domain_no_put_when_settings_match(
+        self, server_factory, mocker, faker
     ) -> None:
         """
-        Given a server with a domain that already exists on forwardemail.net
-        When create_update_domain is called
-        Then it should fetch and return existing domain info
+        GIVEN: a domain that already exists with all settings matching DEFAULT_DOMAIN_SETTINGS
+        WHEN:  create_update_domain is called
+        THEN:  only one GET is issued (no PUT) and the domain info is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
-
         existing_domain_id = faker.uuid4()
 
-        # Mock get_domain_id to return existing domain ID
         mocker.patch.object(
             backend, "get_domain_id", return_value=existing_domain_id
         )
 
-        # Mock API request - GET returns domain info
+        # GET response includes all DEFAULT_DOMAIN_SETTINGS at their correct values
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = {
             "id": existing_domain_id,
             "name": server.domain_name,
+            **ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS,
         }
         mock_req = mocker.patch.object(
             backend.api, "req", return_value=mock_response
         )
 
-        # Call create_update_domain
         result = backend.create_update_domain(server)
 
-        # Verify get_domain_id was called
         backend.get_domain_id.assert_called_once_with(server.domain_name)
-
-        # Verify API was called once with GET only (no POST)
         mock_req.assert_called_once()
-        call_args = mock_req.call_args
-        assert call_args[0][0] == HTTPMethod.GET
-        assert f"v1/domains/{existing_domain_id}" in call_args[0][1]
-
-        # Verify domain info was returned
+        assert mock_req.call_args[0][0] == HTTPMethod.GET
         assert result["id"] == existing_domain_id
-        assert result["name"] == server.domain_name
 
-        # Verify logging
-        assert "already exists on forwardemail.net" in caplog.text
+    ####################################################################
+    #
+    def test_create_update_domain_puts_updated_settings(
+        self, server_factory, mocker, faker, caplog
+    ) -> None:
+        """
+        GIVEN: a domain that already exists but with one setting out of date
+        WHEN:  create_update_domain is called
+        THEN:  GET is followed by a PUT containing only the changed field,
+               the info log records the updated fields, and the updated domain
+               info is returned
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        existing_domain_id = faker.uuid4()
+
+        mocker.patch.object(
+            backend, "get_domain_id", return_value=existing_domain_id
+        )
+
+        # GET response has has_virus_protection wrong
+        current_settings = {**ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS}
+        current_settings["has_virus_protection"] = False
+
+        get_response = mocker.MagicMock()
+        get_response.json.return_value = {
+            "id": existing_domain_id,
+            "name": server.domain_name,
+            **current_settings,
+        }
+        put_response = mocker.MagicMock()
+        put_response.json.return_value = {
+            "id": existing_domain_id,
+            "name": server.domain_name,
+            **ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS,
+        }
+        mock_req = mocker.patch.object(
+            backend.api, "req", side_effect=[get_response, put_response]
+        )
+
+        result = backend.create_update_domain(server)
+
+        assert mock_req.call_count == 2
+        get_call, put_call = mock_req.call_args_list
+        assert get_call[0][0] == HTTPMethod.GET
+        assert put_call[0][0] == HTTPMethod.PUT
+        assert f"v1/domains/{existing_domain_id}" in put_call[0][1]
+        # Only the changed field should be sent
+        assert put_call[1]["data"] == {"has_virus_protection": True}
+
+        assert "settings updated" in caplog.text
         assert server.domain_name in caplog.text
+        assert result["id"] == existing_domain_id
 
     ####################################################################
     #
