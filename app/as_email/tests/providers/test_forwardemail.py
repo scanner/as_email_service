@@ -7,6 +7,7 @@ Test the ForwardEmail provider backend.
 #
 import email.policy
 import json
+import time
 from io import BytesIO
 from urllib.error import HTTPError
 
@@ -23,6 +24,7 @@ from as_email.providers.forwardemail import (
     ForwardEmailBackend,
     ForwardEmailCache,
     HTTPMethod,
+    RateLimitInfo,
 )
 
 pytestmark = pytest.mark.django_db
@@ -1479,3 +1481,521 @@ class TestForwardEmailCache:
             cache.get_alias_id(domain_id, email_address)
 
         assert exc_info.value.code == 503
+
+
+########################################################################
+########################################################################
+#
+class TestRateLimitInfo:
+    """Tests for the RateLimitInfo dataclass computed properties."""
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "remaining,limit,expected",
+        [
+            pytest.param(25, 100, 25.0, id="normal"),
+            pytest.param(0, 0, 100.0, id="zero-limit-avoids-divide-by-zero"),
+        ],
+    )
+    def test_percent_remaining(
+        self, remaining: int, limit: int, expected: float
+    ) -> None:
+        """
+        GIVEN: a RateLimitInfo with varying remaining/limit values
+        WHEN:  percent_remaining is accessed
+        THEN:  it returns (remaining/limit)*100, or 100.0 when limit is 0
+        """
+        info = RateLimitInfo(
+            remaining=remaining, reset_timestamp=0, limit=limit, last_updated=0
+        )
+        assert info.percent_remaining == expected
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "seconds_offset,expected",
+        [
+            pytest.param(-100, True, id="past-timestamp"),
+            pytest.param(3600, False, id="future-timestamp"),
+        ],
+    )
+    def test_is_expired(self, seconds_offset: int, expected: bool) -> None:
+        """
+        GIVEN: a RateLimitInfo with reset_timestamp in the past or future
+        WHEN:  is_expired is accessed
+        THEN:  it returns True for past timestamps, False for future ones
+        """
+        info = RateLimitInfo(
+            remaining=10,
+            reset_timestamp=int(time.time()) + seconds_offset,
+            limit=100,
+            last_updated=0,
+        )
+        assert info.is_expired is expected
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "seconds_offset,expected",
+        [
+            pytest.param(
+                60, pytest.approx(60.0, abs=1.0), id="future-timestamp"
+            ),
+            pytest.param(-100, 0, id="past-timestamp-clamped-to-zero"),
+        ],
+    )
+    def test_seconds_until_reset(
+        self, seconds_offset: int, expected: float
+    ) -> None:
+        """
+        GIVEN: a RateLimitInfo with reset_timestamp in the past or future
+        WHEN:  seconds_until_reset is accessed
+        THEN:  it returns the seconds remaining, or 0 if the window has passed
+        """
+        info = RateLimitInfo(
+            remaining=10,
+            reset_timestamp=int(time.time()) + seconds_offset,
+            limit=100,
+            last_updated=0,
+        )
+        assert info.seconds_until_reset == expected
+
+
+########################################################################
+########################################################################
+#
+class TestAPIClientRateLimit:
+    """Tests for APIClient rate-limit throttling behavior."""
+
+    ####################################################################
+    #
+    @pytest.fixture
+    def client(self) -> APIClient:
+        return APIClient("test_provider")
+
+    ####################################################################
+    #
+    # _update_rate_limit_from_headers
+    ####################################################################
+
+    ####################################################################
+    #
+    def test_update_from_headers_sets_rate_limit(self, client) -> None:
+        """
+        GIVEN: a response with all three X-RateLimit-* headers present
+        WHEN:  _update_rate_limit_from_headers is called
+        THEN:  _rate_limit is populated with the correct values
+        """
+        assert client._rate_limit is None
+
+        client._update_rate_limit_from_headers(
+            {
+                "X-RateLimit-Remaining": "42",
+                "X-RateLimit-Reset": "9999999999",
+                "X-RateLimit-Limit": "100",
+            }
+        )
+
+        assert client._rate_limit is not None
+        assert client._rate_limit.remaining == 42
+        assert client._rate_limit.reset_timestamp == 9999999999
+        assert client._rate_limit.limit == 100
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            pytest.param(
+                {"Content-Type": "application/json"},
+                id="no-rate-limit-headers",
+            ),
+            pytest.param(
+                {"X-RateLimit-Remaining": "42", "X-RateLimit-Limit": "100"},
+                id="missing-reset-header",
+            ),
+        ],
+    )
+    def test_update_from_headers_noop_when_headers_incomplete(
+        self, client, headers: dict
+    ) -> None:
+        """
+        GIVEN: a response missing at least one of the three X-RateLimit-* headers
+        WHEN:  _update_rate_limit_from_headers is called
+        THEN:  _rate_limit remains None (all three must be present)
+        """
+        client._update_rate_limit_from_headers(headers)
+
+        assert client._rate_limit is None
+
+    ####################################################################
+    #
+    def test_update_from_headers_handles_malformed_values(
+        self, client, caplog
+    ) -> None:
+        """
+        GIVEN: X-RateLimit-* headers containing a non-integer value
+        WHEN:  _update_rate_limit_from_headers is called
+        THEN:  the parse error is caught and logged; _rate_limit remains None
+        """
+        client._update_rate_limit_from_headers(
+            {
+                "X-RateLimit-Remaining": "not-a-number",
+                "X-RateLimit-Reset": "9999999999",
+                "X-RateLimit-Limit": "100",
+            }
+        )
+
+        assert client._rate_limit is None
+        assert "Failed to parse rate limit headers" in caplog.text
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "remaining,expect_warning",
+        [
+            pytest.param(10, True, id="10-percent-remaining-warns"),
+            pytest.param(50, False, id="50-percent-remaining-no-warn"),
+        ],
+    )
+    def test_update_from_headers_low_capacity_warning(
+        self, client, caplog, remaining: int, expect_warning: bool
+    ) -> None:
+        """
+        GIVEN: X-RateLimit-* headers with varying remaining capacity
+        WHEN:  _update_rate_limit_from_headers is called
+        THEN:  a warning is logged when remaining capacity is below 20%
+        """
+        client._update_rate_limit_from_headers(
+            {
+                "X-RateLimit-Remaining": str(remaining),
+                "X-RateLimit-Reset": "9999999999",
+                "X-RateLimit-Limit": "100",
+            }
+        )
+
+        assert ("Rate limit warning" in caplog.text) is expect_warning
+
+    ####################################################################
+    #
+    # _should_throttle
+    ####################################################################
+
+    ####################################################################
+    #
+    def test_should_throttle_false_when_no_rate_limit(self, client) -> None:
+        """
+        GIVEN: an APIClient with no rate limit info yet (_rate_limit is None)
+        WHEN:  _should_throttle is called
+        THEN:  it returns False
+        """
+        assert client._rate_limit is None
+        assert client._should_throttle() is False
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "remaining,seconds_offset,expected",
+        [
+            pytest.param(2, -100, False, id="expired-window"),
+            pytest.param(50, 3600, False, id="50-percent-above-threshold"),
+            pytest.param(10, 3600, True, id="10-percent-at-threshold-boundary"),
+            pytest.param(3, 3600, True, id="3-percent-below-threshold"),
+        ],
+    )
+    def test_should_throttle_with_active_rate_limit(
+        self, client, remaining: int, seconds_offset: int, expected: bool
+    ) -> None:
+        """
+        GIVEN: an APIClient with a RateLimitInfo at various remaining levels
+        WHEN:  _should_throttle is called
+        THEN:  it returns True only when remaining <= 10% of limit and not expired
+        """
+        client._rate_limit = RateLimitInfo(
+            remaining=remaining,
+            reset_timestamp=int(time.time()) + seconds_offset,
+            limit=100,
+            last_updated=0,
+        )
+        assert client._should_throttle() is expected
+
+    ####################################################################
+    #
+    # _calculate_sleep_time
+    ####################################################################
+
+    ####################################################################
+    #
+    def test_calculate_sleep_zero_when_no_rate_limit(self, client) -> None:
+        """
+        GIVEN: an APIClient with no rate limit info (_rate_limit is None)
+        WHEN:  _calculate_sleep_time is called
+        THEN:  it returns 0
+        """
+        assert client._rate_limit is None
+        assert client._calculate_sleep_time() == 0
+
+    ####################################################################
+    #
+    def test_calculate_sleep_zero_when_expired(self, client) -> None:
+        """
+        GIVEN: an APIClient whose rate limit window has already expired
+        WHEN:  _calculate_sleep_time is called
+        THEN:  it returns 0
+        """
+        client._rate_limit = RateLimitInfo(
+            remaining=2,
+            reset_timestamp=int(time.time()) - 100,
+            limit=100,
+            last_updated=0,
+        )
+        assert client._calculate_sleep_time() == 0
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "remaining,reset_offset,expected",
+        [
+            pytest.param(
+                3,
+                60,
+                pytest.approx(60.0),
+                id="below-min-reserved-waits-for-reset",
+            ),
+            pytest.param(
+                10,
+                10,
+                pytest.approx(2.0),
+                id="spread-evenly-10s-over-5-available",
+            ),
+            pytest.param(
+                10,
+                100,
+                5.0,
+                id="capped-at-five-seconds",
+            ),
+            pytest.param(
+                10,
+                0,
+                0,
+                id="zero-seconds-until-reset",
+            ),
+        ],
+    )
+    def test_calculate_sleep_time_with_active_rate_limit(
+        self, client, mocker, remaining: int, reset_offset: int, expected: float
+    ) -> None:
+        """
+        GIVEN: an active rate limit window with varying remaining requests and time
+        WHEN:  _calculate_sleep_time is called (with time.time mocked to 1000.0)
+        THEN:  it spreads remaining requests over the window, capped at 5 seconds
+        """
+        mocker.patch(
+            "as_email.providers.forwardemail.time.time", return_value=1000.0
+        )
+        client._rate_limit = RateLimitInfo(
+            remaining=remaining,
+            reset_timestamp=int(1000 + reset_offset),
+            limit=100,
+            last_updated=1000.0,
+        )
+        assert client._calculate_sleep_time() == expected
+
+    ####################################################################
+    #
+    # _wait_if_needed
+    ####################################################################
+
+    ####################################################################
+    #
+    def test_wait_if_needed_sleeps_when_throttling(
+        self, client, mocker
+    ) -> None:
+        """
+        GIVEN: an APIClient that needs throttling with a 2.0s calculated sleep
+        WHEN:  _wait_if_needed is called
+        THEN:  time.sleep is called with the calculated sleep time
+        """
+        mocker.patch.object(client, "_should_throttle", return_value=True)
+        mocker.patch.object(client, "_calculate_sleep_time", return_value=2.0)
+        mock_sleep = mocker.patch("as_email.providers.forwardemail.time.sleep")
+        # Populate _rate_limit so the log statement inside _wait_if_needed works
+        client._rate_limit = RateLimitInfo(
+            remaining=5,
+            reset_timestamp=int(time.time()) + 60,
+            limit=100,
+            last_updated=0,
+        )
+
+        client._wait_if_needed()
+
+        mock_sleep.assert_called_once_with(2.0)
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "should_throttle,sleep_time",
+        [
+            pytest.param(False, 2.0, id="not-throttling"),
+            pytest.param(True, 0, id="throttling-but-zero-sleep-time"),
+        ],
+    )
+    def test_wait_if_needed_no_sleep(
+        self, client, mocker, should_throttle: bool, sleep_time: float
+    ) -> None:
+        """
+        GIVEN: either throttling is not needed, or the calculated sleep time is 0
+        WHEN:  _wait_if_needed is called
+        THEN:  time.sleep is never called
+        """
+        mocker.patch.object(
+            client, "_should_throttle", return_value=should_throttle
+        )
+        mocker.patch.object(
+            client, "_calculate_sleep_time", return_value=sleep_time
+        )
+        mock_sleep = mocker.patch("as_email.providers.forwardemail.time.sleep")
+
+        client._wait_if_needed()
+
+        mock_sleep.assert_not_called()
+
+
+########################################################################
+########################################################################
+#
+class TestPaginatedRequest:
+    """Tests for ForwardEmailBackend.paginated_request."""
+
+    ####################################################################
+    #
+    @pytest.fixture
+    def backend(self) -> ForwardEmailBackend:
+        return ForwardEmailBackend()
+
+    ####################################################################
+    #
+    def _make_response(self, mocker, items: list, link_header: str = ""):
+        """Create a mock HTTP response with items and optional Link header."""
+        resp = mocker.MagicMock()
+        resp.json.return_value = items
+        resp.headers = {"Link": link_header} if link_header else {}
+        return resp
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "items",
+        [
+            pytest.param([{"id": "a"}, {"id": "b"}], id="two-items"),
+            pytest.param([], id="empty-page"),
+        ],
+    )
+    def test_single_page_returns_items(
+        self, backend, mocker, items: list
+    ) -> None:
+        """
+        GIVEN: a single-page endpoint (no Link: next header)
+        WHEN:  paginated_request is called
+        THEN:  exactly one API request is made and all items from that page are yielded
+        """
+        resp = self._make_response(mocker, items)
+        mock_req = mocker.patch.object(backend.api, "req", return_value=resp)
+
+        result = list(backend.paginated_request("v1/domains"))
+
+        assert result == items
+        mock_req.assert_called_once_with(HTTPMethod.GET, "v1/domains")
+
+    ####################################################################
+    #
+    def test_two_pages_follows_next_link(self, backend, mocker) -> None:
+        """
+        GIVEN: an endpoint that returns two pages via a Link: next header
+        WHEN:  paginated_request is called
+        THEN:  two API requests are made and items from both pages are yielded
+               with the second request using the URL extracted from the Link header
+        """
+        next_url = "https://api.forwardemail.net/v1/domains?page=2"
+        items_p1 = [{"id": "a"}]
+        items_p2 = [{"id": "b"}, {"id": "c"}]
+        resp1 = self._make_response(
+            mocker,
+            items_p1,
+            f'<{next_url}>; rel="next", <{next_url}>; rel="last"',
+        )
+        resp2 = self._make_response(mocker, items_p2)
+        mock_req = mocker.patch.object(
+            backend.api, "req", side_effect=[resp1, resp2]
+        )
+
+        result = list(backend.paginated_request("v1/domains"))
+
+        assert result == items_p1 + items_p2
+        assert mock_req.call_count == 2
+        mock_req.assert_any_call(HTTPMethod.GET, "v1/domains")
+        mock_req.assert_any_call(HTTPMethod.GET, next_url)
+
+    ####################################################################
+    #
+    def test_http_error_propagates(self, backend, mocker) -> None:
+        """
+        GIVEN: an endpoint that returns a non-200 HTTP response
+        WHEN:  paginated_request is called
+        THEN:  the HTTPError raised by raise_for_status propagates to the caller
+        """
+        mock_req = mocker.patch.object(backend.api, "req")
+        mock_req.return_value.raise_for_status.side_effect = HTTPError(
+            "http://test.com", 404, "Not Found", {}, BytesIO(b"")
+        )
+
+        with pytest.raises(HTTPError):
+            list(backend.paginated_request("v1/domains"))
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "link_header,expect_second_call",
+        [
+            pytest.param(
+                "",
+                False,
+                id="empty-link-header",
+            ),
+            pytest.param(
+                '<https://api.forwardemail.net/v1/domains?page=2>; rel="last", '
+                '<https://api.forwardemail.net/v1/domains?page=1>; rel="first"',
+                False,
+                id="link-header-without-next-rel",
+            ),
+            pytest.param(
+                '<https://api.forwardemail.net/v1/domains?page=2>; rel="next", '
+                '<https://api.forwardemail.net/v1/domains?page=2>; rel="last"',
+                True,
+                id="link-header-with-next-rel",
+            ),
+        ],
+    )
+    def test_link_header_parsing(
+        self,
+        backend,
+        mocker,
+        link_header: str,
+        expect_second_call: bool,
+    ) -> None:
+        """
+        GIVEN: a first-page response with various Link header values
+        WHEN:  paginated_request is called
+        THEN:  a second API call is made only when rel="next" is present in the header
+        """
+        resp1 = self._make_response(mocker, [{"id": "x"}], link_header)
+        resp2 = self._make_response(mocker, [])
+        mock_req = mocker.patch.object(
+            backend.api, "req", side_effect=[resp1, resp2]
+        )
+
+        list(backend.paginated_request("v1/domains"))
+
+        expected_calls = 2 if expect_second_call else 1
+        assert mock_req.call_count == expected_calls
