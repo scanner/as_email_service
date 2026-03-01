@@ -171,6 +171,7 @@
           :delivery-methods-url="props.deliveryMethodsUrl"
           :valid-email-addresses="filteredValidEmailAddrs"
           @counts-updated="onCountsUpdated"
+          @delivery-method-changed="onDeliveryMethodChanged"
         ></delivery-method-list>
 
         {# Message Filter Rules modal button (secondary action) #}
@@ -597,6 +598,7 @@
             :dm-total="emailAccountsData.pk{{ email_account.pk }}.dm_total"
             :dm-enabled="emailAccountsData.pk{{ email_account.pk }}.dm_enabled"
             :aliased-from="emailAccountsData.pk{{ email_account.pk }}.aliased_from"
+            :refresh-aliased-from="refreshAliasedFrom"
             :valid-email-addresses="initialData.valid_email_addresses"
             :field-info="initialData.email_account_field_info"
           ></email-account>

@@ -84,6 +84,16 @@ export default {
       default: () => [],
       required: false,
     },
+    // Callback invoked with a list of email addresses whose `aliased_from`
+    // data needs refreshing after a delivery method mutation on this account.
+    // Only AliasToDelivery changes produce a non-empty list; the root app
+    // fetches fresh data for only those accounts.
+    //
+    refreshAliasedFrom: {
+      type: Function,
+      default: () => {},
+      required: false,
+    },
   },
 
   ////////////////////////////////////////////////////////////////////////////
@@ -164,6 +174,17 @@ export default {
     const onCountsUpdated = ({ total, enabled }) => {
       methodCount.value = total;
       enabledMethodCount.value = enabled;
+    };
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Called by DeliveryMethodList via @delivery-method-changed when an
+    // AliasToDelivery is created, saved, or deleted. Forwards the affected
+    // target account addresses up to the root app so it can refresh those
+    // accounts' `aliased_from` displays.
+    //
+    const onDeliveryMethodChanged = ({ affectedAccounts }) => {
+      props.refreshAliasedFrom(affectedAccounts);
     };
 
     ////////////////////////////////////////////////////////////////////////
@@ -266,6 +287,7 @@ export default {
       filteredValidEmailAddrs,
       toggleExpanded,
       onCountsUpdated,
+      onDeliveryMethodChanged,
       checkPasswordStrength,
       saveAccountSettings,
       cancelEditSettings,

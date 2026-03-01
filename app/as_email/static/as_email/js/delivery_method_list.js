@@ -8,6 +8,12 @@
 // Emits `countsUpdated` whenever the total or enabled count changes so the
 // parent EmailAccount can show badges in its collapsed header.
 //
+// Emits `deliveryMethodChanged` whenever a delivery method is created, saved
+// (including enable/disable toggles), or deleted (but NOT on the initial
+// load) so the parent can trigger a refresh of data on other accounts that
+// may be affected — e.g. the `aliased_from` list on the target of an
+// AliasToDelivery.
+//
 import { ref, computed, onMounted } from "vue";
 import DeliveryMethodForm from "./delivery_method_form.js";
 import {
@@ -33,7 +39,7 @@ export default {
     validEmailAddresses: { type: Array, default: () => [] },
   },
 
-  emits: ["countsUpdated"],
+  emits: ["countsUpdated", "deliveryMethodChanged"],
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -51,7 +57,9 @@ export default {
     ////////////////////////////////////////////////////////////////////////
     //
     // Emit the current counts to the parent EmailAccount so it can update
-    // its header badges.
+    // its header badges. Called on every load and mutation; callers that
+    // represent a mutation also emit `deliveryMethodChanged` immediately
+    // after so the parent can refresh data on other affected accounts.
     //
     const emitCounts = () => {
       const total = deliveryMethods.value.length;
@@ -97,11 +105,23 @@ export default {
     // stale item in the list with the fresh data from the server.
     //
     const onDeliveryMethodSaved = (updated) => {
+      // For AliasToDelivery, collect both the old and new target accounts so
+      // both cards update if the user pointed the alias at a different account.
+      //
+      const affected = new Set();
+      if (updated.delivery_type === "AliasToDelivery") {
+        const old = deliveryMethods.value.find((dm) => dm.pk === updated.pk);
+        if (old?.target_account) affected.add(old.target_account);
+        if (updated.target_account) affected.add(updated.target_account);
+      }
       const idx = deliveryMethods.value.findIndex((dm) => dm.pk === updated.pk);
       if (idx !== -1) {
         deliveryMethods.value[idx] = updated;
       }
       emitCounts();
+      if (affected.size > 0) {
+        ctx.emit("deliveryMethodChanged", { affectedAccounts: [...affected] });
+      }
     };
 
     ////////////////////////////////////////////////////////////////////////
@@ -109,10 +129,16 @@ export default {
     // Called by DeliveryMethodForm when a DELETE succeeds.
     //
     const onDeliveryMethodDeleted = (pk) => {
+      const dm = deliveryMethods.value.find((dm) => dm.pk === pk);
       deliveryMethods.value = deliveryMethods.value.filter(
         (dm) => dm.pk !== pk,
       );
       emitCounts();
+      if (dm?.delivery_type === "AliasToDelivery" && dm.target_account) {
+        ctx.emit("deliveryMethodChanged", {
+          affectedAccounts: [dm.target_account],
+        });
+      }
     };
 
     ////////////////////////////////////////////////////////////////////////
@@ -124,6 +150,14 @@ export default {
       deliveryMethods.value.push(created);
       addingType.value = null;
       emitCounts();
+      if (
+        created.delivery_type === "AliasToDelivery" &&
+        created.target_account
+      ) {
+        ctx.emit("deliveryMethodChanged", {
+          affectedAccounts: [created.target_account],
+        });
+      }
     };
 
     ////////////////////////////////////////////////////////////////////////

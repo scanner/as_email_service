@@ -23,6 +23,28 @@ for (let k in initialData.email_accounts_data) {
 
 //////////////////////////////////////////////////////////////////////////////
 //
+// Fetch fresh `aliased_from` data for each account whose email address
+// appears in `affectedEmails` and update the reactive store in place.
+// Called after an AliasToDelivery mutation so the affected account cards
+// reflect the change.
+//
+const refreshAliasedFrom = async (affectedEmails) => {
+  const targets = Object.values(emailAccountsData).filter((ea) =>
+    affectedEmails.includes(ea.email_address),
+  );
+  await Promise.all(
+    targets.map(async (ea) => {
+      const res = await fetch(ea.url, { credentials: "same-origin" });
+      if (res.ok) {
+        const data = await res.json();
+        ea.aliased_from = data.aliased_from;
+      }
+    }),
+  );
+};
+
+//////////////////////////////////////////////////////////////////////////////
+//
 // Root Vue app
 //
 const app = createApp({
@@ -33,6 +55,7 @@ const app = createApp({
     return {
       emailAccountsData,
       initialData,
+      refreshAliasedFrom,
     };
   },
   delimiters: ["[[", "]]"],

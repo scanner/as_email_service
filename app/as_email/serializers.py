@@ -78,11 +78,19 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         view_name="as_email:message-filter-rule-list",
         lookup_url_kwarg="email_account_pk",
     )
+    aliased_from = serializers.SerializerMethodField()
+
+    def get_aliased_from(self, obj: EmailAccount) -> list[dict]:
+        return [
+            {"email": atd.email_account.email_address, "enabled": atd.enabled}
+            for atd in obj.aliased_from.all()
+        ]
 
     class Meta:
         model = EmailAccount
         fields = [
             "pk",
+            "aliased_from",
             "created_at",
             "deactivated",
             "deactivated_reason",
@@ -97,6 +105,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         ]
         read_only_fields = [
             "pk",
+            "aliased_from",
             "created_at",
             "deactivated",
             "deactivated_reason",
