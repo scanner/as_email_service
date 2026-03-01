@@ -5,6 +5,8 @@ Where we define our signal receivers
 # system imports
 #
 import logging
+import random
+import string
 from pathlib import Path
 from typing import Type
 
@@ -33,10 +35,10 @@ from .models import (
 from .tasks import (
     check_update_pwfile_for_emailaccount,
     delete_emailaccount_from_pwfile,
-    provider_create_alias,
-    provider_create_domain,
-    provider_delete_alias,
-    provider_enable_all_aliases_for_server,
+    provider_create_email_account,
+    provider_create_server,
+    provider_delete_email_account,
+    provider_enable_email_accounts_for_server,
 )
 
 User = get_user_model()
@@ -100,11 +102,11 @@ def fire_off_async_task_update_emailaccount_pwfile(
 ####################################################################
 #
 @receiver(post_save, sender=EmailAccount)
-def create_provider_aliases(
+def create_provider_email_accounts(
     sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
 ):
     """
-    When an EmailAccount is created, create corresponding aliases on all
+    When an EmailAccount is created, create corresponding email accounts on all
     receive providers configured for the account's server.
     """
     if not created:
@@ -112,7 +114,7 @@ def create_provider_aliases(
 
     server = instance.server
     for provider in server.receive_providers.all():
-        provider_create_alias(instance.pk, provider.backend_name)
+        provider_create_email_account(instance.pk, provider.backend_name)
 
 
 ####################################################################
@@ -131,16 +133,16 @@ def fire_off_async_task_delete_emailaccount_pwfile(
 ####################################################################
 #
 @receiver(post_delete, sender=EmailAccount)
-def delete_provider_aliases(
+def delete_provider_email_accounts(
     sender: Type[EmailAccount], instance: EmailAccount, **kwargs
 ):
     """
-    When an EmailAccount is deleted, delete corresponding aliases from all
-    receive providers configured for the account's server.
+    When an EmailAccount is deleted, delete corresponding email accounts from
+    all receive providers configured for the account's server.
     """
     server = instance.server
     for provider in server.receive_providers.all():
-        provider_delete_alias(
+        provider_delete_email_account(
             instance.email_address, server.domain_name, provider.backend_name
         )
 
@@ -235,9 +237,6 @@ def server_pre_save(sender: Type[Server], instance: Server, **kwargs):
     This replaces the previous _set_initial_values method and directory creation
     logic from Server.save() and Server.asave().
     """
-    import random
-    import string
-
     # Determine if this is a new instance
     is_new = instance.pk is None
 
@@ -285,26 +284,27 @@ def handle_receive_providers_changed(
         action: The m2m action ('post_add', 'post_remove', etc.)
         pk_set: Set of primary keys being added/removed
     """
-    if action == "post_add":
-        # Provider(s) added to server - create domain then enable aliases
-        for provider_pk in pk_set:
-            provider = Provider.objects.get(pk=provider_pk)
-            # Chain tasks: create domain first, then enable aliases
-            pipeline = provider_create_domain.s(
-                instance.pk, provider.backend_name
-            ).then(
-                provider_enable_all_aliases_for_server,
-                instance.pk,
-                provider.backend_name,
-                True,
-            )
-            HUEY.enqueue(pipeline)
+    match action:
+        case "post_add":
+            # Provider(s) added to server - register server then enable email accounts
+            for provider_pk in pk_set:
+                provider = Provider.objects.get(pk=provider_pk)
+                # Chain tasks: register server first, then enable email accounts
+                pipeline = provider_create_server.s(
+                    instance.pk, provider.backend_name
+                ).then(
+                    provider_enable_email_accounts_for_server,
+                    instance.pk,
+                    provider.backend_name,
+                    True,
+                )
+                HUEY.enqueue(pipeline)
 
-    elif action == "post_remove":
-        # Provider(s) removed from server - disable aliases
-        for provider_pk in pk_set:
-            provider = Provider.objects.get(pk=provider_pk)
-            # Disable all aliases for this server on the provider
-            provider_enable_all_aliases_for_server(
-                instance.pk, provider.backend_name, enabled=False
-            )
+        case "post_remove":
+            # Provider(s) removed from server - disable email accounts
+            for provider_pk in pk_set:
+                provider = Provider.objects.get(pk=provider_pk)
+                # Disable all email accounts for this server on the provider
+                provider_enable_email_accounts_for_server(
+                    instance.pk, provider.backend_name, enabled=False
+                )

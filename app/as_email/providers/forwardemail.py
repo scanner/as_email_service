@@ -3,8 +3,42 @@
 """
 ForwardEmail provider backend implementation.
 
-Implements webhook handler for incoming email from forwardemail.net.
-This is a receive-only provider - it does not support sending email.
+This is a **receive-only** provider — it does not support sending email.
+
+**Incoming mail architecture**
+
+forwardemail.net routes incoming mail through per-alias webhook URLs, which
+is fundamentally different from a domain-level webhook (like Postmark).  The
+flow is:
+
+1. forwardemail.net receives an inbound message for a domain it manages.
+2. It looks up the destination alias record for the recipient address.
+3. It POSTs the raw message to the webhook URL stored on that alias.
+4. Our ``handle_incoming_webhook`` handler processes the POST and dispatches
+   delivery to the local EmailAccount.
+
+Because the webhook URL is stored per-alias, ``create_update_email_account``
+always includes it when creating or updating an alias via the API.
+
+**Domain and alias ID caching**
+
+The forwardemail.net API identifies domains and aliases by opaque ID strings.
+Most API calls (update alias, delete alias, list aliases) require those IDs.
+To avoid a lookup roundtrip on every operation, ``ForwardEmailCache`` stores
+the IDs in Redis keyed by domain name and email address respectively.  On a
+cache miss the cache falls back to the API and populates itself for future
+calls.  See ``ForwardEmailCache`` for the full Redis key schema.
+
+**Rate limiting**
+
+``APIClient`` implements header-driven throttling.  After each response it
+reads ``X-RateLimit-Remaining``, ``X-RateLimit-Reset``, and
+``X-RateLimit-Limit`` and updates a thread-safe ``RateLimitInfo`` dataclass.
+Before each request it checks whether the remaining capacity has fallen below
+``rate_limit_threshold_percent`` (default 10 %).  When throttling is needed it
+sleeps for ``min(seconds_until_reset / available_requests, 5.0)`` seconds,
+always keeping ``min_requests_reserved`` (default 5) requests in reserve so
+that urgent calls can still go through.
 
 References:
 - API Documentation: https://forwardemail.net/en/email-api
@@ -32,7 +66,6 @@ from urllib.parse import urljoin
 import requests
 from django.conf import settings
 from django.http import (
-    Http404,
     HttpRequest,
     HttpResponse,
     HttpResponseBadRequest,
@@ -67,14 +100,23 @@ logger = logging.getLogger("as_email.providers.forwardemail")
 class HTTPMethod(StrEnum):
     PUT = "put"
     POST = "post"
-    GET = "GET"
-    DEL = "DEL"
+    GET = "get"
+    DEL = "delete"
 
 
 ########################################################################
 ########################################################################
 #
 class ObjType(StrEnum):
+    """
+    Namespace tokens used to partition Redis keys by object type.
+
+    Used by ForwardEmailCache._key() to build keys of the form
+    ``forwardemail:<obj_type>:<name>``, keeping domain entries and alias
+    entries in separate keyspaces so there is no collision between a
+    domain name and an email address that happen to share a string.
+    """
+
     DOMAIN = "domain"
     ALIAS = "alias"
 
@@ -113,7 +155,17 @@ class RateLimitInfo:
 #
 class APIClient:
     """
-    Overkill for our use here, but I could not help myself
+    Thin HTTP client for the forwardemail.net REST API with rate-limit
+    throttling.
+
+    After each response the client reads ``X-RateLimit-Remaining``,
+    ``X-RateLimit-Reset``, and ``X-RateLimit-Limit`` headers into a
+    thread-safe ``RateLimitInfo`` dataclass.  Before each request it checks
+    whether remaining capacity has fallen below ``rate_limit_threshold_percent``
+    (default 10 %).  When throttling is needed it sleeps for at most 5 seconds,
+    always keeping ``min_requests_reserved`` (default 5) requests in reserve.
+
+    Non-200 responses are raised as ``urllib.error.HTTPError``.
     """
 
     API_ENDPOINT = "https://api.forwardemail.net/"
@@ -140,7 +192,9 @@ class APIClient:
     ####################################################################
     #
     def _calculate_sleep_time(self) -> float:
-        """Calculate optimal sleep time based on remaining requests and time."""
+        """
+        Calculate optimal sleep time based on remaining requests and time.
+        """
         if not self._rate_limit or self._rate_limit.is_expired:
             return 0
 
@@ -293,6 +347,198 @@ class APIClient:
 ########################################################################
 ########################################################################
 #
+class ForwardEmailCache:
+    """
+    Redis-backed cache for forwardemail.net domain and alias ID lookups.
+
+    On a cache miss the methods fall back to the forwardemail.net API,
+    populate the cache, and return the result — the caller never needs to
+    know whether the value came from Redis or from a live API call.
+
+    **Alias ↔ EmailAccount mapping**
+
+    In forwardemail.net terminology an *alias* is what this service calls
+    an *EmailAccount*: a single deliverable address within a domain.  Every
+    EmailAccount that uses a forwardemail.net receive-provider has exactly
+    one corresponding alias on that provider, and vice-versa.  The cache
+    stores the provider's opaque alias ID so that subsequent create/update/
+    delete operations can reference it without a lookup roundtrip.
+
+    **Redis key schema**
+
+    All keys are prefixed ``forwardemail:`` (KEY_PREFIX) followed by an
+    ObjType namespace token and the identifying name, separated by colons:
+
+    +-------------------------------------------------+---------------+
+    | Key                                             | Value         |
+    +=================================================+===============+
+    | ``forwardemail:domain:<domain_name>``           | domain ID str |
+    +-------------------------------------------------+---------------+
+    | ``forwardemail:alias:<email_address>``          | alias ID str  |
+    +-------------------------------------------------+---------------+
+    | ``forwardemail:domain:all_domains``             | UTC timestamp |
+    +-------------------------------------------------+---------------+
+
+    All values are plain UTF-8 strings stored with no TTL (they are
+    invalidated explicitly when the corresponding object is deleted or the
+    domain list is refreshed).
+
+    **Single-provider limitation**
+
+    The KEY_PREFIX is a class-level constant (``"forwardemail"``), which
+    means all ForwardEmailCache instances share the same Redis keyspace.
+    The current implementation assumes there is only one active forwardemail
+    provider account at a time.  Supporting multiple independent forwardemail
+    accounts (each with different API credentials) would require a
+    per-instance prefix derived from, e.g., the provider's database PK.
+    """
+
+    KEY_PREFIX = "forwardemail"
+
+    ####################################################################
+    #
+    def __init__(self, r: Any, api: "APIClient") -> None:
+        self.r = r
+        self.api = api
+
+    ####################################################################
+    #
+    def _key(self, obj_type: ObjType, key: str) -> str:
+        return f"{self.KEY_PREFIX}:{obj_type}:{key}"
+
+    ####################################################################
+    #
+    def set_domain(self, domain_info: dict) -> None:
+        """Cache the domain ID from a domain info response dict."""
+        domain_name = domain_info["name"]
+        domain_id = domain_info["id"]
+        self.r.set(self._key(ObjType.DOMAIN, domain_name), domain_id)
+
+    ####################################################################
+    #
+    def set_alias(self, alias_info: dict, domain_name: str) -> None:
+        """Cache the alias ID from an alias info response dict."""
+        alias_name = alias_info["name"]
+        alias_id = alias_info["id"]
+        email_address = f"{alias_name}@{domain_name}"
+        self.r.set(self._key(ObjType.ALIAS, email_address), alias_id)
+
+    ####################################################################
+    #
+    def delete_domain(self, domain_name: str) -> None:
+        """Remove a domain's cached ID."""
+        self.r.delete(self._key(ObjType.DOMAIN, domain_name))
+
+    ####################################################################
+    #
+    def delete_alias(self, email_address: str) -> None:
+        """Remove an alias's cached ID."""
+        self.r.delete(self._key(ObjType.ALIAS, email_address))
+
+    ####################################################################
+    #
+    def set_all_domains_fetched(self) -> None:
+        """Record the current time as the last full domain-list refresh."""
+        self.r.set(self._key(ObjType.DOMAIN, "all_domains"), utc_now_str())
+
+    ####################################################################
+    #
+    def get_all_domains_fetched(self) -> Optional[str]:
+        """Return the timestamp of the last full domain-list refresh, or None."""
+        val = self.r.get(self._key(ObjType.DOMAIN, "all_domains"))
+        return val.decode("utf-8") if val is not None else None
+
+    ####################################################################
+    #
+    def get_cached_domain_id(self, domain_name: str) -> Optional[str]:
+        """Return the cached domain ID without falling back to the API."""
+        val = self.r.get(self._key(ObjType.DOMAIN, domain_name))
+        return val.decode("utf-8") if val is not None else None
+
+    ####################################################################
+    #
+    def get_cached_alias_id(self, email_address: str) -> Optional[str]:
+        """Return the cached alias ID without falling back to the API."""
+        val = self.r.get(self._key(ObjType.ALIAS, email_address))
+        return val.decode("utf-8") if val is not None else None
+
+    ####################################################################
+    #
+    def get_domain_id(self, domain_name: str) -> str:
+        """
+        Return the domain ID for domain_name, using the Redis cache when
+        possible and falling back to the API on a miss.
+
+        Args:
+            domain_name: The domain name to look up
+
+        Returns:
+            The forwardemail.net domain ID string
+
+        Raises:
+            KeyError: If the domain does not exist on forwardemail.net
+            HTTPError: If the API returns a non-404 error
+        """
+        cached = self.get_cached_domain_id(domain_name)
+        if cached is not None:
+            return cached
+
+        try:
+            res = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_name}")
+            domain_info = res.json()
+            self.set_domain(domain_info)
+            return domain_info["id"]
+        except HTTPError as e:
+            if e.code == 404:
+                raise KeyError(
+                    f"Domain '{domain_name}' does not exist on forwardemail.net"
+                )
+            raise
+
+    ####################################################################
+    #
+    def get_alias_id(self, domain_id: str, email_address: str) -> str:
+        """
+        Return the alias ID for email_address, using the Redis cache when
+        possible and falling back to the API on a miss.
+
+        In forwardemail.net terms an alias is the same concept as an
+        EmailAccount in this service: one deliverable address within a domain.
+
+        Args:
+            domain_id: The domain ID the alias belongs to
+            email_address: The full email address of the alias (EmailAccount)
+
+        Returns:
+            The forwardemail.net alias ID string
+
+        Raises:
+            KeyError: If the alias does not exist on forwardemail.net
+            HTTPError: If the API returns a non-404 error
+        """
+        cached = self.get_cached_alias_id(email_address)
+        if cached is not None:
+            return cached
+
+        mailbox = email_address.split("@")[0]
+        domain_name = email_address.split("@")[1]
+        url = f"v1/domains/{domain_id}/{mailbox}"
+        try:
+            res = self.api.req(HTTPMethod.GET, url)
+            alias_info = res.json()
+            self.set_alias(alias_info, domain_name)
+            return alias_info["id"]
+        except HTTPError as e:
+            if e.code == 404:
+                raise KeyError(
+                    f"Alias '{email_address}' does not exist on forwardemail.net"
+                )
+            raise
+
+
+########################################################################
+########################################################################
+#
 class ForwardEmailBackend(ProviderBackend):
     """
     Backend implementation for ForwardEmail.net email service provider.
@@ -343,7 +589,7 @@ class ForwardEmailBackend(ProviderBackend):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.api = APIClient(self.PROVIDER_NAME)
-        self.r = redis_client()
+        self.cache = ForwardEmailCache(redis_client(), self.api)
 
     ####################################################################
     #
@@ -615,58 +861,21 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
-    @classmethod
-    def _redis_key(cls, obj_type: ObjType, key: str) -> str:
-        return f"{cls.PROVIDER_NAME}:{obj_type}:{key}"
-
-    ####################################################################
-    #
-    def set_domain_info(self, domain_info: dict) -> None:
-        domain_name = domain_info["name"]
-        domain_id = domain_info["id"]
-        redis_key = self._redis_key(ObjType.DOMAIN, domain_name)
-        self.r.set(redis_key, domain_id)
-
-    ####################################################################
-    #
-    def set_alias_info(self, alias_info: dict, domain_name: str) -> None:
-        """
-        Store alias information in Redis.
-
-        Args:
-            alias_info: The alias info dict from forwardemail.net API
-            domain_name: The domain name the alias belongs to
-        """
-        alias_name = alias_info["name"]
-        alias_id = alias_info["id"]
-        email_address = f"{alias_name}@{domain_name}"
-        redis_key = self._redis_key(ObjType.ALIAS, email_address)
-        self.r.set(redis_key, alias_id)
-
-    ####################################################################
-    #
     def list_domains(self) -> dict[str, dict[str, Any]]:
         """
-        List all the domains we have configured on our forwardemail.net
-        provider. Store a mapping from the domain name to the id in redis.
-        Return a dict. Each key in the dict is a domain name configured on the
-        forwardemail.net provider, its value is the dict response for that
-        domain name info from forwardemail.net. We also store a key in redis
-        based on the domain name that stores as its value the id.
+        List all the domains configured on our forwardemail.net provider.
+
+        Populates the cache with every domain ID returned and records the
+        refresh timestamp.  Returns a dict keyed by domain name whose values
+        are the raw domain info dicts from the forwardemail.net API.
         """
         result = {}
         for domain_info in self.paginated_request("v1/domains"):
             domain_name = domain_info["name"]
-            domain_id = domain_info["id"]
             result[domain_name] = domain_info
-            redis_key = self._redis_key(ObjType.DOMAIN, domain_name)
-            self.r.set(redis_key, domain_id)
+            self.cache.set_domain(domain_info)
 
-        # Set a key indicating we got the list of domains.
-        #
-        redis_key = self._redis_key(ObjType.DOMAIN, "all_domains")
-        self.r.set(redis_key, utc_now_str())
-
+        self.cache.set_all_domains_fetched()
         return result
 
     ####################################################################
@@ -685,21 +894,12 @@ class ForwardEmailBackend(ProviderBackend):
         Returns True if we did fetch the domains, False if we did not because
         our cache ttl has not expired yet.
         """
-
-        # We store under the "all_domains" key the last timestamp, as a string
-        # of when we fetched the domains. So even if we have them loaded in to
-        # redis, if it has been more than an hour fetch them again.
-        #
-        redis_key = self._redis_key(ObjType.DOMAIN, "all_domains")
-        last_update_bytes = self.r.get(redis_key)
-        if last_update_bytes is None:
+        last_update_str = self.cache.get_all_domains_fetched()
+        if last_update_str is None:
             self.list_domains()
             logger.info("Fetching domains from forwardemail.net")
             return True
 
-        # Parse the timestamp and check if it's stale
-        #
-        last_update_str = last_update_bytes.decode("utf-8")
         age = datetime.now(UTC) - now_str_datetime(last_update_str)
         if age > timedelta(hours=1) or force:
             self.list_domains()
@@ -752,10 +952,9 @@ class ForwardEmailBackend(ProviderBackend):
             Domain info dict from forwardemail.net API
         """
         try:
-            domain_id = self.get_domain_id(server.domain_name)
+            domain_id = self.cache.get_domain_id(server.domain_name)
 
-            # The domain exists -- fetch current settings and apply any updates
-            #
+            # Domain exists -- fetch current settings and apply any updates
             r = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_id}")
             domain_info = r.json()
 
@@ -784,7 +983,7 @@ class ForwardEmailBackend(ProviderBackend):
 
             return domain_info
 
-        except Http404:
+        except KeyError:
             # Domain doesn't exist, create it
             pass
 
@@ -793,7 +992,7 @@ class ForwardEmailBackend(ProviderBackend):
         data = {"domain": server.domain_name, **self.DEFAULT_DOMAIN_SETTINGS}
         r = self.api.req(HTTPMethod.POST, "v1/domains", data=data)
         domain_info = r.json()
-        self.set_domain_info(domain_info)
+        self.cache.set_domain(domain_info)
 
         logger.info(
             "Created forwardemail.net domain '%s' (ID: %s)",
@@ -815,8 +1014,8 @@ class ForwardEmailBackend(ProviderBackend):
             server: The Server instance whose domain should be deleted
         """
         try:
-            domain_id = self.get_domain_id(server.domain_name)
-        except Http404:
+            domain_id = self.cache.get_domain_id(server.domain_name)
+        except KeyError:
             # Domain doesn't exist, nothing to delete
             logger.info(
                 "Domain '%s' does not exist on forwardemail.net, nothing to delete",
@@ -826,91 +1025,13 @@ class ForwardEmailBackend(ProviderBackend):
 
         self.api.req(HTTPMethod.DEL, f"v1/domains/{domain_id}")
 
-        redis_key = self._redis_key(ObjType.DOMAIN, server.domain_name)
-        self.r.delete(redis_key)
+        self.cache.delete_domain(server.domain_name)
 
         logger.info(
             "Deleted forwardemail.net domain '%s' (ID: %s)",
             server.domain_name,
             domain_id,
         )
-
-    ####################################################################
-    #
-    def get_domain_id(self, domain_name: str) -> Optional[str]:
-        """
-        Get the domain ID for a given domain name from Redis if
-        possible. If not in redis, then fetch it from their API and store it in
-        redis.
-
-        Args:
-            domain_name: The domain name to look up
-
-        Returns:
-            The domain ID string, or None if not found
-
-        Raises:
-            Http404: If the domain does not exist on forwardemail.net
-        """
-        redis_key = self._redis_key(ObjType.DOMAIN, domain_name)
-        domain_id_bytes = self.r.get(redis_key)
-
-        if domain_id_bytes is None:
-            try:
-                res = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_name}")
-                domain_info = res.json()
-                self.set_domain_info(domain_info)
-                domain_id = domain_info["id"]
-            except HTTPError as e:
-                if e.code == 404:
-                    raise Http404(
-                        f"Domain '{domain_name}' does not exist on forwardemail.net"
-                    )
-                raise
-        else:
-            domain_id = domain_id_bytes.decode("utf-8")
-
-        return domain_id
-
-    ####################################################################
-    #
-    def get_alias_id(self, domain_id: str, email_address: str) -> str:
-        """
-        Get the domain alias ID from redis if possible. If not in redis
-        then fetch it from the forwardemail.net API and store it in redis.
-
-        Args:
-            domain_id: the domain id the alias is inside.
-            email_address: The email address. We only look at the mailbox part
-                           of the email address
-
-        Returns:
-           The domain alias id
-
-        Raises:
-            Http404: If the alias does not exist on forwardemail.net
-        """
-        redis_key = self._redis_key(ObjType.ALIAS, email_address)
-        alias_id_bytes = self.r.get(redis_key)
-        if alias_id_bytes is None:
-            mailbox = email_address.split("@")[0]
-            domain_name = email_address.split("@")[1]
-            url = f"v1/domains/{domain_id}/{mailbox}"
-            try:
-                res = self.api.req(HTTPMethod.GET, url)
-                alias_info = res.json()
-                self.set_alias_info(alias_info, domain_name)
-                alias_id = alias_info["id"]
-            except HTTPError as e:
-                if e.code == 404:
-                    raise Http404(
-                        f"Alias '{email_address}' does not exist on forwardemail.net"
-                    )
-                raise
-        else:
-            alias_id = alias_id_bytes.decode("utf-8")
-
-        return alias_id
 
     ####################################################################
     #
@@ -956,7 +1077,7 @@ class ForwardEmailBackend(ProviderBackend):
         Returns:
             List of EmailAccountInfo objects containing alias information
         """
-        domain_id = self.get_domain_id(server.domain_name)
+        domain_id = self.cache.get_domain_id(server.domain_name)
 
         result = []
         url = f"v1/domains/{domain_id}/aliases"
@@ -974,11 +1095,7 @@ class ForwardEmailBackend(ProviderBackend):
                 name=alias_name,
             )
             result.append(account_info)
-
-            # Store alias ID in Redis for quick lookup
-            #
-            redis_key = self._redis_key(ObjType.ALIAS, email_address)
-            self.r.set(redis_key, alias_id)
+            self.cache.set_alias(alias_info, server.domain_name)
 
         return result
 
@@ -1012,9 +1129,9 @@ class ForwardEmailBackend(ProviderBackend):
         Args:
             email_account: The EmailAccount to create or update an alias for
         """
-        # This will raise an error if the domain does not exist
+        # This will raise KeyError if the domain does not exist
         #
-        domain_id = self.get_domain_id(email_account.server.domain_name)
+        domain_id = self.cache.get_domain_id(email_account.server.domain_name)
 
         # Extract mailbox name from email address
         #
@@ -1040,7 +1157,9 @@ class ForwardEmailBackend(ProviderBackend):
         # Check if the alias already exists by trying to get it
         #
         try:
-            alias_id = self.get_alias_id(domain_id, email_account.email_address)
+            alias_id = self.cache.get_alias_id(
+                domain_id, email_account.email_address
+            )
 
             # Alias exists - update it using PUT
             #
@@ -1050,10 +1169,7 @@ class ForwardEmailBackend(ProviderBackend):
                 data=alias_data,
             )
             alias_info = r.json()
-
-            # Store alias ID in Redis
-            #
-            self.set_alias_info(alias_info, email_account.server.domain_name)
+            self.cache.set_alias(alias_info, email_account.server.domain_name)
 
             logger.info(
                 "Updated forwardemail.net alias for %s (ID: %s), webhook: %s",
@@ -1062,13 +1178,7 @@ class ForwardEmailBackend(ProviderBackend):
                 webhook_url,
             )
 
-        except HTTPError as e:
-            # If it fails with anything but a 404, raise the exception.
-            # Otherwise fall through to create because it doesn't exist.
-            #
-            if e.code != 404:
-                raise
-
+        except KeyError:
             # Alias doesn't exist - create it using POST
             #
             r = self.api.req(
@@ -1077,10 +1187,7 @@ class ForwardEmailBackend(ProviderBackend):
                 data=alias_data,
             )
             alias_info = r.json()
-
-            # Store alias ID in Redis
-            #
-            self.set_alias_info(alias_info, email_account.server.domain_name)
+            self.cache.set_alias(alias_info, email_account.server.domain_name)
 
             logger.info(
                 "Created forwardemail.net alias for %s (ID: %s), webhook: %s",
@@ -1101,28 +1208,22 @@ class ForwardEmailBackend(ProviderBackend):
         Args:
             email_account: The EmailAccount whose alias to delete
         """
-        domain_id = self.get_domain_id(email_account.server.domain_name)
-        redis_key = self._redis_key(ObjType.ALIAS, email_account.email_address)
-        alias_id_bytes = self.r.get(redis_key)
+        domain_id = self.cache.get_domain_id(email_account.server.domain_name)
+        alias_id = self.cache.get_cached_alias_id(email_account.email_address)
 
-        if alias_id_bytes is None:
+        if alias_id is None:
             logger.warning(
-                "Cannot delete alias for %s: alias ID not found in Redis",
+                "Cannot delete alias for %s: alias ID not in cache, skipping",
                 email_account.email_address,
             )
             return
-
-        alias_id = alias_id_bytes.decode("utf-8")
 
         # Delete the alias
         #
         self.api.req(
             HTTPMethod.DEL, f"v1/domains/{domain_id}/aliases/{alias_id}"
         )
-
-        # Remove from Redis
-        #
-        self.r.delete(redis_key)
+        self.cache.delete_alias(email_account.email_address)
 
         logger.info(
             "Deleted forwardemail.net alias for %s (ID: %s)",
@@ -1145,18 +1246,12 @@ class ForwardEmailBackend(ProviderBackend):
             enabled: True to enable, False to disable
             redis: Optional Redis client to reuse
         """
-        # Get domain and alias IDs
+        # Get domain and alias IDs; both raise KeyError if not found
         #
-        domain_id = self.get_domain_id(email_account.server.domain_name)
-        assert domain_id
-        alias_id = self.get_alias_id(domain_id, email_account.email_address)
-
-        if alias_id is None:
-            logger.warning(
-                "Cannot update alias for %s: alias ID not found in Redis",
-                email_account.email_address,
-            )
-            return
+        domain_id = self.cache.get_domain_id(email_account.server.domain_name)
+        alias_id = self.cache.get_alias_id(
+            domain_id, email_account.email_address
+        )
 
         # Update the alias enabled field
         #
@@ -1191,37 +1286,33 @@ class ForwardEmailBackend(ProviderBackend):
             email_address: The email address of the alias to delete
             server: The Server instance for this domain
         """
-        # Get domain ID
+        # Get domain ID; if the domain doesn't exist there's nothing to delete
         #
-        domain_id = self.get_domain_id(server.domain_name)
-        if domain_id is None:
+        try:
+            domain_id = self.cache.get_domain_id(server.domain_name)
+        except KeyError:
             logger.warning(
-                "Cannot delete alias for %s: domain ID not found",
+                "Cannot delete alias for %s: domain '%s' not found",
                 email_address,
+                server.domain_name,
             )
             return
 
-        redis_key = self._redis_key(ObjType.ALIAS, email_address)
-        alias_id_bytes = self.r.get(redis_key)
+        alias_id = self.cache.get_cached_alias_id(email_address)
 
-        if alias_id_bytes is None:
+        if alias_id is None:
             logger.warning(
-                "Cannot delete alias for %s: alias ID not found in Redis",
+                "Cannot delete alias for %s: alias ID not in cache, skipping",
                 email_address,
             )
             return
-
-        alias_id = alias_id_bytes.decode("utf-8")
 
         # Delete the alias
         #
         self.api.req(
             HTTPMethod.DEL, f"v1/domains/{domain_id}/aliases/{alias_id}"
         )
-
-        # Remove from Redis
-        #
-        self.r.delete(redis_key)
+        self.cache.delete_alias(email_address)
 
         logger.info(
             "Deleted forwardemail.net alias for %s (ID: %s)",

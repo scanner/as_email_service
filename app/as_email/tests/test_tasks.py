@@ -33,12 +33,12 @@ from ..tasks import (
     dispatch_spooled_outgoing_email,
     process_email_bounce,
     process_email_spam,
-    provider_create_alias,
-    provider_create_domain,
-    provider_delete_alias,
-    provider_enable_all_aliases_for_server,
-    provider_report_unused_domains,
-    provider_sync_aliases,
+    provider_create_email_account,
+    provider_create_server,
+    provider_delete_email_account,
+    provider_enable_email_accounts_for_server,
+    provider_report_unused_servers,
+    provider_sync_email_accounts,
     retry_failed_incoming_email,
 )
 from ..utils import (
@@ -823,7 +823,7 @@ def test_check_update_pwfile_for_emailaccount_no_change(
 ########################################################################
 #
 class TestProviderCreateDomain:
-    """Tests for provider_create_domain task."""
+    """Tests for provider_create_server task."""
 
     ####################################################################
     #
@@ -851,7 +851,7 @@ class TestProviderCreateDomain:
 
         # Then call the task that creates the domain using the dummy provider.
         #
-        res = provider_create_domain(server.pk, dummy_provider.PROVIDER_NAME)
+        res = provider_create_server(server.pk, dummy_provider.PROVIDER_NAME)
         res()
 
         # And now the domain should be one managed by the dummy provider.
@@ -870,7 +870,7 @@ class TestProviderCreateDomain:
     ) -> None:
         """
         Given a backend that raises an exception
-        When provider_create_domain is called
+        When provider_create_server is called
         Then the exception should be logged and re-raised
         """
         server = server_factory(send_provider=None, receive_providers=[])
@@ -884,19 +884,19 @@ class TestProviderCreateDomain:
             side_effect=Exception("API error"),
         )
 
-        res = provider_create_domain(server.pk, dummy_provider.PROVIDER_NAME)
+        res = provider_create_server(server.pk, dummy_provider.PROVIDER_NAME)
         with pytest.raises(Exception, match="API error"):
             res()
 
         # Verify error was logged
-        assert "Failed to create domain" in caplog.text
+        assert "Failed to register server" in caplog.text
 
 
 ########################################################################
 ########################################################################
 #
 class TestProviderCreateAlias:
-    """Tests for provider_create_alias task."""
+    """Tests for provider_create_email_account task."""
 
     ####################################################################
     #
@@ -909,13 +909,13 @@ class TestProviderCreateAlias:
     ) -> None:
         """
         Given an email account and the dummy provider
-        When provider_create_alias is called
+        When provider_create_email_account is called
         Then the backend's create_update_email_account method should be called
         """
         server = server_factory(send_provider=None, receive_providers=[])
         email_account = email_account_factory(server=server)
 
-        res = provider_create_alias(
+        res = provider_create_email_account(
             email_account.pk, dummy_provider.PROVIDER_NAME
         )
         res()
@@ -937,7 +937,7 @@ class TestProviderCreateAlias:
     ) -> None:
         """
         Given a backend that raises an exception
-        When provider_create_alias is called
+        When provider_create_email_account is called
         Then the exception should be logged and re-raised
         """
         server = server_factory(send_provider=None, receive_providers=[])
@@ -953,20 +953,20 @@ class TestProviderCreateAlias:
             side_effect=Exception("API error"),
         )
 
-        res = provider_create_alias(
+        res = provider_create_email_account(
             email_account.pk, dummy_provider.PROVIDER_NAME
         )
         with pytest.raises(Exception, match="API error"):
             res()
 
-        assert "Failed to create/update alias" in caplog.text
+        assert "Failed to create/update email account" in caplog.text
 
 
 ########################################################################
 ########################################################################
 #
 class TestProviderDeleteAlias:
-    """Tests for provider_delete_alias task."""
+    """Tests for provider_delete_email_account task."""
 
     ####################################################################
     #
@@ -979,7 +979,7 @@ class TestProviderDeleteAlias:
     ) -> None:
         """
         Given an email address and domain
-        When provider_delete_alias is called
+        When provider_delete_email_account is called
         Then the backend's delete_email_account_by_address should be called
         """
         # By creating a default server it will have the dummy provider as its
@@ -993,7 +993,7 @@ class TestProviderDeleteAlias:
         email_account = email_account_factory(server=server)
         assert email_account.email_address in dummy_provider.email_accounts
 
-        res = provider_delete_alias(
+        res = provider_delete_email_account(
             email_account.email_address,
             server.domain_name,
             dummy_provider.PROVIDER_NAME,
@@ -1012,14 +1012,14 @@ class TestProviderDeleteAlias:
     ) -> None:
         """
         Given a domain name that doesn't exist
-        When provider_delete_alias is called
+        When provider_delete_email_account is called
         Then a warning should be logged and no exception raised
         """
         provider = provider_factory()
         email_address = faker.email()
         domain_name = faker.domain_name()
 
-        res = provider_delete_alias(
+        res = provider_delete_email_account(
             email_address, domain_name, provider.backend_name
         )
         res()
@@ -1040,7 +1040,7 @@ class TestProviderDeleteAlias:
     ) -> None:
         """
         Given a backend that raises an exception
-        When provider_delete_alias is called
+        When provider_delete_email_account is called
         Then the exception should be logged and re-raised
         """
         server = server_factory(send_provider=None, receive_providers=[])
@@ -1056,7 +1056,7 @@ class TestProviderDeleteAlias:
             side_effect=Exception("API error"),
         )
 
-        res = provider_delete_alias(
+        res = provider_delete_email_account(
             email_account.email_address,
             server.domain_name,
             dummy_provider.PROVIDER_NAME,
@@ -1064,14 +1064,14 @@ class TestProviderDeleteAlias:
         with pytest.raises(Exception, match="API error"):
             res()
 
-        assert "Failed to delete alias" in caplog.text
+        assert "Failed to delete email account" in caplog.text
 
 
 ########################################################################
 ########################################################################
 #
 class TestProviderEnableAllAliases:
-    """Tests for provider_enable_all_aliases_for_server task."""
+    """Tests for provider_enable_email_accounts_for_server task."""
 
     ####################################################################
     #
@@ -1085,7 +1085,7 @@ class TestProviderEnableAllAliases:
     ) -> None:
         """
         Given a server with email accounts but missing aliases on provider
-        When provider_enable_all_aliases_for_server is called
+        When provider_enable_email_accounts_for_server is called
         Then missing aliases should be created
         """
         server = server_factory(send_provider=None, receive_providers=[])
@@ -1093,7 +1093,7 @@ class TestProviderEnableAllAliases:
         ea2 = email_account_factory(server=server)
         email_accounts = sorted((ea1, ea2), key=lambda x: x.email_address)
 
-        res = provider_enable_all_aliases_for_server(
+        res = provider_enable_email_accounts_for_server(
             server.pk,
             dummy_provider.PROVIDER_NAME,
             enabled=True,
@@ -1118,7 +1118,7 @@ class TestProviderEnableAllAliases:
     ) -> None:
         """
         Given aliases that exist but have wrong is_enabled state
-        When provider_enable_all_aliases_for_server is called
+        When provider_enable_email_accounts_for_server is called
         Then aliases should be updated
         """
         server = server_factory()
@@ -1139,7 +1139,7 @@ class TestProviderEnableAllAliases:
         for ea in dummy_provider.list_email_accounts(server):
             assert ea.enabled is False
 
-        res = provider_enable_all_aliases_for_server(
+        res = provider_enable_email_accounts_for_server(
             server.pk, dummy_provider.PROVIDER_NAME, enabled=True
         )
         res()
@@ -1161,7 +1161,7 @@ class TestProviderEnableAllAliases:
     ) -> None:
         """
         Given aliases already in correct is_enabled state When
-        provider_enable_all_aliases_for_server is called Then aliases should be skipped
+        provider_enable_email_accounts_for_server is called Then aliases should be skipped
         """
         provider = provider_factory(backend_name="dummy")
         server = server_factory()
@@ -1186,7 +1186,7 @@ class TestProviderEnableAllAliases:
             return_value=mock_backend,
         )
 
-        res = provider_enable_all_aliases_for_server(
+        res = provider_enable_email_accounts_for_server(
             server.pk, provider.backend_name, enabled=True
         )
         res()
@@ -1206,7 +1206,7 @@ class TestProviderEnableAllAliases:
     ) -> None:
         """
         Given a mix of enabled, disabled, and missing email accounts from the backend
-        When `provider_enable_all_aliases_for_server` is called
+        When `provider_enable_email_accounts_for_server` is called
         Then disabled accounts should be enabled, missing accounts created
         """
         provider = provider_factory(backend_name="dummy")
@@ -1250,7 +1250,7 @@ class TestProviderEnableAllAliases:
         # Call the huey task. Remember in tests all huey tasks execute in
         # immediate mode.
         #
-        res = provider_enable_all_aliases_for_server(
+        res = provider_enable_email_accounts_for_server(
             server.pk, provider.backend_name, enabled=True
         )
         res()
@@ -1269,7 +1269,7 @@ class TestProviderEnableAllAliases:
 ########################################################################
 #
 class TestProviderSyncAliases:
-    """Tests for provider_sync_aliases periodic task."""
+    """Tests for provider_sync_email_accounts periodic task."""
 
     ####################################################################
     #
@@ -1284,8 +1284,8 @@ class TestProviderSyncAliases:
     ) -> None:
         """
         Given multiple providers with multiple servers
-        When provider_sync_aliases is called
-        Then provider_enable_all_aliases_for_server should be called for all servers
+        When provider_sync_email_accounts is called
+        Then provider_enable_email_accounts_for_server should be called for all servers
         """
         provider1 = provider_factory(backend_name="dummy")
         provider2 = provider_factory(backend_name="dummy")
@@ -1296,7 +1296,7 @@ class TestProviderSyncAliases:
         server4 = server_factory(receive_providers=[provider2])
 
         # We actually do not need any email address because we are going to
-        # mock the underlying function `provider_enable_all_aliases_for_server_for_server`
+        # mock the underlying function `provider_enable_email_accounts_for_server_for_server`
         # and see that it is called. Testing _that_ task is a separate test
         # from this one.
         #
@@ -1308,21 +1308,21 @@ class TestProviderSyncAliases:
         # for each server. We are doing it after the above factories because
         # they will also call this task when setting up the intial aliases.
         #
-        provider_enable_all_aliases_for_server_mock = mocker.patch(
-            "as_email.tasks.provider_enable_all_aliases_for_server"
+        provider_enable_email_accounts_for_server_mock = mocker.patch(
+            "as_email.tasks.provider_enable_email_accounts_for_server"
         )
-        res = provider_sync_aliases()
+        res = provider_sync_email_accounts()
         res()
 
-        # Verify provider_enable_all_aliases_for_server was called once for each server.
+        # Verify provider_enable_email_accounts_for_server was called once for each server.
         #
-        assert provider_enable_all_aliases_for_server_mock.call_count == 4
+        assert provider_enable_email_accounts_for_server_mock.call_count == 4
 
         # Verify it was called with each server exactly once
         #
         called_server_ids = {
             call[0][0]
-            for call in provider_enable_all_aliases_for_server_mock.call_args_list
+            for call in provider_enable_email_accounts_for_server_mock.call_args_list
         }
         expected_server_ids = {server1.pk, server2.pk, server3.pk, server4.pk}
         assert called_server_ids == expected_server_ids
@@ -1334,7 +1334,7 @@ class TestProviderSyncAliases:
     ) -> None:
         """
         Given a provider that raises an exception getting backend
-        When provider_sync_aliases is called
+        When provider_sync_email_accounts is called
         Then the error should be logged and other providers processed
         """
         _ = provider_factory(backend_name="invalid_backend")
@@ -1356,14 +1356,14 @@ class TestProviderSyncAliases:
             side_effect=get_backend_side_effect,
         )
 
-        # Mock provider_enable_all_aliases_for_server
+        # Mock provider_enable_email_accounts_for_server
         mock_enable_task = mocker.Mock()
         mocker.patch(
-            "as_email.tasks.provider_enable_all_aliases_for_server",
+            "as_email.tasks.provider_enable_email_accounts_for_server",
             return_value=mock_enable_task,
         )
 
-        res = provider_sync_aliases()
+        res = provider_sync_email_accounts()
         res()
 
         # Verify error was logged for invalid backend
@@ -1375,7 +1375,7 @@ class TestProviderSyncAliases:
 ########################################################################
 #
 class TestProviderReportUnusedDomains:
-    """Tests for provider_report_unused_domains periodic task."""
+    """Tests for provider_report_unused_servers periodic task."""
 
     ####################################################################
     #
@@ -1388,7 +1388,7 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given a server with no email accounts
-        When provider_report_unused_domains is called
+        When provider_report_unused_servers is called
         Then an email report should be sent
         """
         provider = provider_factory(backend_name="forwardemail")
@@ -1402,13 +1402,13 @@ class TestProviderReportUnusedDomains:
             return_value=mock_backend,
         )
 
-        res = provider_report_unused_domains()
+        res = provider_report_unused_servers()
         res()
 
         # Verify email was sent
         assert len(django_outbox) == 1
         email = django_outbox[0]
-        assert "unused domain" in email.subject.lower()
+        assert "unused server" in email.subject.lower()
         assert server.domain_name in email.body
 
     ####################################################################
@@ -1423,7 +1423,7 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given a server with email accounts but all disabled on provider
-        When provider_report_unused_domains is called
+        When provider_report_unused_servers is called
         Then the domain should be reported as unused
         """
         provider = provider_factory(backend_name="forwardemail")
@@ -1449,7 +1449,7 @@ class TestProviderReportUnusedDomains:
             return_value=mock_backend,
         )
 
-        res = provider_report_unused_domains()
+        res = provider_report_unused_servers()
         res()
 
         # Verify email was sent
@@ -1470,7 +1470,7 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given a server with an active alias
-        When provider_report_unused_domains is called
+        When provider_report_unused_servers is called
         Then no email should be sent
         """
 
@@ -1490,7 +1490,7 @@ class TestProviderReportUnusedDomains:
         # domains. Since we have only one domain with one active email account
         # there should be no unused domains, so no email is sent.
         #
-        res = provider_report_unused_domains()
+        res = provider_report_unused_servers()
         res()
 
         # Verify no email was sent
@@ -1508,7 +1508,7 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given multiple providers with unused domains
-        When provider_report_unused_domains is called
+        When provider_report_unused_servers is called
         Then all should be included in the report
         """
         provider1 = provider_factory(backend_name="forwardemail")
@@ -1529,7 +1529,7 @@ class TestProviderReportUnusedDomains:
             return_value=mock_backend,
         )
 
-        res = provider_report_unused_domains()
+        res = provider_report_unused_servers()
         res()
 
         # Verify email was sent with both providers
