@@ -411,6 +411,7 @@ BULMA_SETTINGS = {
 #
 SETTINGS_EXPORT = [
     "DEBUG",
+    "SITE_NAME",
     "VERSION",
 ]
 
