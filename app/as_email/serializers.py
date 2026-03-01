@@ -3,12 +3,8 @@
 """
 Serializers for the rest framework of our models
 """
-# system imports
-#
-
 # 3rd party imports
 #
-from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from rest_framework_nested.relations import (
     NestedHyperlinkedIdentityField,
@@ -18,7 +14,14 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 
 # Project imports
 #
-from .models import EmailAccount, InactiveEmail, MessageFilterRule
+from .models import (
+    AliasToDelivery,
+    DeliveryMethod,
+    EmailAccount,
+    InactiveEmail,
+    LocalDelivery,
+    MessageFilterRule,
+)
 
 
 ########################################################################
@@ -65,59 +68,6 @@ class MoveOrderSerializer(serializers.Serializer):
 ########################################################################
 ########################################################################
 #
-class EmailAccountRelatedField(serializers.SlugRelatedField):
-    """
-    Override `get_queryset` to provide the limit queryset of only valid
-    EmailAccounts.
-    """
-
-    ####################################################################
-    #
-    def get_queryset(self):
-        """
-        Replace the generic provided queryset with one that only returns
-        the valid related email accounts.
-
-        This field we know is only used by the `EmailAccountSerializer` and we
-        also know that this will **always** be a `many=True` field. Because of
-        this we can safely access `self.parent.parent.instance`. When you make
-        a related field that is `many=True` drf: "Relationships with
-        `many=True` transparently get coerced into instead being a
-        ManyRelatedField with a child relationship."
-
-        See: https://github.com/encode/django-rest-framework/blob/f56b85b7dd7e4f786e0769bba6b7609d4507da83/rest_framework/relations.py#L471
-
-        This lets us access the EmailAccount instance that this serializer is
-        for, which lets us create a QuerySet that only shows to the REST API
-        view the EmailAccounts that this EmailAccount is allowed to have for
-        `aliases` and `alias_for`.
-        """
-        # The pre-populated list of valid EmailAccount's for `aliases` and
-        # `for_alias` are EmailAccounts that have the same owner _except_ for
-        # the EmailAccount being serialized (you can not alias to yourself.)
-        #
-        # NOTE: Unless the owner has the permission
-        #       `as_email.can_have_foreign_aliases` in which case they can
-        #       alias to any email account.
-        #
-        if self.parent.parent.instance is None:
-            queryset = EmailAccount.objects.none()
-        else:
-            owner = self.parent.parent.instance.owner
-            if not owner.has_perms(["as_email.can_have_foreign_aliases"]):
-                queryset = EmailAccount.objects.filter(owner=owner).exclude(
-                    pk=self.parent.parent.instance.pk
-                )
-            else:
-                queryset = EmailAccount.objects.exclude(
-                    pk=self.parent.parent.instance.pk
-                )
-        return queryset
-
-
-########################################################################
-########################################################################
-#
 class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     url = serializers.HyperlinkedIdentityField(
         view_name="as_email:email-account-detail", read_only=True
@@ -128,57 +78,39 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
         view_name="as_email:message-filter-rule-list",
         lookup_url_kwarg="email_account_pk",
     )
+    aliased_from = serializers.SerializerMethodField()
 
-    # The `EmailAccountRelatedField` makes sure that the queryset for
-    # presenting valid EmailAccount's is limited to the EmailAccount's a user
-    # is permitted to see.
-    #
-    alias_for = EmailAccountRelatedField(
-        many=True,
-        slug_field="email_address",
-        required=False,
-        help_text=EmailAccount.alias_for.field.help_text,
-    )
-    aliases = EmailAccountRelatedField(
-        many=True,
-        slug_field="email_address",
-        required=False,
-        help_text=_(
-            "This is the reverse part of the `alias_for` relationship. It "
-            "lists all the EmailAccounts that are an alias for this "
-            "EmailAccount. NOTE: Adding and removing entries from this field "
-            "updates `alias_for` on the added or removed EmailAccount."
-        ),
-    )
+    def get_aliased_from(self, obj: EmailAccount) -> list[dict]:
+        return [
+            {"email": atd.email_account.email_address, "enabled": atd.enabled}
+            for atd in obj.aliased_from.all()
+        ]
 
     class Meta:
         model = EmailAccount
         fields = [
             "pk",
-            "aliases",
-            "alias_for",
-            "autofile_spam",
+            "aliased_from",
             "created_at",
             "deactivated",
             "deactivated_reason",
-            "delivery_method",
             "email_address",
-            "forward_to",
+            "enabled",
             "message_filter_rules",
             "modified_at",
             "num_bounces",
             "owner",
             "server",
-            "spam_delivery_folder",
-            "spam_score_threshold",
             "url",
         ]
         read_only_fields = [
             "pk",
+            "aliased_from",
             "created_at",
             "deactivated",
             "deactivated_reason",
             "email_address",
+            "enabled",
             "message_filter_rules",
             "modified_at",
             "num_bounces",
@@ -254,4 +186,81 @@ class InactiveEmailSerializer(serializers.HyperlinkedModelSerializer):
             "created_at",
             "modified_at",
             "order",
+        ]
+
+
+########################################################################
+########################################################################
+#
+class DeliveryMethodSerializer(NestedHyperlinkedModelSerializer):
+    """
+    Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+    concrete subclass name so clients can distinguish LocalDelivery from
+    AliasToDelivery.
+    """
+
+    parent_lookup_kwargs = {"email_account_pk": "email_account__pk"}
+
+    url = NestedHyperlinkedIdentityField(
+        view_name="as_email:delivery-method-detail",
+        lookup_field="pk",
+        parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
+    )
+    delivery_type = serializers.SerializerMethodField()
+
+    ####################################################################
+    #
+    def get_delivery_type(self, obj: DeliveryMethod) -> str:
+        return obj.__class__.__name__
+
+    class Meta:
+        model = DeliveryMethod
+        fields = [
+            "url",
+            "pk",
+            "delivery_type",
+            "enabled",
+            "created_at",
+            "modified_at",
+        ]
+        read_only_fields = [
+            "url",
+            "pk",
+            "delivery_type",
+            "created_at",
+            "modified_at",
+        ]
+
+
+########################################################################
+########################################################################
+#
+class LocalDeliverySerializer(DeliveryMethodSerializer):
+    class Meta(DeliveryMethodSerializer.Meta):
+        model = LocalDelivery
+        fields = DeliveryMethodSerializer.Meta.fields + [
+            "maildir_path",
+            "autofile_spam",
+            "spam_delivery_folder",
+            "spam_score_threshold",
+        ]
+        read_only_fields = DeliveryMethodSerializer.Meta.read_only_fields + [
+            "maildir_path",
+        ]
+
+
+########################################################################
+########################################################################
+#
+class AliasToDeliverySerializer(DeliveryMethodSerializer):
+    target_account = serializers.SlugRelatedField(
+        slug_field="email_address",
+        queryset=EmailAccount.objects.all(),
+        help_text=AliasToDelivery.target_account.field.help_text,
+    )
+
+    class Meta(DeliveryMethodSerializer.Meta):
+        model = AliasToDelivery
+        fields = DeliveryMethodSerializer.Meta.fields + [
+            "target_account",
         ]

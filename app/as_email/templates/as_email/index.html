@@ -1,6 +1,6 @@
 {% extends "as_email/base.html" %}
 {% load compress static crispy_forms_tags %}
-{% block title %}AS Email - Email Accounts{% endblock %}
+{% block title %}AS Email - Email Service Manager{% endblock %}
 {% block importmap %}
   <script type="importmap">
    {
@@ -21,271 +21,620 @@
 {% endblock defer_noncompress_js %}
 
 {% block content %}
+
+  {# ------------------------------------------------------------------ #}
+  {# EmailAccount card template                                          #}
+  {# ------------------------------------------------------------------ #}
   <template id="template-email-account">
-    <div>
-      <div class="card-content">
-        <p class="help is-danger has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.deactivated}`" v-if="deactivated"><b>NOTE:</b> Email Account is deactivated and can not send email: [[ props.deactivatedReason ]]</p>
-        <p class="help is-danger" v-if="labelErrorMessages.detail">[[ labelErrorMessages.detail ]]</p>
-        <p class="help is-danger has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.num_bounces}`" v-if="numBounces">Number of sent email bounces: [[ numBounces ]]</p>
+    <div class="card mb-4">
 
-        <div class="field has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.delivery_method}`">
-          <label class="label is-small" :for="`id-delivery-method-${pk}`">Delivery method </label>
-          <div class="control">
-            <div class="select is-small">
-              <select
-                name="delivery_method"
-                :id="`id-delivery-method-${pk}`"
-                :value="deliveryMethod"
-                @input="$emit('update:deliveryMethod', $event.target.value)"
-              >
-                <option value="LD">
-                  Local Delivery
-                </option>
-                <option value="AL">
-                  Alias
-                </option>
-                <option value="FW">
-                  Forwarding
-                </option>
-              </select>
-            </div>
-          </div>
-          <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.delivery_method ]]</p>
-        </div>
-
-        <div class="field is-grouped" v-bind:class="{ 'has-background-grey-light': !autofileSpam}">
-          <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.autofile_spam}`">
-            <label class="checkbox is-small" :for="`id_autofile_spam-${pk}`" >
-              <div class="control is-small">
-                <input type="checkbox" name="autofile_spam"
-                  :id="`id_autofile_spam-${pk}`"
-                  :checked="autofileSpam"
-                  @input="$emit('update:autofileSpam', $event.target.checked)">
-                Autofile spam</label>
-              </div>
-              <p v-if="labelErrorMessages.autofile_spam" class="help is-danger">[[ labelErrorMessages.autofile_spam ]]</p>
-          </div>
-
-          <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_score_threshold}`">
-            <label class="label is-small" :for="`id_spam_score_threshold-${pk}`" >Spam score threshold</label>
-            <div class="control">
-              <input type="number" class="numberinput input is-small"
-                name="spam_score_threshold"
-                :disabled="!autofileSpam"
-                :id="`id_spam_score_threshold-${pk}`"
-                :value="spamScoreThreshold"
-                @input="$emit('update:spamScoreThreshold', $event.target.value)">
-            </div>
-            <p v-if="labelErrorMessages.spam_score_threshold" class="help is-danger">[[ labelErrorMessages.spam_score_threshold ]]</p>
-          </div>
-
-          <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.spam_delivery_folder}`">
-            <label  class="label is-small" :for="`id_spam_delivery_folder-${pk}`">Spam delivery folder</label>
-            <div class="control is-expanded">
-              <input type="text" class="input is-small" name="spam_delivery_folder"
-                maxlength="1024"
-                :disabled="!autofileSpam"
-                :value="spamDeliveryFolder"
-                @input="$emit('update:spamDeliveryFolder', $event.target.value)"
-                :id="`id_spam_delivery_folder-${pk}`">
-            </div>
-            <p v-if="labelErrorMessages.spam_delivery_folder" class="help is-danger">[[ labelErrorMessages.spam_delivery_folder ]]</p>
-          </div>
-        </div>
-
-        <div class="field has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom" :data-tooltip="`${labelTooltips.alias_for}`">
-          <div class="control">
-            <label :for="`id_alias_for-${pk}`" class="label is-small">Alias for</label>
-            <div class="select is-multiple is-small">
-              <v-select multiple v-model="computedAliasFor" :options="filteredValidEmailAddrs" placeholder="Email accounts that this is an alias for"></v-select>
-            </div>
-          </div>
-          <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.alias_for ]]</p>
-        </div>
-
-        <div class="field has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
-          <div class="control">
-            <label :for="`id_aliases-${pk}`" class="label is-small">Aliases</label>
-            <div class="select is-multiple is-small">
-              <v-select multiple
-                v-model="computedAliases"
-                :options="filteredValidEmailAddrs"
-                placeholder="Email accounts that alias to this email account"
-              ></v-select>
-            </div>
-          </div>
-          <p v-if="labelErrorMessages.delivery_method" class="help is-danger">[[ labelErrorMessages.aliases ]]</p>
-        </div>
-
-        <div :id="`div_id_forward_to_${pk}`" class="field">
-          <div class="control has-tooltip-arrow has-tooltip-multiline" :data-tooltip="`${labelTooltips.aliases}`">
-            <label :for="`forward-to-id-${pk}`" class="label is-small">Forward to</label>
-            <input
-              type="email"
-              name="forward_to"
-              maxlength="254"
-              class="input is-small"
-              :id="`forward-to-id-${pk}`"
-              :value="forwardTo"
-              @input="$emit('update:forwardTo', $event.target.value)"
-              placeholder="e.g. johnnie@example.com"
-            />
-          </div>
-        </div>
-        <div class="field is-grouped is-grouped-centered">
-          <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Sets the password for SMTP and IMAP access to this mail service for this email account.">
-            <button class="button modal-button is-normal is-link" :data-target="`set-password-modal-${pk}`">Set Email Account Password</button>
-          </div>
-          <div class="control has-tooltip-arrow has-tooltip-multiline" data-tooltip="Opens the dialog for working with message filter rules. Message filter rules apply to IMAP and Local Delivery for auto-filing messages in to mailboxes based on their headers.">
-            <button class="button modal-button is-normal is-link" disabled :data-target="`message-filter-rules-modal-${pk}`" @click="openMessageFilterRules($event)">Message Filter Rules</button>
-          </div>
-        </div>
-      </div>
-      <footer class="card-footer">
-        <p class="card-footer-item">
-          <span>
-            <input class="button is-primary" @click="submitData" type="submit" value="Apply" :disabled="submitDisabled">
-          </span>
+      {# Card header — click anywhere to expand/collapse #}
+      <header class="card-header has-tooltip-arrow has-tooltip-right"
+              :data-tooltip="isExpanded ? 'Click to collapse' : 'Click to expand'"
+              style="cursor: pointer;" @click="toggleExpanded">
+        <p class="card-header-title">
+          <span class="mr-2">[[ isExpanded ? '▼' : '▶' ]]</span>
+          <span>[[ props.emailAddress ]]</span>
         </p>
-        <p class="card-footer-item">
-          <span>
-            <input class="button is-info" @click="resetData" type="reset" value="Reset" :disabled="resetDisabled">
+        <div class="card-header-icon" style="gap: 0.4rem;">
+          <span v-if="methodCount !== null"
+                class="tag is-info">
+            [[ methodCount ]] delivery method[[ methodCount !== 1 ? 's' : '' ]]
           </span>
-        </p>
-      </footer>
-      <div :id="`set-password-modal-${pk}`" class="modal">
-        <div class="modal-background"></div>
-        <div class="modal-card">
-          <header class="modal-card-head">
-            <p class="modal-card-title">Setting SMTP / IMAP for '[[ emailAddress ]]'</p>
-            <button class="delete" aria-label="close">
-          </header>
-          <section class="modal-card-body">
-            <div class="box">
-              <div class="field is-centered">
-                <div class="control">
-                  <label :for="`set-password-id-${pk}`" class="label is-large">Password</label>
-                  <input
-                    type="password"
-                    name="set_password"
-                    maxlength="64"
-                    class="input is-large"
-                    :id="`set-pasword-id-${pk}`"
-                    v-model="emailAccountPassword"
-                    placeholder="Email account password"
-                    @keyup="checkPassword($event.target)"
-                  />
-                </div>
-              </div>
-              <div class="field is-centered">
-                <div class="control">
-                  <label :for="`set-password-confirm-id-${pk}`" class="label is-large">Confirm Password</label>
-                  <input
-                    type="password"
-                    name="set_confirm_password"
-                    maxlength="64"
-                    class="input is-large"
-                    :id="`set-pasword-confirm-id-${pk}`"
-                    v-model="emailAccountPasswordConfirm"
-                    placeholder="Confirm Email Account password"
-                    @keyup="checkPassword($event.target)"
-                  />
-                </div>
-                <p v-if="labelErrorMessages.set_password" class="help is-danger">[[ labelErrorMessages.set_password ]]</p>
-              </div>
-              <div class="field is-centered">
-                <div class="control">
-                  <button class="button is-success" @click="setPassword($event)" :data-target="`set-password-modal-${pk}`">Set Password</button><p class="help is-success" v-if="emailAccountPasswordStatus">[[ emailAccountPasswordStatus ]]</p>
-                </div>
-              </div>
-            </div>
-          </section>
-          <footer class="modal-card-foot">
-            <div class="field">
-              <div class="control">
-                <button class="button">Cancel</button>
-              </div>
-            </div>
-          </footer>
+          <span v-if="enabledMethodCount !== null"
+                class="tag is-success">
+            [[ enabledMethodCount ]] enabled
+          </span>
         </div>
-      </div>
-      <div :id="`message-filter-rules-modal-${pk}`" class="modal">
-        <div class="modal-background"></div>
-        <div class="modal-card">
-          <header class="modal-card-head">
-            <p class="modal-card-title">Modal title</p>
-            <button class="delete" aria-label="close">
-          </header>
-          <section class="modal-card-body">
-            <Suspense>
-              <template #default>
-                <message-filter-rules v-model:url="messageFilterRules"></message-filter-rules>
-              </template>
-              <template #fallback>
-                <div>
-                  <button class="button is-info is-loading is-large" disabled></button>
-                </div>
-              </template>
-            </Suspense>
-          </section>
-          <footer class="modal-card-foot">
-            <div class="field">
-              <div class="control">
-                <button class="button">Close</button>
-              </div>
-            </div>
-          </footer>
-        </div>
-      </div>
+      </header>
 
+      {# Expanded content #}
+      <div v-if="isExpanded" class="card-content">
+
+        {# Deactivated / bounce warnings #}
+        <p class="help is-danger has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom mb-2"
+           :data-tooltip="`${labelTooltips.deactivated}`"
+           v-if="props.deactivated">
+          <b>NOTE:</b> Email Account is deactivated and cannot send email: [[ props.deactivatedReason ]]
+        </p>
+        <p class="help is-danger mb-2" v-if="labelErrorMessages.detail">
+          [[ labelErrorMessages.detail ]]
+        </p>
+        <p class="help is-warning has-tooltip-arrow has-tooltip-multiline has-tooltip-bottom mb-3"
+           :data-tooltip="`${labelTooltips.num_bounces}`"
+           v-if="props.numBounces">
+          Number of sent email bounces: [[ props.numBounces ]]
+        </p>
+
+        {# ---- Account Settings box ---- #}
+        <div class="box mb-5">
+          <h5 class="title is-5">Account Settings</h5>
+
+          {# View mode #}
+          <div v-if="!isEditingSettings">
+            <div class="field">
+              <label class="label">Email Address</label>
+              <div class="control">
+                <input class="input" type="text" :value="props.emailAddress" disabled>
+              </div>
+              <p class="help">Email address cannot be changed</p>
+            </div>
+
+            <div class="field">
+              <label class="label">Account Password</label>
+              <div class="control">
+                <input class="input" type="password" value="placeholder" disabled>
+              </div>
+              <p class="help">Used for SMTP (sending) and IMAP (reading local mail)</p>
+            </div>
+
+            <button class="button is-info has-tooltip-arrow has-tooltip-top"
+                    data-tooltip="Change your account password"
+                    @click="isEditingSettings = true">
+              Edit Account Settings
+            </button>
+          </div>
+
+          {# Edit mode #}
+          <div v-if="isEditingSettings">
+            <div class="field">
+              <label class="label">Email Address</label>
+              <div class="control">
+                <input class="input" type="text" :value="props.emailAddress" disabled>
+              </div>
+              <p class="help">Email address cannot be changed</p>
+            </div>
+
+            <div class="field">
+              <label class="label">Account Password</label>
+              <div class="field has-addons mb-0">
+                <div class="control is-expanded">
+                  <input class="input"
+                         :type="showEditPassword ? 'text' : 'password'"
+                         v-model="editPassword"
+                         placeholder="Enter new password"
+                         @keyup="checkPasswordStrength($event.target)">
+                </div>
+                <div class="control">
+                  <button class="button has-tooltip-arrow has-tooltip-top" type="button"
+                          :data-tooltip="showEditPassword ? 'Hide password' : 'Show password'"
+                          @click="showEditPassword = !showEditPassword">
+                    <span>[[ showEditPassword ? '🙈' : '👁' ]]</span>
+                  </button>
+                </div>
+              </div>
+              <p v-if="settingsError" class="help is-danger">[[ settingsError ]]</p>
+              <p class="help">Leave blank to keep the current password. Used for SMTP (sending) and IMAP (reading local mail)</p>
+            </div>
+
+            <div class="buttons mt-3">
+              <button class="button is-success has-tooltip-arrow has-tooltip-top"
+                      data-tooltip="Save your password change"
+                      @click="saveAccountSettings"
+                      :disabled="settingsSaving">
+                [[ settingsSaving ? 'Saving...' : 'Save Changes' ]]
+              </button>
+              <button class="button has-tooltip-arrow has-tooltip-top"
+                      data-tooltip="Discard changes and return to view"
+                      @click="cancelEditSettings">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Aliased-from section (only shown when other accounts alias to this one) ---- #}
+        <div v-if="props.aliasedFrom && props.aliasedFrom.length" class="message is-info is-small mb-5">
+          <div class="message-body py-2 px-3">
+            <p class="mb-2">
+              <strong>Aliased from:</strong>
+              This account receives email sent to the following addresses:
+            </p>
+            <div class="tags mb-0">
+              <span v-for="alias in props.aliasedFrom"
+                    :key="alias.email"
+                    :class="['tag', alias.enabled ? 'is-info is-light' : 'is-light has-text-grey has-tooltip-arrow has-tooltip-top']"
+                    :data-tooltip="alias.enabled ? null : 'This alias delivery method is disabled'">
+                <span :style="alias.enabled ? {} : { textDecoration: 'line-through' }">
+                  [[ alias.email ]]
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Delivery Methods section ---- #}
+        <h5 class="title is-5 mb-3">Delivery Methods</h5>
+
+        <delivery-method-list
+          :email-account-pk="props.pk"
+          :delivery-methods-url="props.deliveryMethodsUrl"
+          :valid-email-addresses="filteredValidEmailAddrs"
+          @counts-updated="onCountsUpdated"
+          @delivery-method-changed="onDeliveryMethodChanged"
+        ></delivery-method-list>
+
+        {# Message Filter Rules modal button (secondary action) #}
+        <div class="field mt-4">
+          <div class="control">
+            {# Tooltip on the wrapper span because CSS :hover doesn't fire on disabled buttons #}
+            <span class="has-tooltip-arrow has-tooltip-top"
+                  data-tooltip="Message filter rules allow routing or discarding messages by header (coming soon)">
+              <button class="button is-small is-light modal-button"
+                      disabled
+                      :data-target="`message-filter-rules-modal-${props.pk}`">
+                Message Filter Rules
+              </button>
+            </span>
+          </div>
+        </div>
+
+      </div>{# end v-if isExpanded #}
+    </div>{# end .card #}
+
+    {# Message Filter Rules modal (UI not yet implemented) #}
+    <div :id="`message-filter-rules-modal-${props.pk}`" class="modal">
+      <div class="modal-background"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">
+            Message Filter Rules for '[[ props.emailAddress ]]'
+          </p>
+          <button class="delete" aria-label="close"></button>
+        </header>
+        <section class="modal-card-body">
+          <Suspense>
+            <template #default>
+              <message-filter-rules
+                v-model:url="props.messageFilterRules">
+              </message-filter-rules>
+            </template>
+            <template #fallback>
+              <button class="button is-info is-loading is-large" disabled></button>
+            </template>
+          </Suspense>
+        </section>
+        <footer class="modal-card-foot">
+          <button class="button">Close</button>
+        </footer>
+      </div>
     </div>
   </template>
+
+  {# ------------------------------------------------------------------ #}
+  {# DeliveryMethodList template                                         #}
+  {# ------------------------------------------------------------------ #}
+  <template id="template-delivery-method-list">
+    <div class="delivery-methods">
+      <p v-if="loading" class="help">Loading delivery methods...</p>
+      <p v-if="error" class="help is-danger">[[ error ]]</p>
+
+      <delivery-method-form
+        v-for="dm in deliveryMethods"
+        :key="dm.pk"
+        :delivery-method="dm"
+        :delivery-methods-url="deliveryMethodsUrl"
+        :valid-email-addresses="validEmailAddresses"
+        @saved="onDeliveryMethodSaved"
+        @deleted="onDeliveryMethodDeleted"
+      ></delivery-method-form>
+
+      {# Inline form for adding a new delivery method #}
+      <delivery-method-form
+        v-if="addingType"
+        :delivery-method="DELIVERY_TYPE_DEFAULTS[addingType]"
+        :is-new="true"
+        :delivery-methods-url="deliveryMethodsUrl"
+        :valid-email-addresses="validEmailAddresses"
+        @created="onDeliveryMethodCreated"
+        @cancel="cancelAdd"
+      ></delivery-method-form>
+
+      {# Add Delivery Method dropdown #}
+      <div class="mt-3" v-if="!addingType">
+        <div :class="['dropdown', showAddMenu ? 'is-active' : '']">
+          <div class="dropdown-trigger">
+            <button class="button is-primary has-tooltip-arrow has-tooltip-top"
+                    data-tooltip="Add a new delivery method for this account"
+                    @click="showAddMenu = !showAddMenu"
+                    aria-haspopup="true"
+                    aria-controls="add-delivery-dropdown">
+              <span>Add Delivery Method</span>
+              <span class="icon is-small"><span>▼</span></span>
+            </button>
+          </div>
+          <div class="dropdown-menu" id="add-delivery-dropdown" role="menu">
+            <div class="dropdown-content">
+              <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
+                      :disabled="hasLocalDelivery"
+                      :class="{ 'has-text-grey-light': hasLocalDelivery }"
+                      :data-tooltip="hasLocalDelivery ? 'This account already has a local delivery — only one is allowed' : 'Deliver email to a local mailbox folder on this server'"
+                      @click="startAdd('LocalDelivery')">
+                [[ DELIVERY_TYPE_LABELS.LocalDelivery ]]
+              </button>
+              <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
+                      data-tooltip="Forward all incoming email to another account on this server"
+                      @click="startAdd('AliasToDelivery')">
+                [[ DELIVERY_TYPE_LABELS.AliasToDelivery ]]
+              </button>
+              {# IMAP Delivery — uncomment when backend support lands #}
+              {# <button class="dropdown-item" @click="startAdd('ImapDelivery')"> #}
+              {#   [[ DELIVERY_TYPE_LABELS.ImapDelivery ]] #}
+              {# </button> #}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {# ------------------------------------------------------------------ #}
+  {# DeliveryMethodForm template                                         #}
+  {# ------------------------------------------------------------------ #}
+  <template id="template-delivery-method-form">
+    <div class="card mb-4">
+
+      {# Card header: icon + label + Enabled/Disabled toggle #}
+      <header class="card-header">
+        <p class="card-header-title">
+          <span class="mr-2">[[ deliveryTypeIcon ]]</span>
+          [[ deliveryTypeLabel ]]
+        </p>
+        {# Clickable Enabled/Disabled tag — only shown for saved methods #}
+        <button v-if="!isNew"
+                class="card-header-icon has-tooltip-arrow has-tooltip-left"
+                :data-tooltip="formData.enabled ? 'Click to disable this delivery method' : 'Click to enable this delivery method'"
+                @click="toggleEnabled"
+                :disabled="saving || deleting"
+                aria-label="toggle enabled"
+                style="border: none; background: none; cursor: pointer;">
+          <span :class="['tag', formData.enabled ? 'is-success' : 'is-danger']">
+            [[ formData.enabled ? 'Enabled' : 'Disabled' ]]
+          </span>
+        </button>
+      </header>
+
+      {# Card content #}
+      <div class="card-content">
+        <p v-if="errors.detail" class="help is-danger mb-3">[[ errors.detail ]]</p>
+
+        {# ---- View mode: summary + Edit button (existing methods only) ---- #}
+        <div v-if="!isNew && !isEditing">
+
+          {# LocalDelivery summary #}
+          <div v-if="formData.delivery_type === 'LocalDelivery'" class="content is-small mb-3">
+            <p><strong>Auto-file spam:</strong> [[ formData.autofile_spam ? 'Yes' : 'No' ]]</p>
+            <template v-if="formData.autofile_spam">
+              <p><strong>Spam folder:</strong> [[ formData.spam_delivery_folder ]]</p>
+              <p><strong>Auto-file limit:</strong> [[ formData.spam_score_threshold ]]</p>
+            </template>
+          </div>
+
+          {# AliasToDelivery summary #}
+          <div v-if="formData.delivery_type === 'AliasToDelivery'" class="content is-small mb-3">
+            <p><strong>Forwarding to:</strong> [[ formData.target_account || '(not set)' ]]</p>
+          </div>
+
+          {# ImapDelivery summary #}
+          <div v-if="formData.delivery_type === 'ImapDelivery'" class="content is-small mb-3">
+            <p><strong>Server:</strong> [[ formData.imap_host ]]:[[ formData.imap_port ]]</p>
+            <p><strong>Auth:</strong> [[ formData.auth_type === 'oauth2' ? 'OAuth' : 'Username / Password' ]]</p>
+          </div>
+
+          <button class="button is-info is-small has-tooltip-arrow has-tooltip-top"
+                  data-tooltip="Edit the settings for this delivery method"
+                  @click="startEdit">
+            Edit Mail Delivery
+          </button>
+        </div>
+
+        {# ---- Edit mode: form fields + Save/Cancel ---- #}
+        <div v-if="isNew || isEditing">
+
+          {# For new methods, show enabled checkbox since header toggle is absent #}
+          <div class="field mb-3" v-if="isNew">
+            <label class="checkbox">
+              <input type="checkbox"
+                     :checked="formData.enabled"
+                     @change="onFieldUpdate('enabled', $event.target.checked)">
+              Enabled
+            </label>
+          </div>
+
+          <component
+            :is="subFormComponent"
+            :form-data="formData"
+            :errors="errors"
+            :valid-email-addresses="validEmailAddresses"
+            @update:field="onFieldUpdate"
+          ></component>
+
+          <div class="field is-grouped mt-4">
+            <div class="control">
+              <button class="button is-primary has-tooltip-arrow has-tooltip-top"
+                      :data-tooltip="isNew ? 'Create this new delivery method' : 'Save changes to this delivery method'"
+                      @click="save"
+                      :disabled="saving">
+                [[ saving ? 'Saving...' : (isNew ? 'Create' : 'Save') ]]
+              </button>
+            </div>
+            <div class="control">
+              <button class="button has-tooltip-arrow has-tooltip-top"
+                      :data-tooltip="isNew ? 'Cancel adding this delivery method' : 'Discard changes and return to view'"
+                      @click="isNew ? $emit('cancel') : cancelEdit()">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# Card footer: Delete (only for saved methods) #}
+      <footer class="card-footer" v-if="!isNew">
+        <button class="card-footer-item button is-danger is-light has-tooltip-arrow has-tooltip-top"
+                data-tooltip="Permanently remove this delivery method (will ask for confirmation)"
+                style="border: none;"
+                @click="destroy"
+                :disabled="deleting">
+          [[ deleting ? 'Deleting...' : 'Delete' ]]
+        </button>
+      </footer>
+    </div>
+  </template>
+
+  {# ------------------------------------------------------------------ #}
+  {# LocalDeliveryForm template                                          #}
+  {# ------------------------------------------------------------------ #}
+  <template id="template-local-delivery-form">
+    <div class="box">
+      <div class="field">
+        <label class="checkbox">
+          <input type="checkbox"
+                 :checked="formData.autofile_spam"
+                 @change="update('autofile_spam', $event.target.checked)">
+          Auto-file spam emails
+        </label>
+        <p v-if="errors.autofile_spam" class="help is-danger">[[ errors.autofile_spam ]]</p>
+      </div>
+
+      <div v-if="formData.autofile_spam">
+        <div class="field">
+          <label class="label">Spam Folder</label>
+          <div class="control">
+            <input type="text" class="input"
+                   maxlength="1024"
+                   :value="formData.spam_delivery_folder"
+                   @input="update('spam_delivery_folder', $event.target.value)">
+          </div>
+          <p v-if="errors.spam_delivery_folder" class="help is-danger">
+            [[ errors.spam_delivery_folder ]]
+          </p>
+        </div>
+
+        <div class="field">
+          <label class="label">Auto-file Limit</label>
+          <div class="control">
+            <input type="number" class="input"
+                   min="1"
+                   :value="formData.spam_score_threshold"
+                   @input="update('spam_score_threshold', Number($event.target.value))">
+          </div>
+          <p v-if="errors.spam_score_threshold" class="help is-danger">
+            [[ errors.spam_score_threshold ]]
+          </p>
+          <p class="help">Messages with an X-Spam-Score at or above this value are considered spam. 15 is a reasonable default.</p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {# ------------------------------------------------------------------ #}
+  {# AliasToDeliveryForm template                                        #}
+  {# ------------------------------------------------------------------ #}
+  <template id="template-alias-to-delivery-form">
+    <div class="box">
+      <div class="field">
+        <label class="label">Alias to</label>
+        <div class="control">
+          <v-select
+            v-model="targetAccount"
+            :options="validEmailAddresses"
+            placeholder="Select target email account"
+          ></v-select>
+        </div>
+        <p v-if="errors.target_account" class="help is-danger">
+          [[ errors.target_account ]]
+        </p>
+      </div>
+    </div>
+  </template>
+
+  {# ------------------------------------------------------------------ #}
+  {# ImapDeliveryForm template                                           #}
+  {# NOTE: Kept here so the UI is ready when the backend lands.         #}
+  {# The component is registered but ImapDelivery is commented out in   #}
+  {# delivery_method_registry.js until backend support is added.        #}
+  {# ------------------------------------------------------------------ #}
+  <template id="template-imap-delivery-form">
+    <div class="box">
+      <div class="field">
+        <label class="label">IMAP Server</label>
+        <div class="control">
+          <input type="text" class="input"
+                 placeholder="imap.gmail.com"
+                 :value="formData.imap_host"
+                 @input="update('imap_host', $event.target.value)">
+        </div>
+        <p class="help">IMAP server hostname</p>
+        <p v-if="errors.imap_host" class="help is-danger">[[ errors.imap_host ]]</p>
+      </div>
+
+      <div class="field">
+        <label class="label">IMAP Port</label>
+        <div class="control">
+          <input type="number" class="input"
+                 min="1" max="65535"
+                 :value="formData.imap_port"
+                 @input="update('imap_port', Number($event.target.value))">
+        </div>
+        <p class="help">Usually 993 for SSL/TLS</p>
+        <p v-if="errors.imap_port" class="help is-danger">[[ errors.imap_port ]]</p>
+      </div>
+
+      <div class="field">
+        <label class="label">Authentication Type</label>
+        <div class="control">
+          <div class="select is-fullwidth">
+            <select :value="formData.auth_type"
+                    @change="update('auth_type', $event.target.value)">
+              <option value="password">Username / Password</option>
+              <option value="oauth2">OAuth</option>
+            </select>
+          </div>
+        </div>
+        <p v-if="errors.auth_type" class="help is-danger">[[ errors.auth_type ]]</p>
+      </div>
+
+      <div v-if="isPasswordAuth">
+        <div class="field">
+          <label class="label">Username</label>
+          <div class="control">
+            <input type="text" class="input"
+                   placeholder="username or email"
+                   :value="formData.username"
+                   @input="update('username', $event.target.value)">
+          </div>
+          <p class="help">IMAP account username</p>
+          <p v-if="errors.username" class="help is-danger">[[ errors.username ]]</p>
+        </div>
+
+        <div class="field">
+          <label class="label">Password</label>
+          <div class="control">
+            <input type="password" class="input"
+                   placeholder="IMAP password"
+                   :value="formData.password"
+                   @input="update('password', $event.target.value)">
+          </div>
+          <p v-if="errors.password" class="help is-danger">[[ errors.password ]]</p>
+        </div>
+      </div>
+
+      <div v-if="isOAuthAuth">
+        <div class="field">
+          <label class="label">OAuth Token</label>
+          <div class="control">
+            <input type="text" class="input"
+                   placeholder="Paste OAuth token here"
+                   :value="formData.oauth_token"
+                   @input="update('oauth_token', $event.target.value)">
+          </div>
+          <p class="help">Enter your OAuth token manually, or connect to Gmail below</p>
+          <p v-if="errors.oauth_token" class="help is-danger">[[ errors.oauth_token ]]</p>
+        </div>
+
+        <div class="field">
+          <div class="control">
+            <button class="button is-info" type="button">
+              <span class="mr-1">📧</span>
+              Connect to Gmail
+            </button>
+          </div>
+          <p class="help">Opens Gmail OAuth flow in a new window</p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {# ------------------------------------------------------------------ #}
+  {# MessageFilterRules template (stub)                                  #}
+  {# ------------------------------------------------------------------ #}
   <template id="template-message-filter-rules">
     <p>Message filter rules</p>
   </template>
+
+  {# ------------------------------------------------------------------ #}
+  {# Page content                                                        #}
+  {# ------------------------------------------------------------------ #}
   <div class="container">
-    <p class="title is-1">Email Accounts</p>
+    <div class="mb-5">
+      <h1 class="title">Email Service Manager</h1>
+      <p class="subtitle">Manage your email accounts and delivery methods</p>
+    </div>
 
     <div id="asemail-vue-app">
       {% if email_accounts %}
-        {% for email_account, email_account_form in email_accounts %}
-          <div class="card">
-            <header class="card-header">
-              <p class="card-header-title">{{email_account.email_address}}</p>
-              <a data-action="collapse" data-target="email-account-{{email_account.pk}}" class="card-header-icon is-hidden-fullscreen" aria-label="expand card">
-                <span class="icon">
-                  <ion-icon name="chevron-down-outline" aria-hidden="true"></ion-icon>
-                </span>
-              </a>
-            </header>
-            <div class="is-collapsible"  id="email-account-{{email_account.pk}}">
-              <email-account
-                @aliases-changed="updateAliases"
-                v-model:pk="emailAccountsData.pk{{email_account.pk}}.pk"
-                v-model:url="emailAccountsData.pk{{email_account.pk}}.url"
-                v-model:email-address="emailAccountsData.pk{{email_account.pk}}.email_address"
-                v-model:delivery-method="emailAccountsData.pk{{email_account.pk}}.delivery_method"
-                v-model:autofile-spam="emailAccountsData.pk{{email_account.pk}}.autofile_spam"
-                v-model:spam-delivery-folder="emailAccountsData.pk{{email_account.pk}}.spam_delivery_folder"
-                v-model:spam-score-threshold="emailAccountsData.pk{{email_account.pk}}.spam_score_threshold"
-                v-model:alias-for="emailAccountsData.pk{{email_account.pk}}.alias_for"
-                v-model:aliases="emailAccountsData.pk{{email_account.pk}}.aliases"
-
-                v-model:forward-to="emailAccountsData.pk{{email_account.pk}}.forward_to"
-                v-model:message-filter-rules="emailAccountsData.pk{{email_account.pk}}.message_filter_rules"
-                v-model:num-bounces="emailAccountsData.pk{{email_account.pk}}.num_bounces"
-                v-model:deactivated="emailAccountsData.pk{{email_account.pk}}.deactivated"
-                v-model:deactivated-reason="emailAccountsData.pk{{email_account.pk}}.deactivated_reason"
-                v-model:valid-email-addresses="initialData.valid_email_addresses"
-                v-model:field-info="initialData.email_account_field_info"></email-account>
-            </div>
-          </div>
+        {% for email_account in email_accounts %}
+          <email-account
+            :initial-expanded="initialData.num_email_accounts === 1"
+            v-model:pk="emailAccountsData.pk{{ email_account.pk }}.pk"
+            v-model:url="emailAccountsData.pk{{ email_account.pk }}.url"
+            v-model:email-address="emailAccountsData.pk{{ email_account.pk }}.email_address"
+            v-model:delivery-methods-url="emailAccountsData.pk{{ email_account.pk }}.delivery_methods_url"
+            v-model:message-filter-rules="emailAccountsData.pk{{ email_account.pk }}.message_filter_rules"
+            v-model:num-bounces="emailAccountsData.pk{{ email_account.pk }}.num_bounces"
+            v-model:deactivated="emailAccountsData.pk{{ email_account.pk }}.deactivated"
+            v-model:deactivated-reason="emailAccountsData.pk{{ email_account.pk }}.deactivated_reason"
+            :dm-total="emailAccountsData.pk{{ email_account.pk }}.dm_total"
+            :dm-enabled="emailAccountsData.pk{{ email_account.pk }}.dm_enabled"
+            :aliased-from="emailAccountsData.pk{{ email_account.pk }}.aliased_from"
+            :refresh-aliased-from="refreshAliasedFrom"
+            :valid-email-addresses="initialData.valid_email_addresses"
+            :field-info="initialData.email_account_field_info"
+          ></email-account>
         {% endfor %}
-      {% else  %}
-        <p>{{ user }}, you have no  email accounts.</p>
+      {% else %}
+        <div class="notification is-info is-light">
+          <p>{{ user }}, you have no email accounts.</p>
+        </div>
       {% endif %}
     </div>
+
+    {# About Delivery Methods info box #}
+    <div class="notification is-info is-light mt-6">
+      <p class="mb-2"><strong>About Delivery Methods:</strong></p>
+      <p class="mb-1">
+        <strong>Local Delivery:</strong> Delivers email to a local folder with
+        optional spam filtering. All email accounts start with a local delivery
+        method by default.
+      </p>
+      <p class="mb-1">
+        <strong>Alias-To:</strong> Forwards email to another one of your email
+        accounts. Select from your available accounts in the dropdown.
+      </p>
+      <p class="mb-2">
+        <strong>IMAP Delivery:</strong> Delivers email to an external IMAP
+        account with username/password or OAuth authentication. For Gmail, use
+        the &ldquo;Connect to Gmail&rdquo; button to authenticate via OAuth.
+      </p>
+      <p>
+        <em>When email is received, it will be delivered to all enabled delivery
+        methods for that account. Every account must have at least one delivery
+        method.</em>
+      </p>
+    </div>
   </div>
+
   {{ vue_data|json_script:"vue-data" }}
 {% endblock %}
 {% block javascript %}

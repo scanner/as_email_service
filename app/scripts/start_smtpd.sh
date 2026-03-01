@@ -10,11 +10,20 @@ wait-for-it --service spamassassin:783 -- echo "SpamAssassin available"
 : "${SMTPD_LISTEN_HOST:=0.0.0.0}"
 : "${SMTPD_SUBMISSION_PORT:=587}"
 : "${SMTPD_SMTP_PORT:=off}"
-: "${SMTPD_CERT:=/mnt/ssl/ssl_crt.pem}"
-: "${SMTPD_KEY:=/mnt/ssl/ssl_key.pem}"
+
+# Default SMTPD_CERT and SMTPD_KEY from HOST_SSL_DIR when it is set and the
+# cert/key exist there; allow override via the env vars directly.
+#
+if [ -n "${HOST_SSL_DIR:-}" ]; then
+    : "${SMTPD_CERT:=${HOST_SSL_DIR}/ssl_cert.pem}"
+    : "${SMTPD_KEY:=${HOST_SSL_DIR}/ssl_key.pem}"
+else
+    : "${SMTPD_CERT:=}"
+    : "${SMTPD_KEY:=}"
+fi
 
 echo "Starting SMTP daemon (submission port: ${SMTPD_SUBMISSION_PORT}, SMTP port: ${SMTPD_SMTP_PORT})"
-/venv/bin/python /app/manage.py aiosmtpd \
+exec /venv/bin/python /app/manage.py aiosmtpd \
                  --submission_port="${SMTPD_SUBMISSION_PORT}" \
                  --smtp_port="${SMTPD_SMTP_PORT}" \
                  --listen_host="${SMTPD_LISTEN_HOST}" \

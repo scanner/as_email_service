@@ -24,7 +24,7 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..models import EmailAccount, InactiveEmail
+from ..models import EmailAccount, InactiveEmail, LocalDelivery
 from ..providers.base import EmailAccountInfo
 from ..tasks import (
     check_update_pwfile_for_emailaccount,
@@ -105,7 +105,8 @@ def test_dispatch_incoming_email(
     # The message should have been delivered to the inbox since there are no
     # mail filter rules. And it should be the only message in the mailbox.
     #
-    mh = ea.MH()
+    ld = LocalDelivery.objects.get(email_account=ea)
+    mh = ld.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get("1")
     assert_email_equal(msg, stored_msg)
@@ -126,7 +127,7 @@ def test_dispatch_incoming_mail_failure(
     Then the message is moved to failed incoming directory
     """
     mocker.patch(
-        "as_email.tasks.deliver_message", side_effect=Exception("ERROR")
+        "as_email.models.EmailAccount.deliver", side_effect=Exception("ERROR")
     )
     ea = email_account_factory()
     ea.save()
@@ -203,11 +204,12 @@ def test_retry_failed_incoming_email(
     When retry_failed_incoming_email task runs
     Then deliver_message is called for each EmailAccount
     """
-    # Mock the `deliver_message` function so we can verify that it was called
-    # properly.
+    # Mock EmailAccount.deliver so we can verify that it was called properly.
+    # autospec=True ensures the mock captures (self, msg) correctly.
     #
-    mock_deliver_message = mocker.Mock(return_value=None)
-    mocker.patch("as_email.tasks.deliver_message", new=mock_deliver_message)
+    mock_deliver_message = mocker.patch(
+        "as_email.models.EmailAccount.deliver", autospec=True, return_value=None
+    )
     deliveries = []
     for _ in range(6):
         ea = email_account_factory()
@@ -497,70 +499,6 @@ def test_transient_bounce_notifications(
 
 ####################################################################
 #
-def test_bounce_to_forwarded_to_deactivates_emailaccount(
-    email_account_factory: Callable[..., EmailAccount],
-    email_factory: Callable[..., EmailMessage],
-    postmark_request: Any,
-    postmark_request_bounce: Callable[..., None],
-    faker: Faker,
-    django_outbox: list[Any],
-) -> None:
-    """
-    Given an account with forward_to that generates hard bounce
-    When process_email_bounce task runs
-    Then account is deactivated due to bad forward_to address
-    """
-    forward_to = faker.email()
-    ea = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.FORWARDING,
-        forward_to=forward_to,
-    )
-    ea.save()
-    assert ea.num_bounces == 0
-    assert ea.deactivated is False
-
-    bounced_msg = email_factory(msg_from=ea.email_address, to=forward_to)
-    bounce_id = faker.pyint(1_000_000_000, 9_999_999_999)
-
-    bounce_data = {
-        "BouncedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "CanActivate": True,
-        "Description": "Invalid email address — The address is not a valid email address.",
-        "Details": "Invalid email address",
-        "DumpAvailable": False,
-        "Email": forward_to,
-        "From": ea.email_address,
-        "ID": bounce_id,
-        "Inactive": False,
-        "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
-        "Name": "Bad email address",
-        "RecordType": "BadEmailAddress",
-        "ServerID": 23,
-        "Subject": "Bad email address",
-        "Tag": "Test",
-        "Type": "BadEmailAddress",
-        "TypeCode": 100000,
-    }
-    postmark_request_bounce(
-        email_account=ea, email_message=bounced_msg, **bounce_data
-    )
-
-    res = process_email_bounce(ea.pk, bounce_data)
-    res()
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
-    assert ea.deactivated is True
-    assert ea.deactivated_reason == ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
-
-    # and since this email account was deactivated we also send an email notice
-    # to the email account's owner.
-    #
-    assert len(django_outbox) == 1
-    assert django_outbox[0].to[0] == ea.owner.email
-
-
-####################################################################
-#
 def test_process_email_spam(
     email_account_factory: Callable[..., EmailAccount],
     email_factory: Callable[..., EmailMessage],
@@ -677,80 +615,6 @@ def test_process_email_spam_too_many_bounces(
 
 ####################################################################
 #
-def test_process_email_spam_forward_to(
-    email_account_factory: Callable[..., EmailAccount],
-    email_factory: Callable[..., EmailMessage],
-    django_outbox: list[Any],
-    faker: Faker,
-) -> None:
-    """
-    Given an account forwarding to address marked as spam
-    When process_email_spam task runs
-    Then account is immediately deactivated
-    """
-    forward_to = faker.email()
-    ea = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.FORWARDING,
-        forward_to=forward_to,
-    )
-    ea.save()
-    assert ea.num_bounces == 0
-    assert ea.deactivated is False
-
-    spam_id = faker.pyint(1_000_000_000, 9_999_999_999)
-    spam_data = {
-        "RecordType": "SpamComplaint",
-        "MessageStream": "outbound",
-        "ID": spam_id,
-        "Type": "SpamComplaint",
-        "TypeCode": 512,
-        "Name": "Spam complaint",
-        "Tag": "Test",
-        "MessageID": faker.uuid4(),
-        "Metadata": {"a_key": "a_value", "b_key": "b_value"},
-        "ServerID": 1234,
-        "Description": "This is a description",
-        "Details": "Test spam complaint details",
-        "Email": forward_to,
-        "From": ea.email_address,
-        "BouncedAt": "2019-11-05T16:33:54.9070259Z",
-        "DumpAvailable": True,
-        "Inactive": True,
-        "CanActivate": False,
-        "Subject": "Test subject",
-        "Content": "<Abuse report dump>",
-    }
-
-    res = process_email_spam(ea.pk, spam_data)
-    res()
-    ea.refresh_from_db()
-    assert ea.num_bounces == 1
-    assert ea.deactivated is True
-    assert ea.deactivated_reason == ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
-
-    # Since this results in the EmailAccount being deactivated the mail is
-    # forced in to local delivery.
-    #
-    mh = ea.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-    assert str(stored_msg["From"]).startswith("mailer-daemon")
-    assert stored_msg["To"] == ea.email_address
-    assert (
-        stored_msg["Subject"]
-        == f"Message marked as spam: {spam_data['Subject']}"
-    )
-    assert stored_msg.is_multipart()
-
-    # and since this email account was deactivated we also send an email notice
-    # to the email account's owner.
-    #
-    assert len(django_outbox) == 1
-    assert django_outbox[0].to[0] == ea.owner.email
-
-
-####################################################################
-#
 def test_process_spam_invalid_typecode(
     email_account_factory: Callable[..., EmailAccount],
     email_factory: Callable[..., EmailMessage],
@@ -842,14 +706,16 @@ def test_check_update_pwfile_for_emailaccount_creates_new_entry(
     ea = email_account_factory(password=faker.password())
     ea.save()
 
+    ld = LocalDelivery.objects.get(email_account=ea)
+
     # Verify the account was added to pwfile
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     assert ea.email_address in accounts
     assert accounts[ea.email_address].pw_hash == ea.password
 
     # Verify mail_dir is relative to EXT_PW_FILE parent
-    assert ea.mail_dir is not None
-    expected_mail_dir = Path(ea.mail_dir).relative_to(
+    assert ld.maildir_path is not None
+    expected_mail_dir = Path(ld.maildir_path).relative_to(
         settings.EXT_PW_FILE.parent
     )
     assert accounts[ea.email_address].maildir == expected_mail_dir
@@ -892,26 +758,27 @@ def test_check_update_pwfile_for_emailaccount_updates_maildir(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
-    tmp_path: Path,
 ) -> None:
     """
     Given an email account with password in pwfile
-    When the mail_dir is changed and task is invoked
-    Then the pwfile entry is updated with new mail_dir path
+    When the maildir_path on LocalDelivery is changed and task is invoked
+    Then the pwfile entry is updated with new maildir path
     """
     # Create account with a non-default password so it's in pwfile
     ea = email_account_factory(password=faker.password())
     ea.save()
 
+    ld = LocalDelivery.objects.get(email_account=ea)
+
     # Verify initial state
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     original_mail_dir = accounts[ea.email_address].maildir
 
-    # Change the mail_dir (simulate moving the mailbox)
+    # Change the maildir_path on LocalDelivery (simulate moving the mailbox)
     new_mail_dir = settings.MAIL_DIRS / "new_location" / ea.email_address
     new_mail_dir.mkdir(parents=True, exist_ok=True)
-    ea.mail_dir = str(new_mail_dir)
-    ea.save()
+    ld.maildir_path = str(new_mail_dir)
+    ld.save()
 
     # Call task directly (signal only fires on password change)
     res = check_update_pwfile_for_emailaccount(ea.pk)

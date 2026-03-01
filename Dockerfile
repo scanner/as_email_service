@@ -32,10 +32,12 @@ COPY pyproject.toml uv.lock /app/
 ENV UV_PROJECT_ENVIRONMENT=/venv
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Clean up unnecessary files from venv to reduce size
+# Clean up unnecessary files from venv to reduce size.
+# NOTE: Only remove 'tests' (plural) — third-party test suites live there.
+# Do NOT remove 'test' (singular): django/test/ is a core Django module that
+# application code imports (e.g. `from django.test import ...`).
 RUN find /venv -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true && \
-    find /venv -type d -name 'tests' -prune -exec rm -rf {} + 2>/dev/null || true && \
-    find /venv -type d -name 'test' -prune -exec rm -rf {} + 2>/dev/null || true
+    find /venv -type d -name 'tests' -prune -exec rm -rf {} + 2>/dev/null || true
 
 #########################
 #

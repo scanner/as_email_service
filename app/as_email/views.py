@@ -6,13 +6,7 @@ For adminstrative functions this is supported by the django admin interface.
 These views are for users. It needs to provide functions to:
 - list their email accounts
 - update/set password for their email accounts
-- set blocked message policy, delivery folder
-- set account type: delivery, alias, forwarding
-- for alias let them add and remove aliases (to other email accounts that they
-  control.)
-- for forwarding - set a forwarding address
-- test forwarding address
-- examine blocked messages and choose to deliver them
+- manage delivery methods (local delivery, alias delivery)
 - create mail filter rules for an email account
   - import maildelivery file for creation of mail filter rules
 - order mail filter rules (for an email account)
@@ -22,44 +16,58 @@ These views are for users. It needs to provide functions to:
 # System imports
 #
 import logging
-from collections import defaultdict
 
 # 3rd party imports
 #
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count, Prefetch, Q
 from django.http import (
     Http404,
     HttpResponse,
     HttpResponseBadRequest,
-    QueryDict,
 )
 from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
+from drf_spectacular.utils import (
+    PolymorphicProxySerializer,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
 from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
 )
-from rest_framework import mixins, serializers, status
+from rest_framework import fields as drf_fields, mixins, serializers, status
 from rest_framework.authentication import (
     BasicAuthentication,
     SessionAuthentication,
 )
 from rest_framework.decorators import action
-from rest_framework.exceptions import ErrorDetail
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
-from .forms import EmailAccountForm
-
 # Project imports
 #
-from .models import EmailAccount, MessageFilterRule, Provider, Server
+from .models import (
+    AliasToDelivery,
+    DeliveryMethod,
+    EmailAccount,
+    LocalDelivery,
+    MessageFilterRule,
+    Provider,
+    Server,
+)
 from .serializers import (
+    AliasToDeliverySerializer,
+    DeliveryMethodSerializer,
     EmailAccountSerializer,
+    LocalDeliverySerializer,
     MessageFilterRuleSerializer,
     MoveOrderSerializer,
     PasswordSerializer,
@@ -96,22 +104,36 @@ def index(request):
     returns a simple view of the email accounts that belong to the user
     """
     user = request.user
-    email_accounts = EmailAccount.objects.filter(owner=user)
-    email_accounts_data = {
+    email_accounts = (
+        EmailAccount.objects.filter(owner=user)
+        .annotate(
+            dm_total=Count("delivery_methods"),
+            dm_enabled=Count(
+                "delivery_methods",
+                filter=Q(delivery_methods__enabled=True),
+            ),
+        )
+        .prefetch_related(
+            Prefetch(
+                "aliased_from",
+                queryset=AliasToDelivery.objects.select_related(
+                    "email_account"
+                ),
+            )
+        )
+    )
+    email_accounts_serialized = {
         ea.pk: EmailAccountSerializer(ea, context={"request": request})
         for ea in email_accounts
     }
-    email_accounts_w_forms = [
-        (ea, EmailAccountForm(instance=ea)) for ea in email_accounts
-    ]
 
-    # Create a dicdtionary that gives the field info from the django rest
+    # Create a dictionary that gives the field info from the django rest
     # framework for an EmailAccount object so that our UI knows how to
-    # represent them and what info to include in the forms.
+    # represent them and what info to include in the forms (used for tooltips).
     #
     actions = {}
-    if email_accounts_data:
-        serializer = list(email_accounts_data.values())[0]
+    if email_accounts_serialized:
+        serializer = list(email_accounts_serialized.values())[0]
         eavs = EmailAccountViewSet()
         md = eavs.metadata_class()
         actions = {
@@ -121,17 +143,31 @@ def index(request):
         }
 
     vue_data = {
-        "email_account_list_url": reverse("as_email:email-account-list"),
         "email_accounts_data": {
-            f"pk{k}": v.data for k, v in email_accounts_data.items()
+            f"pk{ea.pk}": {
+                **dict(email_accounts_serialized[ea.pk].data),
+                "delivery_methods_url": reverse(
+                    "as_email:delivery-method-list",
+                    kwargs={"email_account_pk": ea.pk},
+                ),
+                "dm_total": ea.dm_total,
+                "dm_enabled": ea.dm_enabled,
+                "aliased_from": [
+                    {
+                        "email": atd.email_account.email_address,
+                        "enabled": atd.enabled,
+                    }
+                    for atd in ea.aliased_from.all()
+                ],
+            }
+            for ea in email_accounts
         },
-        "num_email_accounts": len(email_accounts_data),
+        "num_email_accounts": len(email_accounts_serialized),
         "valid_email_addresses": [x.email_address for x in email_accounts],
         "email_account_field_info": actions,
-        "myTitle": "Hello Vue!",
     }
     context = {
-        "email_accounts": email_accounts_w_forms,
+        "email_accounts": list(email_accounts),
         "vue_data": vue_data,
     }
     return render(request, "as_email/index.html", context)
@@ -326,6 +362,17 @@ class CSRFExemptSessionAuthentication(SessionAuthentication):
         return  # To not perform the csrf check previously happening
 
 
+class CSRFExemptSessionScheme(OpenApiAuthenticationExtension):
+    """Tell drf-spectacular that CSRFExemptSessionAuthentication is
+    just session auth (cookie-based)."""
+
+    target_class = "as_email.views.CSRFExemptSessionAuthentication"
+    name = "sessionAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {"type": "apiKey", "in": "cookie", "name": "sessionid"}
+
+
 ########################################################################
 ########################################################################
 #
@@ -379,6 +426,15 @@ class EmailAccountViewSet(
     # XXX We should use python version of zxcvbn to make sure a password
     #     that is too weak is not used.
     #
+    @extend_schema(
+        request=PasswordSerializer,
+        responses={
+            200: inline_serializer(
+                "SetPasswordResponse",
+                fields={"status": drf_fields.CharField()},
+            )
+        },
+    )
     @action(detail=True, methods=["post"])
     def set_password(self, request, pk=None):
         ea = self.get_object()
@@ -391,48 +447,6 @@ class EmailAccountViewSet(
                 serializer.errors,
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-    ####################################################################
-    #
-    def update(self, request, *args, **kwargs):
-        """
-        Since we have the alias_for ManyToManyField with a through
-        relationship where the user can only add email accounts to aliases and
-        alias_for where the email account owner == instance.owner we have to
-        enforce that check here.
-        """
-
-        # Make sure all the EmailAccounts aliases and alias_fors listed are
-        # ones owned by the same owner as this EmailAccount object.
-        #
-        # NOTE: if the owner of the EmailAccount instance has the perm
-        #       "can_have_foreign_aliases" this this EmailAccount is allowed to
-        #       have aliases to EmailAccounts that do not have the same owner.
-        #
-        instance = self.get_object()
-        if not instance.owner.has_perms(["as_email.can_have_foreign_aliases"]):
-            bad_fields = defaultdict(list)
-            for field in ["alias_for", "aliases"]:
-                if field in request.data:
-                    if isinstance(request.data, QueryDict):
-                        addrs = request.data.getlist(field)
-                    else:
-                        addrs = request.data[field]
-                    eas = EmailAccount.objects.filter(email_address__in=addrs)
-                    for ea in eas:
-                        if ea.owner != instance.owner:
-                            bad_fields[field].append(
-                                ErrorDetail(
-                                    f"{ea.email_address}: can only alias email "
-                                    "accounts owned by the same user: "
-                                    f"{instance.owner}",
-                                    code="permission_denied",
-                                )
-                            )
-            if bad_fields:
-                return Response(bad_fields, status.HTTP_403_FORBIDDEN)
-
-        return super().update(request, *args, **kwargs)
 
 
 ########################################################################
@@ -476,6 +490,19 @@ class MessageFilterRuleViewSet(ModelViewSet):
 
     ####################################################################
     #
+    @extend_schema(
+        request=MoveOrderSerializer,
+        responses={
+            200: inline_serializer(
+                "MoveResponse",
+                fields={
+                    "status": drf_fields.CharField(),
+                    "url": drf_fields.URLField(),
+                    "order": drf_fields.IntegerField(),
+                },
+            )
+        },
+    )
     @action(detail=True, methods=["post"])
     def move(self, request, **kwargs):
         """
@@ -534,6 +561,199 @@ class MessageFilterRuleViewSet(ModelViewSet):
         belongs to. So we need to make sure that this value is set when
         creating.
         """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.validated_data["email_account_id"] = kwargs[
+            "email_account_pk"
+        ]
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
+
+########################################################################
+########################################################################
+#
+# Map the delivery_type request field to the concrete model and serializer.
+#
+_DELIVERY_TYPE_MAP: dict[
+    str, tuple[type[DeliveryMethod], type[DeliveryMethodSerializer]]
+] = {
+    "LocalDelivery": (LocalDelivery, LocalDeliverySerializer),
+    "AliasToDelivery": (AliasToDelivery, AliasToDeliverySerializer),
+}
+
+
+########################################################################
+########################################################################
+#
+class DeliveryMethodOwnerFilterBackend(DRYPermissionFiltersBase):
+    def filter_list_queryset(self, request, queryset, view):
+        """
+        Limits list requests to delivery methods belonging to the requesting
+        user's email accounts.
+        """
+        return queryset.filter(email_account__owner=request.user)
+
+
+########################################################################
+########################################################################
+#
+_delivery_method_polymorphic = PolymorphicProxySerializer(
+    component_name="DeliveryMethodPolymorphic",
+    serializers=[LocalDeliverySerializer, AliasToDeliverySerializer],
+    resource_type_field_name="delivery_type",
+)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        responses=_delivery_method_polymorphic,
+        description="List all delivery methods for the email account.",
+    ),
+    retrieve=extend_schema(
+        responses=_delivery_method_polymorphic,
+        description="Retrieve a specific delivery method.",
+    ),
+    create=extend_schema(
+        request=_delivery_method_polymorphic,
+        responses=_delivery_method_polymorphic,
+        description=(
+            "Create a new delivery method. Include `delivery_type` "
+            '("LocalDelivery" or "AliasToDelivery") to select the subtype.'
+        ),
+    ),
+    update=extend_schema(
+        request=_delivery_method_polymorphic,
+        responses=_delivery_method_polymorphic,
+    ),
+    partial_update=extend_schema(
+        request=_delivery_method_polymorphic,
+        responses=_delivery_method_polymorphic,
+    ),
+)
+class DeliveryMethodViewSet(ModelViewSet):
+    """
+    CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
+
+    Supports LocalDelivery and AliasToDelivery subtypes. The request body
+    must include a `delivery_type` field (e.g. "LocalDelivery") to select
+    the correct subtype serializer on create/update.
+    """
+
+    permission_classes = (IsAuthenticated, DRYPermissions)
+    serializer_class = DeliveryMethodSerializer
+    filter_backends = (DeliveryMethodOwnerFilterBackend,)
+    queryset = DeliveryMethod.objects.all()
+    authentication_classes = (
+        CSRFExemptSessionAuthentication,
+        BasicAuthentication,
+    )
+
+    ####################################################################
+    #
+    def get_queryset(self):
+        return DeliveryMethod.objects.filter(
+            email_account=self.kwargs["email_account_pk"]
+        )
+
+    ####################################################################
+    #
+    def get_serializer_class(self):
+        """
+        Return the correct serializer based on the concrete subtype.
+
+        For instance-based read/write actions, the actual type of the object
+        is used. For create, the client supplies `delivery_type` in the
+        request body to select the subtype.
+
+        NOTE: We deliberately avoid calling get_object() here because DRY
+        REST Permissions invokes get_serializer_class() during both
+        has_permission() and has_object_permission(), and get_object()
+        itself calls check_object_permissions() → has_object_permission() →
+        get_serializer_class(), causing infinite recursion. Instead we look
+        up the concrete type directly from the queryset using just the pk.
+        """
+        # For instance-based actions, determine the concrete subtype from
+        # the DB without going through the full get_object() pipeline.
+        #
+        if self.action in ("retrieve", "update", "partial_update", "destroy"):
+            pk = self.kwargs.get("pk")
+            if pk:
+                try:
+                    instance = self.get_queryset().get(pk=pk)
+                    entry = _DELIVERY_TYPE_MAP.get(type(instance).__name__)
+                    if entry:
+                        return entry[1]
+                except DeliveryMethod.DoesNotExist:
+                    pass
+
+        # For create (and list fallback) use the delivery_type in the request.
+        #
+        delivery_type = self.request.data.get("delivery_type")
+        if delivery_type and delivery_type in _DELIVERY_TYPE_MAP:
+            return _DELIVERY_TYPE_MAP[delivery_type][1]
+
+        return DeliveryMethodSerializer
+
+    ####################################################################
+    #
+    def list(self, request, *args, **kwargs):
+        """
+        Return each delivery method serialized with its concrete subtype
+        serializer so that type-specific fields (autofile_spam,
+        target_account, etc.) are included alongside the base fields.
+
+        The default get_serializer_class() returns the base
+        DeliveryMethodSerializer for list actions (no pk, no delivery_type
+        in the GET request), which omits all subclass fields — causing the
+        UI to show wrong values on page load.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        ctx = self.get_serializer_context()
+        data = []
+        for instance in queryset:
+            entry = _DELIVERY_TYPE_MAP.get(type(instance).__name__)
+            serializer_cls = entry[1] if entry else DeliveryMethodSerializer
+            data.append(serializer_cls(instance, context=ctx).data)
+        return Response(data)
+
+    ####################################################################
+    #
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new DeliveryMethod under the specified EmailAccount.
+
+        The `delivery_type` field selects the concrete subtype
+        (LocalDelivery or AliasToDelivery).
+        """
+        delivery_type = request.data.get("delivery_type")
+        if not delivery_type or delivery_type not in _DELIVERY_TYPE_MAP:
+            return Response(
+                {
+                    "delivery_type": (
+                        f"Must be one of: {list(_DELIVERY_TYPE_MAP.keys())}"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Enforce max-one LocalDelivery per account.
+        #
+        if delivery_type == "LocalDelivery":
+            ea_pk = kwargs["email_account_pk"]
+            if LocalDelivery.objects.filter(email_account_id=ea_pk).exists():
+                return Response(
+                    {
+                        "delivery_type": (
+                            "An account may have at most one LocalDelivery."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.validated_data["email_account_id"] = kwargs[

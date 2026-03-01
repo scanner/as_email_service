@@ -24,8 +24,8 @@ from postmarker.exceptions import ClientError
 
 # Project imports
 #
-from .deliver import deliver_message, report_failed_message
-from .models import EmailAccount, InactiveEmail, Provider, Server
+from .deliver import report_failed_message
+from .models import EmailAccount, InactiveEmail, LocalDelivery, Provider, Server
 from .providers import get_backend
 from .utils import (
     BOUNCE_TYPES_BY_TYPE_CODE,
@@ -76,7 +76,7 @@ def retry_failed_incoming_email():
             msg = email.message_from_string(
                 email_msg["raw_email"], policy=email.policy.default
             )
-            deliver_message(email_account, msg)
+            email_account.deliver(msg)
             logger.info(
                 "Successfully delivered previously failed message '%s' for "
                 "email account '%s'",
@@ -230,7 +230,7 @@ def dispatch_incoming_email(email_account_pk: int, email_fname: str) -> None:
         email_msg["raw_email"], policy=email.policy.default
     )
     try:
-        deliver_message(email_account, msg)
+        email_account.deliver(msg)
     except Exception:
         try:
             failed_msg_fname = (
@@ -359,37 +359,6 @@ def process_email_bounce(email_account_pk: int, bounce: dict):
             "has marked this address as reactivatable as: "
             f"{bounce_details.CanActivate}. Contact the system adminstrator "
             "to see if this can be resolved."
-        )
-
-    # If the emailaccount is forwarding and we got a non-transient bounce when
-    # sending email to the forward_to address then the account gets
-    # deactivated.
-    #
-    if (
-        ea.delivery_method == EmailAccount.DeliveryMethods.FORWARDING
-        and not transient
-        and bounce_details.Email == ea.forward_to
-    ):
-        notify_user = True
-        ea.deactivated = True
-        ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
-        # XXX Should we also change the delivery type to local delivery?
-        ea.save()
-        logger.info(
-            "Account %s deactivated due to non-transient bounce to "
-            "forward_to address: %s: %s",
-            ea,
-            ea.forward_to,
-            bounce_details.Subject,
-            extra=bounce,
-        )
-        report_text.append(
-            f"The account ({from_addr}) has been deactivated from sending "
-            f"email due the set `forward_to` ({ea.forward_to}) address "
-            "generating a non-transient bounce: "
-            f"{bounce_details.Description}\nNOTE: This account can "
-            "still receive email. It just can not "
-            "send new emails."
         )
 
     if not ea.deactivated:
@@ -523,35 +492,6 @@ def process_email_spam(email_account_pk: int, spam: dict):
             "to see if this can be resolved."
         )
 
-    # If the emailaccount is forwarding and we got a non-transient spam when
-    # sending email to the forward_to address then the account gets
-    # deactivated.
-    #
-    if (
-        ea.delivery_method == EmailAccount.DeliveryMethods.FORWARDING
-        and not transient
-        and spam["Email"] == ea.forward_to
-    ):
-        notify_user = True
-        ea.deactivated = True
-        ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BAD_FORWARD_TO
-        # XXX Should we also change the delivery type to local delivery?
-        ea.save()
-        logger.info(
-            "Account %s deactivated due to non-transient spam to "
-            "forward_to address: %s: %s",
-            ea,
-            ea.forward_to,
-            spam["Description"],
-            extra=spam,
-        )
-        report_text.append(
-            f"The account ({from_addr}) has been deactivated from sending "
-            f"email due the set `forward_to` ({ea.forward_to}) address "
-            "generating a non-transient spam. NOTE: This account can "
-            "still receive email. It just can not send new emails."
-        )
-
     if not ea.deactivated:
         if ea.num_bounces >= ea.NUM_EMAIL_BOUNCE_LIMIT:
             notify_user = True
@@ -612,6 +552,10 @@ def check_update_pwfile_for_emailaccount(ea_pk: int) -> None:
     using getting a ZADD error like we are using a priority queue or
     something.. so just do our own retries on failures to look up the email
     account.
+
+    NOTE: If this EmailAccount has no LocalDelivery (e.g. it is alias-only),
+          the password file will not be updated because there is no local
+          maildir to record.
     """
     # The password file is at the root of the maildir directory
     #
@@ -622,7 +566,16 @@ def check_update_pwfile_for_emailaccount(ea_pk: int) -> None:
     #       password file is in. In settings the password file is always in
     #       MAIL_DIRS directory.
     #
-    ea_mail_dir = Path(ea.mail_dir).relative_to(settings.EXT_PW_FILE.parent)
+    local_delivery = LocalDelivery.objects.filter(email_account=ea).first()
+    if not local_delivery or not local_delivery.maildir_path:
+        logger.warning(
+            "No LocalDelivery with maildir_path for %s; skipping password file update",
+            ea.email_address,
+        )
+        return
+    ea_mail_dir = Path(local_delivery.maildir_path).relative_to(
+        settings.EXT_PW_FILE.parent
+    )
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     if ea.email_address not in accounts:
         accounts[ea.email_address] = PWUser(
@@ -637,7 +590,7 @@ def check_update_pwfile_for_emailaccount(ea_pk: int) -> None:
             logger.info(
                 "Updating '%s''s mail dir to: '%s' in external password file",
                 ea.email_address,
-                ea.mail_dir,
+                ea_mail_dir,
             )
             write = True
         if account.pw_hash != ea.password:

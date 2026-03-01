@@ -1,0 +1,1080 @@
+openapi: 3.0.3
+info:
+  title: AS Email Service API
+  version: 1.0.0
+  description:
+    REST API for managing email accounts, message filter rules, and delivery
+    methods in the Apricot Systematic Email Service.
+paths:
+  /as_email/api/v1/email_accounts/:
+    get:
+      operationId: v1_email_accounts_list
+      description: |-
+        The EmailAccount. This represents an email address active on a server.
+        A user may have multiple EmailAccounts.
+
+        NOTE: The EmailAccount can not be created or deleted via the REST API.
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmailAccount"
+          description: ""
+  /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/:
+    get:
+      operationId: v1_email_accounts_delivery_methods_list
+      description: List all delivery methods for the email account.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliveryMethodPolymorphic"
+          description: ""
+    post:
+      operationId: v1_email_accounts_delivery_methods_create
+      description:
+        Create a new delivery method. Include `delivery_type` ("LocalDelivery"
+        or "AliasToDelivery") to select the subtype.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryMethodPolymorphicRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/DeliveryMethodPolymorphicRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DeliveryMethodPolymorphicRequest"
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryMethodPolymorphic"
+          description: ""
+  /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/{id}/:
+    get:
+      operationId: v1_email_accounts_delivery_methods_retrieve
+      description: Retrieve a specific delivery method.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this delivery method.
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryMethodPolymorphic"
+          description: ""
+    put:
+      operationId: v1_email_accounts_delivery_methods_update
+      description: |-
+        CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
+
+        Supports LocalDelivery and AliasToDelivery subtypes. The request body
+        must include a `delivery_type` field (e.g. "LocalDelivery") to select
+        the correct subtype serializer on create/update.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this delivery method.
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryMethodPolymorphicRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/DeliveryMethodPolymorphicRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DeliveryMethodPolymorphicRequest"
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryMethodPolymorphic"
+          description: ""
+    patch:
+      operationId: v1_email_accounts_delivery_methods_partial_update
+      description: |-
+        CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
+
+        Supports LocalDelivery and AliasToDelivery subtypes. The request body
+        must include a `delivery_type` field (e.g. "LocalDelivery") to select
+        the correct subtype serializer on create/update.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this delivery method.
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchedDeliveryMethodPolymorphicRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/PatchedDeliveryMethodPolymorphicRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PatchedDeliveryMethodPolymorphicRequest"
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryMethodPolymorphic"
+          description: ""
+    delete:
+      operationId: v1_email_accounts_delivery_methods_destroy
+      description: |-
+        CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
+
+        Supports LocalDelivery and AliasToDelivery subtypes. The request body
+        must include a `delivery_type` field (e.g. "LocalDelivery") to select
+        the correct subtype serializer on create/update.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this delivery method.
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "204":
+          description: No response body
+  /as_email/api/v1/email_accounts/{email_account_pk}/message_filter_rules/:
+    get:
+      operationId: v1_email_accounts_message_filter_rules_list
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageFilterRule"
+          description: ""
+    post:
+      operationId: v1_email_accounts_message_filter_rules_create
+      description: |-
+        MessageFilterRule's are nested objects. The view passes in the
+        required information about the EmailAccount that this MessageFilterRule
+        belongs to. So we need to make sure that this value is set when
+        creating.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageFilterRuleRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/MessageFilterRuleRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MessageFilterRuleRequest"
+        required: true
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageFilterRule"
+          description: ""
+  /as_email/api/v1/email_accounts/{email_account_pk}/message_filter_rules/{id}/:
+    get:
+      operationId: v1_email_accounts_message_filter_rules_retrieve
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this message filter rule.
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageFilterRule"
+          description: ""
+    put:
+      operationId: v1_email_accounts_message_filter_rules_update
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this message filter rule.
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageFilterRuleRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/MessageFilterRuleRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MessageFilterRuleRequest"
+        required: true
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageFilterRule"
+          description: ""
+    patch:
+      operationId: v1_email_accounts_message_filter_rules_partial_update
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this message filter rule.
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchedMessageFilterRuleRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/PatchedMessageFilterRuleRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PatchedMessageFilterRuleRequest"
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageFilterRule"
+          description: ""
+    delete:
+      operationId: v1_email_accounts_message_filter_rules_destroy
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this message filter rule.
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "204":
+          description: No response body
+  /as_email/api/v1/email_accounts/{email_account_pk}/message_filter_rules/{id}/move/:
+    post:
+      operationId: v1_email_accounts_message_filter_rules_move_create
+      description: |-
+        Process one of the move commands to change the ordering of message
+        filter rules.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this message filter rule.
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveOrderRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/MoveOrderRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MoveOrderRequest"
+        required: true
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoveResponse"
+          description: ""
+  /as_email/api/v1/email_accounts/{id}/:
+    get:
+      operationId: v1_email_accounts_retrieve
+      description: |-
+        The EmailAccount. This represents an email address active on a server.
+        A user may have multiple EmailAccounts.
+
+        NOTE: The EmailAccount can not be created or deleted via the REST API.
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this email account.
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAccount"
+          description: ""
+    put:
+      operationId: v1_email_accounts_update
+      description: |-
+        The EmailAccount. This represents an email address active on a server.
+        A user may have multiple EmailAccounts.
+
+        NOTE: The EmailAccount can not be created or deleted via the REST API.
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this email account.
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAccount"
+          description: ""
+    patch:
+      operationId: v1_email_accounts_partial_update
+      description: |-
+        The EmailAccount. This represents an email address active on a server.
+        A user may have multiple EmailAccounts.
+
+        NOTE: The EmailAccount can not be created or deleted via the REST API.
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this email account.
+          required: true
+      tags:
+        - v1
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAccount"
+          description: ""
+  /as_email/api/v1/email_accounts/{id}/set_password/:
+    post:
+      operationId: v1_email_accounts_set_password_create
+      description: |-
+        The EmailAccount. This represents an email address active on a server.
+        A user may have multiple EmailAccounts.
+
+        NOTE: The EmailAccount can not be created or deleted via the REST API.
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          description: A unique integer value identifying this email account.
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/PasswordRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PasswordRequest"
+        required: true
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetPasswordResponse"
+          description: ""
+components:
+  schemas:
+    ActionEnum:
+      enum:
+        - folder
+        - destroy
+      type: string
+      description: |-
+        * `folder` - folder
+        * `destroy` - destroy
+    AliasToDelivery:
+      type: object
+      description: |-
+        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+        concrete subclass name so clients can distinguish LocalDelivery from
+        AliasToDelivery.
+      properties:
+        url:
+          type: string
+          format: uri
+          readOnly: true
+        pk:
+          type: integer
+          readOnly: true
+          title: ID
+        delivery_type:
+          type: string
+          readOnly: true
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        target_account:
+          type: string
+          format: email
+          description: The EmailAccount messages will be aliased to.
+      required:
+        - created_at
+        - delivery_type
+        - modified_at
+        - pk
+        - target_account
+        - url
+    AliasToDeliveryRequest:
+      type: object
+      description: |-
+        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+        concrete subclass name so clients can distinguish LocalDelivery from
+        AliasToDelivery.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        target_account:
+          type: string
+          format: email
+          minLength: 1
+          description: The EmailAccount messages will be aliased to.
+      required:
+        - target_account
+    CommandEnum:
+      enum:
+        - up
+        - down
+        - to
+        - bottom
+        - top
+      type: string
+      description: |-
+        * `up` - up
+        * `down` - down
+        * `to` - to
+        * `bottom` - bottom
+        * `top` - top
+    DeliveryMethodPolymorphic:
+      oneOf:
+        - $ref: "#/components/schemas/LocalDelivery"
+        - $ref: "#/components/schemas/AliasToDelivery"
+      discriminator:
+        propertyName: delivery_type
+        mapping:
+          NoneType: "#/components/schemas/AliasToDelivery"
+    DeliveryMethodPolymorphicRequest:
+      oneOf:
+        - $ref: "#/components/schemas/LocalDeliveryRequest"
+        - $ref: "#/components/schemas/AliasToDeliveryRequest"
+      discriminator:
+        propertyName: delivery_type
+        mapping:
+          NoneType: "#/components/schemas/AliasToDeliveryRequest"
+    EmailAccount:
+      type: object
+      properties:
+        pk:
+          type: integer
+          readOnly: true
+          title: ID
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        deactivated:
+          type: boolean
+          readOnly: true
+          description:
+            If an account is deactivated it can still receive email. However
+            it is no longer allowed to send email. Aliasing to other email accounts
+            is allowed, but no forwarding to an email account not on on the system
+            is allowed.
+        deactivated_reason:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Reason for the account being deactivated
+        email_address:
+          type: string
+          format: email
+          readOnly: true
+          description:
+            The email address that will receive emails on this server,
+            and the address that will be used as a login to send emails. It must have
+            the same domin name as the associated server
+        enabled:
+          type: boolean
+          readOnly: true
+          description:
+            If an account is not enabled, email for this account will not
+            be accepted. This is equivalent to the email account not existing.
+        message_filter_rules:
+          type: string
+          format: uri
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        num_bounces:
+          type: integer
+          readOnly: true
+          description:
+            Every time this email account sends an email and it results
+            in a bounce this counter will increment. The mail provider does not allow
+            excessive bounced email and this is a check to make sure that does not
+            happen. An asynchronous task will go through all accounts that have a
+            non-zero number of bounces and reduce them by 1 once a day. If you have
+            more than the limit your account will be deactivated until it goes under
+            the limit.
+        owner:
+          type: string
+          readOnly: true
+        server:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          format: uri
+          readOnly: true
+      required:
+        - created_at
+        - deactivated
+        - deactivated_reason
+        - email_address
+        - enabled
+        - message_filter_rules
+        - modified_at
+        - num_bounces
+        - owner
+        - pk
+        - server
+        - url
+    HeaderEnum:
+      enum:
+        - addr
+        - "*"
+        - bcc
+        - cc
+        - default
+        - x-dspam-result
+        - from
+        - reply-to
+        - source
+        - x-spam-score
+        - x-spam-status
+        - subject
+        - to
+      type: string
+      description: |-
+        * `addr` - addr
+        * `*` - *
+        * `bcc` - bcc
+        * `cc` - cc
+        * `default` - default
+        * `x-dspam-result` - x-dspam-result
+        * `from` - from
+        * `reply-to` - reply-to
+        * `source` - source
+        * `x-spam-score` - x-spam-score
+        * `x-spam-status` - x-spam-status
+        * `subject` - subject
+        * `to` - to
+    LocalDelivery:
+      type: object
+      description: |-
+        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+        concrete subclass name so clients can distinguish LocalDelivery from
+        AliasToDelivery.
+      properties:
+        url:
+          type: string
+          format: uri
+          readOnly: true
+        pk:
+          type: integer
+          readOnly: true
+          title: ID
+        delivery_type:
+          type: string
+          readOnly: true
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        maildir_path:
+          type: string
+          readOnly: true
+          nullable: true
+          description:
+            Root folder for the local MH mailbox. Left blank it will be
+            auto-filled from the account's email address when first saved.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages above the spam score threshold are automatically
+            filed in the spam delivery folder.
+        spam_delivery_folder:
+          type: string
+          description: Folder to deliver spam into when autofile_spam is enabled.
+          maxLength: 1024
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with an X-Spam-Score at or above this value are considered
+            spam. 15 is a reasonable default.
+      required:
+        - created_at
+        - delivery_type
+        - maildir_path
+        - modified_at
+        - pk
+        - url
+    LocalDeliveryRequest:
+      type: object
+      description: |-
+        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+        concrete subclass name so clients can distinguish LocalDelivery from
+        AliasToDelivery.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages above the spam score threshold are automatically
+            filed in the spam delivery folder.
+        spam_delivery_folder:
+          type: string
+          minLength: 1
+          description: Folder to deliver spam into when autofile_spam is enabled.
+          maxLength: 1024
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with an X-Spam-Score at or above this value are considered
+            spam. 15 is a reasonable default.
+    MessageFilterRule:
+      type: object
+      description: |-
+        A type of `ModelSerializer` that uses hyperlinked relationships with compound keys instead
+        of primary key relationships.  Specifically:
+
+        * A 'url' field is included instead of the 'id' field.
+        * Relationships to other instances are hyperlinks, instead of primary keys.
+
+        NOTE: this only works with DRF 3.1.0 and above.
+      properties:
+        url:
+          type: string
+          format: uri
+          readOnly: true
+        email_account:
+          type: string
+          format: uri
+          readOnly: true
+        header:
+          allOf:
+            - $ref: "#/components/schemas/HeaderEnum"
+          default: default
+        pattern:
+          type: string
+          maxLength: 256
+        action:
+          $ref: "#/components/schemas/ActionEnum"
+        destination:
+          type: string
+          maxLength: 1024
+        order:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - created_at
+        - email_account
+        - modified_at
+        - order
+        - pattern
+        - url
+    MessageFilterRuleRequest:
+      type: object
+      description: |-
+        A type of `ModelSerializer` that uses hyperlinked relationships with compound keys instead
+        of primary key relationships.  Specifically:
+
+        * A 'url' field is included instead of the 'id' field.
+        * Relationships to other instances are hyperlinks, instead of primary keys.
+
+        NOTE: this only works with DRF 3.1.0 and above.
+      properties:
+        header:
+          allOf:
+            - $ref: "#/components/schemas/HeaderEnum"
+          default: default
+        pattern:
+          type: string
+          maxLength: 256
+        action:
+          $ref: "#/components/schemas/ActionEnum"
+        destination:
+          type: string
+          maxLength: 1024
+      required:
+        - pattern
+    MoveOrderRequest:
+      type: object
+      description: |-
+        Models that use the "ordered" feature need to expose via the REST API
+        methods for changing their ordering. This is done via the "move" method
+        added to the REST API for that model which takes this serializer
+      properties:
+        command:
+          $ref: "#/components/schemas/CommandEnum"
+        location:
+          type: integer
+      required:
+        - command
+    MoveResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        url:
+          type: string
+          format: uri
+        order:
+          type: integer
+      required:
+        - order
+        - status
+        - url
+    PasswordRequest:
+      type: object
+      description: Serializer for password change endpoint on the EmailAccount.
+      properties:
+        password:
+          type: string
+          minLength: 1
+      required:
+        - password
+    PatchedAliasToDeliveryRequest:
+      type: object
+      description: |-
+        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+        concrete subclass name so clients can distinguish LocalDelivery from
+        AliasToDelivery.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        target_account:
+          type: string
+          format: email
+          minLength: 1
+          description: The EmailAccount messages will be aliased to.
+    PatchedDeliveryMethodPolymorphicRequest:
+      oneOf:
+        - $ref: "#/components/schemas/PatchedLocalDeliveryRequest"
+        - $ref: "#/components/schemas/PatchedAliasToDeliveryRequest"
+      discriminator:
+        propertyName: delivery_type
+        mapping:
+          NoneType: "#/components/schemas/PatchedAliasToDeliveryRequest"
+    PatchedLocalDeliveryRequest:
+      type: object
+      description: |-
+        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+        concrete subclass name so clients can distinguish LocalDelivery from
+        AliasToDelivery.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages above the spam score threshold are automatically
+            filed in the spam delivery folder.
+        spam_delivery_folder:
+          type: string
+          minLength: 1
+          description: Folder to deliver spam into when autofile_spam is enabled.
+          maxLength: 1024
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with an X-Spam-Score at or above this value are considered
+            spam. 15 is a reasonable default.
+    PatchedMessageFilterRuleRequest:
+      type: object
+      description: |-
+        A type of `ModelSerializer` that uses hyperlinked relationships with compound keys instead
+        of primary key relationships.  Specifically:
+
+        * A 'url' field is included instead of the 'id' field.
+        * Relationships to other instances are hyperlinks, instead of primary keys.
+
+        NOTE: this only works with DRF 3.1.0 and above.
+      properties:
+        header:
+          allOf:
+            - $ref: "#/components/schemas/HeaderEnum"
+          default: default
+        pattern:
+          type: string
+          maxLength: 256
+        action:
+          $ref: "#/components/schemas/ActionEnum"
+        destination:
+          type: string
+          maxLength: 1024
+    SetPasswordResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

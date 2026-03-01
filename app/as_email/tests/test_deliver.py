@@ -5,26 +5,19 @@ Test the various functions in the `deliver` module
 """
 # system imports
 #
-import email
-import email.message
-
 # 3rd party imports
 #
-import factory
 import pytest
-from dirty_equals import Contains
 
 # Project imports
 #
 from ..deliver import (
     apply_message_filter_rules,
-    deliver_message,
     deliver_message_locally,
     make_delivery_status_notification,
-    make_encapsulated_fwd_msg,
     report_failed_message,
 )
-from ..models import EmailAccount, MessageFilterRule
+from ..models import AliasToDelivery, LocalDelivery, MessageFilterRule
 from .conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -36,9 +29,8 @@ def test_apply_message_filter_rules(
     email_account_factory,
     message_filter_rule_factory,
     email_factory,
-):
+) -> None:
     ea = email_account_factory()
-    ea.save()
     msg = email_factory()
     folder = "test"
     mfr = message_filter_rule_factory(
@@ -52,8 +44,8 @@ def test_apply_message_filter_rules(
     deliver_to = apply_message_filter_rules(ea, msg)
     assert deliver_to == [folder]
 
-    # Make a new email, since the from is guaranteed to be different this will
-    # NOT atch our rule.
+    # Make a new email — the from is guaranteed to be different, so this will
+    # NOT match our rule.
     #
     msg = email_factory()
     deliver_to = apply_message_filter_rules(ea, msg)
@@ -64,17 +56,17 @@ def test_apply_message_filter_rules(
 #
 def test_deliver_message_locally(
     email_account_factory, message_filter_rule_factory, email_factory
-):
+) -> None:
     ea = email_account_factory()
-    ea.save()
+    ld = LocalDelivery.objects.get(email_account=ea)
     msg = email_factory()
 
-    deliver_message_locally(ea, msg)
+    deliver_message_locally(ld, msg)
 
     # The message should have been delivered to the inbox since there are no
     # mail filter rules. And it should be the only message in the mailbox.
     #
-    mh = ea.MH()
+    mh = ld.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
@@ -92,81 +84,77 @@ def test_deliver_message_locally(
         destination=folder_name,
     )
     mfr.save()
-    deliver_message_locally(ea, msg)
+    deliver_message_locally(ld, msg)
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
-def test_deliver_spam_locally(email_account_factory, email_factory):
+def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
     ea = email_account_factory()
-    ea.save()
+    ld = LocalDelivery.objects.get(email_account=ea)
 
-    # Low spam score. Should be delivered to inbox
+    # Low spam score — should be delivered to inbox.
     #
     msg = email_factory()
     msg["X-Spam-Score"] = "-0.0"
 
-    deliver_message_locally(ea, msg)
+    deliver_message_locally(ld, msg)
 
-    # The message should have been delivered to the inbox since there are no
-    # mail filter rules. And it should be the only message in the mailbox.
-    #
-    mh = ea.MH()
+    mh = ld.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
 
-    # Set the spam score over the limit in the email account.
+    # Set the spam score over the limit configured on the LocalDelivery.
     #
-    msg.replace_header("X-Spam-Score", str(ea.spam_score_threshold))
-    deliver_message_locally(ea, msg)
+    msg.replace_header("X-Spam-Score", str(ld.spam_score_threshold))
+    deliver_message_locally(ld, msg)
 
-    # The message should have been delivered to Junk since there are no
-    # mail filter rules. And it should be the only message in the mailbox.
+    # The message should land in the spam folder.
     #
-    mh = ea.MH()
-    folder = mh.get_folder(ea.spam_delivery_folder)
+    folder = mh.get_folder(ld.spam_delivery_folder)
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
-def test_deliver_alias(email_account_factory, email_factory):
-    ea_1 = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.ALIAS
-    )
-    ea_1.save()
+def test_deliver_alias(email_account_factory, email_factory) -> None:
+    """
+    Messages delivered to an alias-only account are forwarded to the target.
+    """
+    # ea_1 has no local delivery — it only has an alias to ea_2.
+    #
+    ea_1 = email_account_factory(local_delivery=False)
     ea_2 = email_account_factory()
-    ea_2.save()
-    ea_1.alias_for.add(ea_2)
+    AliasToDelivery.objects.create(email_account=ea_1, target_account=ea_2)
 
-    # Messages being delivered to ea1 will be delivered to ea2.
-    #
     msg = email_factory()
-    deliver_message(ea_1, msg)
+    ea_1.deliver(msg)
 
-    # The message should have been delivered to the inbox of ea_2.
+    # The message should have landed in ea_2's inbox.
     #
-    mh = ea_2.MH()
+    ld_2 = LocalDelivery.objects.get(email_account=ea_2)
+    mh = ld_2.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
 
-    # Create another level of aliasing.
-    ea_3 = email_account_factory()
-    ea_3.save()
-    ea_2.alias_for.add(ea_3)
-    ea_2.delivery_method = EmailAccount.DeliveryMethods.ALIAS
-    ea_2.save()
-
-    # message sent to ea_1 will be delivered to ea_3
+    # Create another level of aliasing: ea_2 (alias-only) → ea_3 (local).
     #
+    ld_2.delete()  # remove ea_2's local delivery to make it alias-only
+    ea_3 = email_account_factory()
+    AliasToDelivery.objects.create(email_account=ea_2, target_account=ea_3)
+
     msg = email_factory()
-    deliver_message(ea_1, msg)
-    mh = ea_3.MH()
+    ea_1.deliver(msg)
+
+    # Message sent to ea_1 should now land in ea_3's inbox.
+    #
+    ld_3 = LocalDelivery.objects.get(email_account=ea_3)
+    mh = ld_3.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
@@ -174,149 +162,86 @@ def test_deliver_alias(email_account_factory, email_factory):
 
 ####################################################################
 #
-def test_deliver_to_multiple_aliases(email_account_factory, email_factory):
-    ea_1 = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.ALIAS
-    )
-    ea_1.save()
+def test_deliver_to_multiple_aliases(
+    email_account_factory, email_factory
+) -> None:
+    """
+    An account with multiple AliasToDelivery entries delivers to all targets.
+    """
+    ea_1 = email_account_factory(local_delivery=False)
     ea_2 = email_account_factory()
-    ea_2.save()
     ea_3 = email_account_factory()
-    ea_3.save()
-
-    ea_1.alias_for.add(ea_2)
-    ea_1.alias_for.add(ea_3)
+    AliasToDelivery.objects.create(email_account=ea_1, target_account=ea_2)
+    AliasToDelivery.objects.create(email_account=ea_1, target_account=ea_3)
 
     msg = email_factory()
-    deliver_message(ea_1, msg)
+    ea_1.deliver(msg)
 
-    mh_2 = ea_2.MH()
-    folder = mh_2.get_folder("inbox")
+    ld_2 = LocalDelivery.objects.get(email_account=ea_2)
+    folder = ld_2.MH().get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
 
-    mh_3 = ea_3.MH()
-    folder = mh_3.get_folder("inbox")
+    ld_3 = LocalDelivery.objects.get(email_account=ea_3)
+    folder = ld_3.MH().get_folder("inbox")
     stored_msg = folder.get(1)
     assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
-def test_email_account_alias_depth(
+def test_deliver_alias_loop_detection(
     email_account_factory, email_factory, caplog
-):
+) -> None:
     """
-    we only let an alias go three deep. if we try to alias more than that
-    it will be delivered at a higher level. also a warning will be logged.
+    GIVEN a cycle in alias targets (A → B → A)
+    WHEN  a message is delivered to A
+    THEN  the loop is detected, a warning is logged, and delivery stops
+          cleanly (no infinite recursion).
     """
-    # Make a list of email accounts, aliasing them to the next account.
-    email_accounts = []
-    prev_ea = None
-    for i in range(EmailAccount.MAX_ALIAS_DEPTH + 2):
-        ea = email_account_factory(
-            delivery_method=EmailAccount.DeliveryMethods.ALIAS
+    ea_a = email_account_factory(local_delivery=False)
+    ea_b = email_account_factory(local_delivery=False)
+    AliasToDelivery.objects.create(email_account=ea_a, target_account=ea_b)
+    AliasToDelivery.objects.create(email_account=ea_b, target_account=ea_a)
+
+    msg = email_factory()
+    ea_a.deliver(msg)
+
+    assert "Alias loop detected" in caplog.text
+
+
+####################################################################
+#
+def test_deliver_alias_hop_limit(
+    email_account_factory, email_factory, caplog, mocker
+) -> None:
+    """
+    GIVEN a chain of alias accounts longer than MAX_HOPS
+    WHEN  a message is delivered to the first account
+    THEN  the hop limit fires, a warning is logged, and delivery stops.
+    """
+    # Patch MAX_HOPS to 2 so we only need a small chain.
+    #
+    mocker.patch.object(AliasToDelivery, "MAX_HOPS", 2)
+
+    # Chain: ea_0 → ea_1 → ea_2 → ea_3 (all alias-only; ea_3 never reached).
+    #
+    accounts = [email_account_factory(local_delivery=False) for _ in range(4)]
+    for i in range(3):
+        AliasToDelivery.objects.create(
+            email_account=accounts[i], target_account=accounts[i + 1]
         )
-        ea.save()
-        email_accounts.append(ea)
 
-        if prev_ea:
-            prev_ea.alias_for.add(ea)
-        prev_ea = ea
-
-    # The message should be delivered to the max alias depth email
-    # account. Also a message should have been logged about this.
-    #
     msg = email_factory()
-    deliver_message(email_accounts[0], msg)
+    accounts[0].deliver(msg)
 
-    assert "Deliver recursion too deep for message" in caplog.text
-
-    ea = email_accounts[EmailAccount.MAX_ALIAS_DEPTH]
-    mh = ea.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-    assert_email_equal(msg, stored_msg)
+    assert "Alias hop limit" in caplog.text
 
 
 ####################################################################
 #
-def test_forwarding(email_account_factory, email_factory, smtp):
-    """
-    Test forwarding of the message by having the original message attached
-    as an rfc822 attachment, the original content text being in the new
-    message.
-    """
-    ea_1 = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.FORWARDING,
-        forward_to=factory.Faker("email"),
-    )
-    ea_1.save()
-
-    msg = email_factory()
-    original_from = msg["From"]
-    original_subj = msg["Subject"]
-
-    deliver_message(ea_1, msg)
-
-    # NOTE: in the models object we create a smtp_client. On the smtp_client
-    #       the only thing we care about is that the `sendmail` method was
-    #       called with the appropriate values.
-    #
-    assert smtp.sendmail.call_count == 1
-    assert smtp.sendmail.call_args.args == Contains(
-        ea_1.email_address,
-        [ea_1.forward_to],
-    )
-
-    sent_message_bytes = smtp.sendmail.call_args.args[2]
-    sent_message = email.message_from_bytes(
-        sent_message_bytes, policy=email.policy.default
-    )
-    assert sent_message["Original-From"] == original_from
-    assert sent_message["Original-Recipient"] == ea_1.email_address
-    assert sent_message["Resent-From"] == ea_1.email_address
-    assert sent_message["Resent-To"] == ea_1.forward_to
-    assert sent_message["From"] == ea_1.email_address
-    assert sent_message["To"] == ea_1.forward_to
-    assert (
-        sent_message["Subject"]
-        == f"Fwd: forwarded from {original_from}: {original_subj}"
-    )
-
-
-####################################################################
-#
-def test_deactivated_forward(email_account_factory, email_factory):
-    """
-    Deactivated email accounts can receive email, can alias email, but can
-    not forward email. The account that tries to forward the email has it
-    delivered locally.
-    """
-    ea_1 = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.FORWARDING,
-        forward_to=factory.Faker("email"),
-        deactivated=True,
-    )
-    ea_1.save()
-
-    msg = email_factory()
-
-    # Since this account is forwarding, but it is deactivated the message will
-    # be locally delivered.
-    #
-    deliver_message(ea_1, msg)
-    mh = ea_1.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
-    assert_email_equal(msg, stored_msg)
-
-
-####################################################################
-#
-def test_generate_dsn(email_account_factory, email_factory):
+def test_generate_dsn(email_account_factory, email_factory) -> None:
     ea = email_account_factory()
-    ea.save()
     msg = email_factory()
 
     from_addr = f"mailer-daemon@{ea.server.domain_name}"
@@ -342,9 +267,6 @@ def test_generate_dsn(email_account_factory, email_factory):
     assert dsn["Subject"] == subject
     assert dsn.is_multipart()
 
-    # And not going to really look at the parts.. just make sure they match
-    # what we expect.
-    #
     expected = [
         "multipart/report",
         "text/plain",
@@ -361,60 +283,11 @@ def test_generate_dsn(email_account_factory, email_factory):
 
 ####################################################################
 #
-def test_generate_forwarded_spam_message(
-    email_account_factory,
-    email_factory,
-    faker,
-):
-    """
-    Do a cursory test of our function that generates a forwarded email
-    """
-    forward_to = faker.email()
-    ea = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.FORWARDING,
-        forward_to=forward_to,
-    )
-    ea.save()
-    msg = email_factory(msg_from=ea.email_address)
-    msg["X-Spam-Score"] = str(ea.spam_score_threshold + 1)
-
-    forwarded_msg = make_encapsulated_fwd_msg(ea, msg)
-
-    assert forwarded_msg["From"] == ea.email_address
-    assert forwarded_msg["To"] == ea.forward_to
-    assert forwarded_msg["Reply-To"] == msg["From"]
-    assert forwarded_msg["Original-From"] == msg["From"]
-    assert forwarded_msg["Original-Recipient"] == ea.email_address
-    assert forwarded_msg["Resent-From"] == ea.email_address
-    assert forwarded_msg["Resent-To"] == ea.forward_to
-
-    expected = [
-        "multipart/mixed",
-        "text/plain",
-        "message/rfc822",
-        "multipart/alternative",
-        "text/plain",
-        "text/html",
-    ]
-    results = [part.get_content_type() for part in forwarded_msg.walk()]
-    assert expected == results
-
-    # Look for the first message/rfc822 part. That should be our
-    # forwarded message. It should be the third part of our message.
-    #
-    for part in forwarded_msg.walk():
-        if part.get_content_type == "message/rfc822":
-            assert part.get_content().as_bytes() == msg.as_bytes()
-            break
-
-
-####################################################################
-#
 def test_report_failed_message(
     email_account_factory, email_factory, caplog, faker
-):
+) -> None:
     ea = email_account_factory()
-    ea.save()
+    ld = LocalDelivery.objects.get(email_account=ea)
     msg = email_factory(msg_from=ea.email_address)
 
     report_failed_message(
@@ -427,16 +300,14 @@ def test_report_failed_message(
         diagnostic="smtp; yo buddy",
     )
 
-    # Should now be a message in ea's local mail inbox. Note, we have other
-    # tests for the contents of the DSN so we do not quibble much here except
-    # to make sure that the message was delivered locally.
+    # Should now be a message in ea's local mail inbox.
     #
-    mh = ea.MH()
+    mh = ld.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(1)
     assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
 
-    # if we try to send email address being a string should also work.
+    # Passing the email address as a string should also work.
     #
     report_failed_message(
         ea.email_address,
@@ -448,14 +319,11 @@ def test_report_failed_message(
         diagnostic="smtp; yo buddy",
     )
 
-    # Should now be a message in ea's local mail inbox.
-    #
-    mh = ea.MH()
     folder = mh.get_folder("inbox")
     stored_msg = folder.get(2)
     assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
 
-    # And we if try to send to an invalid email address we get a log message.
+    # An invalid email address should log an error and not raise.
     #
     caplog.clear()
     bad_email = faker.email()

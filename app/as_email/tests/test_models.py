@@ -11,12 +11,17 @@ import pytest
 from dirty_equals import Contains
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
 from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..models import EmailAccount, InactiveEmail, MessageFilterRule
+from ..models import (
+    AliasToDelivery,
+    EmailAccount,
+    InactiveEmail,
+    LocalDelivery,
+    MessageFilterRule,
+)
 from .conftest import assert_email_equal
 
 User = get_user_model()
@@ -72,7 +77,8 @@ def test_server_creates_admin_emailaccounts(
     eas = [EmailAccount.objects.get(email_address=x) for x in email_addrs]
     first = eas[0]
     for ea in eas[1:]:
-        assert ea.alias_for.all()[0] == first
+        atd = AliasToDelivery.objects.get(email_account=ea)
+        assert atd.target_account == first
 
 
 ####################################################################
@@ -130,21 +136,22 @@ def test_email_account_valid_email_address(email_account_factory):
 
 ####################################################################
 #
-def test_email_account_mail_dir(settings, email_account_factory):
+def test_email_account_mail_dir(settings, email_account_factory) -> None:
     """
     make sure the mailbox.MH directory for the email account exists
     """
     ea = email_account_factory()
     ea.save()
 
-    assert Path(ea.mail_dir).is_dir()
+    ld = LocalDelivery.objects.get(email_account=ea)
+    assert Path(ld.maildir_path).is_dir()
 
     # By setting `create=False` this will fail with an exception if
     # the mailbox does not exist. It should exist.
     #
     try:
-        mh = ea.MH(create=False)
-        assert mh._path == ea.mail_dir
+        mh = ld.MH(create=False)
+        assert mh._path == ld.maildir_path
         for folder in settings.DEFAULT_FOLDERS:
             mh.get_folder(folder)
     except mailbox.NoSuchMailboxError as exc:
@@ -153,33 +160,21 @@ def test_email_account_mail_dir(settings, email_account_factory):
 
 ####################################################################
 #
-def test_email_account_alias_self(email_account_factory):
+def test_alias_to_delivery_self_loop(
+    email_account_factory, email_factory, caplog
+) -> None:
     """
-    We make sure an EmailAccount can not alias itself.
-
-    Obviously we need to do better than this and we should make sure aliases
-    do not go to deep, and that at no point in that level of aliasing it loops
-    back to alias any of the EmailAccounts that are aliased to themselves.
-
-    But for now this is what we have.
+    GIVEN an AliasToDelivery that points back to its own account (self-loop)
+    WHEN  a message is delivered to that account
+    THEN  the loop is detected, a warning is logged, and delivery stops cleanly
     """
-    ea_1 = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.ALIAS
-    )
-    ea_1.save()
+    ea = email_account_factory(local_delivery=False)
+    AliasToDelivery.objects.create(email_account=ea, target_account=ea)
 
-    ea_2 = email_account_factory(
-        delivery_method=EmailAccount.DeliveryMethods.ALIAS
-    )
-    ea_2.save()
+    msg = email_factory()
+    ea.deliver(msg)
 
-    # This is fine.. EmailAccount #1 is an alis for EmailAccount #2.
-    ea_1.alias_for.add(ea_2)
-
-    # This is NOT fine. Can not alias to yourself.
-    #
-    with pytest.raises(IntegrityError):
-        ea_1.alias_for.add(ea_1)
+    assert "Alias loop detected" in caplog.text
 
 
 ####################################################################

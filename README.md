@@ -11,6 +11,7 @@ A Django app and smtp relay service for working with 3rd party email services (w
 
 - [Setup](#setup)
 - [Configuration](#configuration)
+- [API Documentation](#api-documentation)
 - [Administration](#administration)
 - [Design](#design)
 - [Local Development](#local-development)
@@ -66,6 +67,21 @@ HOST_SSL_DIR=/mnt/ssl
 RELEASE_VERSION=latest
 ```
 
+## API Documentation
+
+The REST API is documented via [OpenAPI 3.0](https://www.openapis.org/). The full reference is available in [`docs/api.md`](docs/api.md) and the machine-readable spec in [`docs/openapi.yaml`](docs/openapi.yaml).
+
+When the development server is running you can also browse the interactive docs:
+
+- **Swagger UI**: `/as_email/api/schema/swagger-ui/`
+- **ReDoc**: `/as_email/api/schema/redoc/`
+
+To regenerate the docs after making API changes:
+
+```bash
+make api-docs
+```
+
 ## Administration
 
 ### Training SpamAssassin on a corpus of spam and ham messages
@@ -76,10 +92,12 @@ Assuming that you have mounted a directory as a volume in the "spamassassin" con
 
 ```
 sa-update
-sa-learn --spam --username=debian-spamd <path to spam directory>
-sa-learn --ham --username=debian-spamd <path to ham directory>
+sa-learn --spam --username=debian-spamd /mnt/training/spam
+sa-learn --ham --username=debian-spamd /mnt/training/ham
 sa-learn --sync --username=debian-spamd
 ```
+
+The default docker-compose mounts the training & ham data under `/mnt/training/`. If you mount it somewhere else you will need to change these commands.
 
 ## Design
 

@@ -1,36 +1,8 @@
 // Vue Component for an EmailAccount
 //
-import { ref, computed } from "vue";
-import VueSelect from "vue-select";
+import { ref } from "vue";
 import MessageFilterRules from "./MessageFilterRules.js";
-
-////////////////////////////////////////////////////////////////////////////
-//
-// Return the difference (ie: changes) between two arrays.  We want the list of
-// elements that have been added or removed from a compared to b.
-//
-// See: https://stackoverflow.com/questions/1187518/how-to-get-the-difference-between-two-arrays-in-javascript/3476612#3476612
-//
-function arrayDiff(a, b) {
-  return [
-    ...a.filter((x) => !b.includes(x)),
-    ...b.filter((x) => !a.includes(x)),
-  ];
-}
-
-////////////////////////////////////////////////////////////////////////////
-//
-// Wraps a string to a given number of characters using a string break
-// character
-//
-// from: https://www.30secondsofcode.org/js/s/word-wrap/
-//
-function wordWrap(str, max, br = "\n") {
-  return str.replace(
-    new RegExp(`(?![^\\n]{1,${max}}$)([^\\n]{1,${max}})\\s`, "g"),
-    "$1" + br,
-  );
-}
+import DeliveryMethodList from "./delivery_method_list.js";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
@@ -46,6 +18,10 @@ export default {
       type: Number,
       required: true,
     },
+    // When true the card starts expanded. Set by the parent when there is
+    // only one account so the user lands directly in the detail view.
+    //
+    initialExpanded: { type: Boolean, default: false },
     url: {
       type: String,
       required: true,
@@ -54,39 +30,10 @@ export default {
       type: String,
       required: true,
     },
-    deliveryMethod: {
+    // URL for the nested delivery_methods collection, e.g.:
+    // /as_email/api/v1/email_accounts/1/delivery_methods/
+    deliveryMethodsUrl: {
       type: String,
-      default: "LD",
-      required: true,
-    },
-    autofileSpam: {
-      type: Boolean,
-      default: true,
-      required: true,
-    },
-    spamDeliveryFolder: {
-      type: String,
-      default: "",
-      required: true,
-    },
-    spamScoreThreshold: {
-      type: Number,
-      default: 15,
-      required: true,
-    },
-    aliasFor: {
-      type: Array,
-      default: [],
-      required: true,
-    },
-    aliases: {
-      type: Array,
-      default: [],
-      required: true,
-    },
-    forwardTo: {
-      type: [String, null],
-      default: "",
       required: true,
     },
     messageFilterRules: {
@@ -109,6 +56,12 @@ export default {
       default: "",
       required: true,
     },
+    // Server-rendered initial delivery method counts. These seed the header
+    // badges immediately on page load; DeliveryMethodList updates them via
+    // @counts-updated whenever the list is loaded or modified.
+    //
+    dmTotal: { type: Number, default: null },
+    dmEnabled: { type: Number, default: null },
     validEmailAddresses: {
       type: Array,
       default: [],
@@ -124,32 +77,30 @@ export default {
       default: "set_password/",
       required: false,
     },
+    // Email addresses of other accounts that alias (forward) to this account.
+    //
+    aliasedFrom: {
+      type: Array,
+      default: () => [],
+      required: false,
+    },
+    // Callback invoked with a list of email addresses whose `aliased_from`
+    // data needs refreshing after a delivery method mutation on this account.
+    // Only AliasToDelivery changes produce a non-empty list; the root app
+    // fetches fresh data for only those accounts.
+    //
+    refreshAliasedFrom: {
+      type: Function,
+      default: () => {},
+      required: false,
+    },
   },
-
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // This is the subset of props that when they change we need to emit an
-  // event that lets the parent know the values of these have changed.
-  //
-  emits: [
-    "update:deliveryMethod",
-    "update:autofileSpam",
-    "update:spamDeliveryFolder",
-    "update:spamScoreThreshold",
-    "update:aliasFor",
-    "update:aliases",
-    "update:forwardTo",
-    "update:numBounces",
-    "update:deactivated",
-    "update:deactivatedReason",
-    "aliasesChanged",
-  ],
 
   ////////////////////////////////////////////////////////////////////////////
   //
   components: {
     MessageFilterRules: MessageFilterRules,
-    "v-select": VueSelect,
+    DeliveryMethodList: DeliveryMethodList,
   },
 
   ////////////////////////////////////////////////////////////////////////////
@@ -161,364 +112,185 @@ export default {
 
   ////////////////////////////////////////////////////////////////////////////
   //
-  setup(props, ctx) {
-    const submitDisabled = ref(false);
-    const resetDisabled = ref(false);
-    const filteredValidEmailAddrs = ref([]);
-    const emailAccountPassword = ref("");
-    const emailAccountPasswordConfirm = ref("");
-    const emailAccountPasswordStatus = ref("");
+  setup(props) {
+    // Card expand/collapse state — seeded from prop so single-account users
+    // land with the card already open.
+    //
+    const isExpanded = ref(props.initialExpanded);
 
-    // Messages that appear next to fields (mostly for error messages) For
-    // keys/attributes we use the same strings that the server would send us so
-    // we can use those directly as keys into this object.
+    // Badge counts — seeded from server-rendered data so they appear on the
+    // collapsed card immediately. DeliveryMethodList updates them via
+    // @counts-updated after any fetch, create, save, or delete.
+    //
+    const methodCount = ref(props.dmTotal);
+    const enabledMethodCount = ref(props.dmEnabled);
+
+    // Account Settings inline edit state.
+    //
+    const isEditingSettings = ref(false);
+    const editPassword = ref("");
+    const showEditPassword = ref(false);
+    const settingsSaving = ref(false);
+    const settingsError = ref("");
+
+    // Error messages for deactivated / bounce warnings shown at the top of
+    // the expanded card content.
     //
     const labelErrorMessages = ref({
       detail: "",
-      alias_for: "",
-      aliases: "",
-      autofile_spam: "",
-      delivery_method: "",
-      forward_to: "",
-      spam_delivery_folder: "",
-      spam_score_threshold: "",
-      set_password: "",
     });
 
-    // These two arrays track changes in aliases and aliasFors between
-    // updates sent to the REST endpoint so we can know if these fields
-    // changed. They are updated after a successful submit to the REST endpoint.
-    //
-    let preupdateAliases = [...props.aliases];
-    let preupdateAliasFor = [...props.aliasFor];
-
-    // Extract our field help text in to text wrapped with the creativeBulma
-    // tooltip wrap character at a certain length (otherwise tool tips are just
-    // very long single line strings).
+    // Extract field help text for tooltips on the fields that remain at the
+    // EmailAccount level (deactivated, num_bounces).
     //
     const labelTooltips = {};
     for (let [k, v] of Object.entries(props.fieldInfo)) {
       if ("help_text" in v) {
-        // labelTooltips[k] = wordWrap(v.help_text, 50, '&#10;');
         labelTooltips[k] = v.help_text;
       }
     }
 
-    // We fill up "filteredValidEmailAddrs" because the list of valid email
-    // addresses is used for "aliasFor" and "aliases" and you are not
-    // allowed to alias for yourself, so just to prevent confusion we
-    // remove our own email address from the list of valid email addresse.
+    // Passed to DeliveryMethodList → DeliveryMethodForm → AliasToDeliveryForm
+    // for the target_account picker. We exclude the owning account's own
+    // address to prevent self-aliasing.
     //
-    filteredValidEmailAddrs.value = props.validEmailAddresses.filter((x) => {
-      return x != props.emailAddress;
-    });
-
-    //////////
-    //
-    // computed items
-    //
-    //////////
+    const filteredValidEmailAddrs = props.validEmailAddresses.filter(
+      (x) => x !== props.emailAddress,
+    );
 
     ////////////////////////////////////////////////////////////////////////
     //
-    // aliasFor and aliases are passed in to a v-select component, but are
-    // given data that came in as a prop. We need to make sure that changes
-    // to the prop are passed into the v-select and that changes to the
-    // selected options in the v-select are passed back up to our parent
-    // via update events. We do this by having a read/write computed item
-    // that handles this translation.
+    // Invoked by the card header click to toggle expand/collapse.
     //
-    const computedAliasFor = computed({
-      get: () => props.aliasFor,
-      set: (value) => ctx.emit("update:aliasFor", value),
-    });
-    const computedAliases = computed({
-      get: () => props.aliases,
-      set: (value) => ctx.emit("update:aliases", value),
-    });
-
-    //////////
-    //
-    // public methods
-    //
-    //////////
-
-    ////////////////////////////////////////////////////////////////////////
-    //
-    const submitData = async function () {
-      submitDisabled.value = true;
-      try {
-        // On `Apply` clear any error messages that may be set.
-        //
-        for (let key in labelErrorMessages.value) {
-          labelErrorMessages.value[key] = "";
-        }
-
-        let data = {
-          delivery_method: props.deliveryMethod,
-          autofile_spam: props.autofileSpam,
-          spam_delivery_folder: props.spamDeliveryFolder,
-          spam_score_threshold: props.spamScoreThreshold,
-          alias_for: props.aliasFor,
-          aliases: props.aliases,
-          forward_to: props.forwardTo,
-        };
-
-        let res = await fetch(props.url, {
-          method: "PATCH",
-          body: JSON.stringify(data),
-          headers: {
-            "Content-type": "application/json; charset=UTF-8",
-          },
-        });
-        if (res.ok) {
-          // XXX We should have a visual indicator that the 'Apply'
-          //     worked, like flash a check mark that fades out after
-          //     short delay.
-          //
-          // XXX We should make this a function.. DRY and all.
-          //
-          let data = await res.json();
-
-          // Before we emit data updates, compared the props for
-          // aliase and aliasFor to see if they differ from the data
-          // we got back from the server. If they do then after we
-          // emit the other events we will need to emit a
-          // `aliasesChanged` update that tells the parent component
-          // to refresh the data from the server so that all the
-          // EmailAccount components update.
-          //
-          let aliasesDiffs = arrayDiff(preupdateAliases, data.aliases);
-          let aliasForDiffs = arrayDiff(preupdateAliasFor, data.alias_for);
-          let aliasChanges = [...new Set(aliasesDiffs.concat(aliasForDiffs))];
-
-          ctx.emit("update:deliveryMethod", data.delivery_method);
-          ctx.emit("update:autofileSpam", data.autofile_spam);
-          ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
-          ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
-          ctx.emit("update:aliasFor", data.alias_for);
-          ctx.emit("update:aliases", data.aliases);
-          ctx.emit("update:forwardTo", data.forward_to);
-          ctx.emit("update:numBounces", data.num_bounces);
-          ctx.emit("update:deactivated", data.deactivated);
-          ctx.emit("update:deactivatedReason", data.deactivated_reason);
-
-          // If aliases or aliasFor contents have changed update our parent
-          // with the affected email addresses. Also update the preserved set
-          // of aliases for the next submit.
-          //
-          if (aliasChanges.length != 0) {
-            ctx.emit("aliasesChanged", aliasChanges);
-            preupdateAliases = [...data.aliases];
-            preupdateAliasFor = [...data.alias_for];
-          }
-        } else {
-          // If the PATCH failed we should get back a JSON body which
-          // has for its keys the fields that had a problem, and the
-          // value is the error for that field.
-          //
-          // XXX we should catch failures that do not return json
-          //     (like server is down)
-          //
-          let errors = await res.json();
-          for (let label in errors) {
-            labelErrorMessages.value[label] = errors[label];
-          }
-        }
-
-        // sleep for a bit so our button goes inactive for a
-        // short bit.. mostly to prevent multiple slams on the button
-        // in quick succession.
-        //
-        await new Promise((r) => setTimeout(r, 750));
-      } finally {
-        submitDisabled.value = false;
-      }
+    const toggleExpanded = () => {
+      isExpanded.value = !isExpanded.value;
     };
 
     ////////////////////////////////////////////////////////////////////////
     //
-    const resetData = async function () {
-      resetDisabled.value = true;
-      try {
-        // On `Reset` clear any error messages that may be set.
-        //
-        for (let key in labelErrorMessages.value) {
-          labelErrorMessages.value[key] = "";
-        }
-
-        let res = await fetch(props.url);
-        if (res.ok) {
-          let data = await res.json();
-          ctx.emit("update:deliveryMethod", data.delivery_method);
-          ctx.emit("update:autofileSpam", data.autofile_spam);
-          ctx.emit("update:spamDeliveryFolder", data.spam_delivery_folder);
-          ctx.emit("update:spamScoreThreshold", data.spam_score_threshold);
-          ctx.emit("update:aliasFor", data.alias_for);
-          ctx.emit("update:aliases", data.aliases);
-          ctx.emit("update:forwardTo", data.forward_to);
-          ctx.emit("update:numBounces", data.num_bounces);
-          ctx.emit("update:deactivated", data.deactivated);
-          ctx.emit("update:deactivatedReason", data.deactivated_reason);
-        } else {
-          console.log(
-            `Unable to get field data for EmailAccount ${props.emailAddress}: ${res.statusText}(${res.status})`,
-          );
-          labelErrorMessages["detail"] =
-            `HTTP: ${res.status}: ${res.statusText}`;
-        }
-
-        // sleep for a bit so our button goes inactive for a
-        // short bit.. mostly to prevent multiple slams on the button
-        // in quick succession.
-        //
-        await new Promise((r) => setTimeout(r, 750));
-      } finally {
-        resetDisabled.value = false;
-      }
+    // Called by DeliveryMethodList via @counts-updated when the list is
+    // loaded or modified.
+    //
+    const onCountsUpdated = ({ total, enabled }) => {
+      methodCount.value = total;
+      enabledMethodCount.value = enabled;
     };
 
     ////////////////////////////////////////////////////////////////////////
     //
-    // Check to see if the password is strong enough to let the user use it. It
-    // is used on key up to highlight the password field if it is or is not
-    // good enough. It also is used by the setPassword method to make sure that
-    // the password is good enough before posting it to the server.
+    // Called by DeliveryMethodList via @delivery-method-changed when an
+    // AliasToDelivery is created, saved, or deleted. Forwards the affected
+    // target account addresses up to the root app so it can refresh those
+    // accounts' `aliased_from` displays.
     //
-    const checkPassword = function (target) {
-      const result = zxcvbn(emailAccountPassword.value);
+    const onDeliveryMethodChanged = ({ affectedAccounts }) => {
+      props.refreshAliasedFrom(affectedAccounts);
+    };
 
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Check password strength using zxcvbn. Returns true if strong enough.
+    // Updates the input element's CSS classes and settingsError.
+    //
+    const checkPasswordStrength = (inputEl) => {
+      const result = zxcvbn(editPassword.value);
       if (result.score <= 2) {
-        target.classList.add("is-danger");
-        target.classList.remove("is-warning", "is-success");
-
-        let suggestions = result.feedback.suggestions.join(", ");
-        let feedback =
+        inputEl.classList.add("is-danger");
+        inputEl.classList.remove("is-warning", "is-success");
+        const suggestions = result.feedback.suggestions.join(", ");
+        settingsError.value =
           result.feedback.warning.length > 0
             ? `${result.feedback.warning}: ${suggestions}`
             : suggestions;
+        return false;
+      }
+      inputEl.classList.remove("is-danger");
+      inputEl.classList.add(result.score === 3 ? "is-warning" : "is-success");
+      inputEl.classList.remove(
+        result.score === 3 ? "is-success" : "is-warning",
+      );
+      settingsError.value = "";
+      return true;
+    };
 
-        labelErrorMessages.value["set_password"] = feedback;
-      } else {
-        // If the score is above 3 there will be no result.feedback. We check
-        // if the confirm password is the same or not at this point.
-        //
-        if (emailAccountPassword.value != emailAccountPasswordConfirm.value) {
-          labelErrorMessages.value["set_password"] =
-            "Password and Confirm password do not match.";
-          target.classList.add("is-danger");
-          target.classList.remove("is-warning", "is-success");
-          return;
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Save Account Settings: POST to set_password if a new password was entered.
+    //
+    const saveAccountSettings = async () => {
+      settingsError.value = "";
+      settingsSaving.value = true;
+      try {
+        if (editPassword.value) {
+          const result = zxcvbn(editPassword.value);
+          if (result.score <= 2) {
+            const suggestions = result.feedback.suggestions.join(", ");
+            settingsError.value =
+              result.feedback.warning.length > 0
+                ? `${result.feedback.warning}: ${suggestions}`
+                : suggestions || "Password is too weak.";
+            return;
+          }
+          const set_password_url = new URL(props.setPasswordAction, props.url);
+          const res = await fetch(set_password_url.href, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json; charset=UTF-8" },
+            body: JSON.stringify({ password: editPassword.value }),
+          });
+          if (!res.ok) {
+            if (res.status === 401 || res.status === 403) {
+              settingsError.value = "Session expired — please reload the page.";
+            } else {
+              try {
+                const err = await res.json();
+                settingsError.value =
+                  err.details || err.detail || `HTTP ${res.status}`;
+              } catch {
+                settingsError.value = `HTTP ${res.status}: ${res.statusText}`;
+              }
+            }
+            return;
+          }
         }
 
-        target.classList.remove("is-danger");
-        if (result.score == 3) {
-          target.classList.remove("is-success");
-          target.classList.add("is-warning");
-        } else {
-          target.classList.remove("is-warning");
-          target.classList.add("is-success");
-        }
-        labelErrorMessages.value["set_password"] = "";
+        isEditingSettings.value = false;
+        editPassword.value = "";
+        showEditPassword.value = false;
+      } finally {
+        settingsSaving.value = false;
       }
     };
 
     ////////////////////////////////////////////////////////////////////////
     //
-    const setPassword = async function ($event) {
-      const modal = $event.target.dataset.target;
-      const $target = document.getElementById(modal);
-      const set_password_url = new URL(props.setPasswordAction, props.url);
-      const result = zxcvbn(emailAccountPassword.value);
-
-      // Disable the button while we are checking values and talking to the
-      // server.
-      //
-      $event.target.setAttribute("disabled", true);
-
-      // If the score is 2 or less then idle for a bit, re-enable the set
-      // password button, and return. Do not even bother trying to set the
-      // password.
-      //
-      if (result.score <= 2) {
-        await new Promise((r) => setTimeout(r, 1500));
-        $event.target.removeAttribute("disabled");
-        return;
-      }
-
-      labelErrorMessages.value["set_password"] = "";
-
-      try {
-        emailAccountPasswordStatus.value = "Setting...";
-
-        if (emailAccountPassword.value != emailAccountPasswordConfirm.value) {
-          labelErrorMessages.value["set_password"] =
-            "Password and Confirm password do not match.";
-          return;
-        }
-
-        let res = await fetch(set_password_url.href, {
-          method: "POST",
-          body: JSON.stringify({ password: emailAccountPassword.value }),
-          headers: {
-            "Content-type": "application/json; charset=UTF-8",
-          },
-        });
-
-        if (res.ok) {
-          if ($target) {
-            emailAccountPasswordStatus.value = "Password set successfully";
-            // sleep for a bit so our button goes inactive for a short
-            // bit.. mostly to prevent multiple slams on the button in quick
-            // succession.
-            //
-            await new Promise((r) => setTimeout(r, 1500));
-            $target.classList.remove("is-active");
-          }
-        } else {
-          let errors = await res.json();
-          emailAccountPasswordStatus.value = "";
-          labelErrorMessages.value["set_password"] = errors["details"];
-          // sleep for a bit so our button goes inactive for a short
-          // bit.. mostly to prevent multiple slams on the button in quick
-          // succession.
-          //
-          await new Promise((r) => setTimeout(r, 750));
-        }
-      } finally {
-        emailAccountPasswordStatus.value = "";
-        $event.target.removeAttribute("disabled");
-      }
+    const cancelEditSettings = () => {
+      isEditingSettings.value = false;
+      editPassword.value = "";
+      showEditPassword.value = false;
+      settingsError.value = "";
     };
 
-    //////////
-    //
-    // setup code that does stuff goes here (as opposed to variable
-    // declarations, initialization, and functions we are exporting.)
-    //
-    //////////
-
     //////////////////////////////////////////////////////////////////////
     //
-    // Return the public attributes and methods on the EmailAccount
-    // component
-    //
-    //////////////////////////////////////////////////////////////////////
     return {
-      submitData,
-      submitDisabled,
-      resetData,
-      resetDisabled,
+      isExpanded,
+      methodCount,
+      enabledMethodCount,
+      isEditingSettings,
+      editPassword,
+      showEditPassword,
+      settingsSaving,
+      settingsError,
       labelErrorMessages,
-      filteredValidEmailAddrs,
-      computedAliasFor,
-      computedAliases,
       labelTooltips,
-      emailAccountPassword,
-      emailAccountPasswordConfirm,
-      emailAccountPasswordStatus,
-      checkPassword,
-      setPassword,
+      filteredValidEmailAddrs,
+      toggleExpanded,
+      onCountsUpdated,
+      onDeliveryMethodChanged,
+      checkPasswordStrength,
+      saveAccountSettings,
+      cancelEditSettings,
       props,
     };
   },

@@ -5,11 +5,11 @@ include $(ROOT_DIR)/Make.rules
 DOCKER_BUILDKIT := 1
 LATEST_TAG := $(shell git describe --abbrev=0)
 
-.PHONY: clean test logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs sync lock add add-dev upgrade help
+.PHONY: clean test logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs sync lock add add-dev upgrade help api-schema api-docs
 
-build:	## `docker compose build` for both `prod` and `dev` profiles
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile prod build
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose --profile dev build
+build:	## Build prod and dev Docker images
+	@DOCKER_BUILDKIT=1 docker build --target prod -t as_email_service_app:latest .
+	@DOCKER_BUILDKIT=1 docker build --target dev -t as_email_service_app_dev:latest .
 
 uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
 	@uv sync
@@ -81,10 +81,10 @@ exec_shell: ## Make a bash shell in the docker-compose running devweb container
 	@docker compose exec devweb /bin/bash
 
 manage_shell:	## Run `manage.py shell_plus` in a devweb container.
-	@docker compose run --rm devweb python /app/manage.py shell_plus
+	@docker compose run --rm devweb /venv/bin/python /app/manage.py shell_plus
 
 migrate:	## Run `manage.py migrate` to run all necessary migrations
-	@docker compose run --rm devweb python /app/manage.py migrate
+	@docker compose run --rm devweb /venv/bin/python /app/manage.py migrate
 
 makemigrations: build	## Run `manage.py makemigrations` for the as_email app
 	@docker compose run --rm devweb python /app/manage.py makemigrations as_email
@@ -93,7 +93,7 @@ createadmin: migrate   ## Create django admin account `admin` with password `tes
 	@docker compose run -e DJANGO_SUPERUSER_EMAIL=admin@example.com \
                             -e DJANGO_SUPERUSER_PASSWORD=testpass1234 \
                             --rm devweb \
-                            python /app/manage.py createsuperuser --username admin --no-input
+                            /venv/bin/python /app/manage.py createsuperuser --username admin --no-input
 
 logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
 	@docker compose logs -f worker devweb devsmtpd mailhog
@@ -106,6 +106,17 @@ release: build	## Make a release. Builds and then tags the latest docker image w
 	docker tag as_email_service_app:latest as_email_service_app:$(LATEST_TAG)
 	docker tag as_email_service_app:latest ghcr.io/scanner/as_email_service_app:$(LATEST_TAG)
 	docker push ghcr.io/scanner/as_email_service_app:$(LATEST_TAG)
+
+api-schema: .venv docs	## Generate OpenAPI schema YAML into docs/openapi.yaml
+	@$(UV_RUN) python app/manage.py spectacular --color --file docs/openapi.yaml
+	@echo "OpenAPI schema written to docs/openapi.yaml"
+
+api-docs: api-schema	## Generate API markdown docs from OpenAPI schema
+	@$(UV_RUN) python app/scripts/generate_api_docs.py docs/openapi.yaml docs/api.md
+	@echo "API docs written to docs/api.md"
+
+docs:
+	@mkdir -p $(ROOT_DIR)/docs
 
 help:	## Show this help.
 	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

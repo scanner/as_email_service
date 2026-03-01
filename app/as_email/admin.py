@@ -2,12 +2,20 @@
 #
 from django.contrib import admin
 from ordered_model.admin import OrderedModelAdmin
+from polymorphic.admin import (
+    PolymorphicChildModelAdmin,
+    PolymorphicChildModelFilter,
+    PolymorphicParentModelAdmin,
+)
 
 # Project imports
 #
 from .models import (
+    AliasToDelivery,
+    DeliveryMethod,
     EmailAccount,
     InactiveEmail,
+    LocalDelivery,
     MessageFilterRule,
     Provider,
     Server,
@@ -48,20 +56,53 @@ class ServerAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
 
 
-class AliasForInline(admin.TabularInline):
-    model = EmailAccount.alias_for.through
-    fk_name = "from_email_account"
-    extra = 1
-    verbose_name = "alias for"
-    verbose_name_plural = "aliases for"
+@admin.register(LocalDelivery)
+class LocalDeliveryAdmin(PolymorphicChildModelAdmin):
+    base_model = LocalDelivery
+    list_display = (
+        "id",
+        "email_account",
+        "enabled",
+        "maildir_path",
+        "autofile_spam",
+        "spam_score_threshold",
+        "created_at",
+    )
+    list_filter = ("enabled", "autofile_spam")
 
 
-class AliasesInline(admin.TabularInline):
-    model = EmailAccount.alias_for.through
-    fk_name = "to_email_account"
-    extra = 1
-    verbose_name = "alias"
-    verbose_name_plural = "aliases"
+@admin.register(AliasToDelivery)
+class AliasToDeliveryAdmin(PolymorphicChildModelAdmin):
+    base_model = AliasToDelivery
+    list_display = (
+        "id",
+        "email_account",
+        "enabled",
+        "target_account",
+        "created_at",
+    )
+    list_filter = ("enabled",)
+
+
+@admin.register(DeliveryMethod)
+class DeliveryMethodAdmin(PolymorphicParentModelAdmin):
+    base_model = DeliveryMethod
+    child_models = (LocalDelivery, AliasToDelivery)
+    list_display = (
+        "id",
+        "email_account",
+        "enabled",
+        "polymorphic_ctype",
+        "created_at",
+    )
+    list_filter = (PolymorphicChildModelFilter, "enabled")
+
+
+class DeliveryMethodInline(admin.TabularInline):
+    model = DeliveryMethod
+    fields = ("polymorphic_ctype", "enabled")
+    readonly_fields = ("polymorphic_ctype",)
+    extra = 0
 
 
 @admin.register(EmailAccount)
@@ -71,13 +112,8 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "owner",
         "server",
         "email_address",
-        "delivery_method",
-        "mail_dir",
+        "enabled",
         "password",
-        "autofile_spam",
-        "spam_delivery_folder",
-        "spam_score_threshold",
-        "forward_to",
         "deactivated",
         "num_bounces",
         "deactivated_reason",
@@ -87,7 +123,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
     list_filter = (
         "owner",
         "server",
-        "delivery_method",
+        "enabled",
         "deactivated",
         "created_at",
         "modified_at",
@@ -100,8 +136,7 @@ class EmailAccountAdmin(admin.ModelAdmin):
         "email_address",
     )
     inlines = [
-        AliasForInline,
-        AliasesInline,
+        DeliveryMethodInline,
     ]
     date_hierarchy = "created_at"
 
