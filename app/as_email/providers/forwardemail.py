@@ -566,8 +566,8 @@ class ForwardEmailBackend(ProviderBackend):
     #                                  because a hard 554 reject is too aggressive
     #   has_executable_protection  -- rejects executable attachments; False because
     #                                  legitimate mail sometimes carries executables
-    #   has_catchall               -- False for now; will be True once we add sending
-    #                                  support so unrouted mail has somewhere to land
+    #   has_catchall               -- False; unknown addresses should bounce, not be
+    #                                  silently absorbed by a catch-all
     #   retention_days             -- outbound SMTP log retention (0–30 days);
     #                                  relevant once we add sending support
     #
@@ -582,6 +582,31 @@ class ForwardEmailBackend(ProviderBackend):
         "has_catchall": False,
         "has_delivery_logs": True,
         "retention_days": 7,
+    }
+
+    # Desired settings applied to every alias we manage.  These are
+    # compared against the live alias on every create_update_email_account
+    # call and a PUT is issued for any field that has drifted.
+    #
+    # NOTE: Per-account fields (`name`, `recipients`, `description`) are
+    #       handled separately and are not listed here.
+    #
+    # Field notes:
+    #   labels                   -- no labels; we don't use them
+    #   has_recipient_verification -- False; we never want delivery held
+    #                                pending a click-through verification
+    #   is_enabled               -- True; aliases are active by default;
+    #                                enable_email_account() overrides this
+    #                                independently
+    #   has_imap                 -- False; mail arrives via webhook, not IMAP
+    #   has_pgp                  -- False; no PGP encryption at the provider
+    #
+    DEFAULT_ALIAS_SETTINGS: dict[str, Any] = {
+        "labels": "",
+        "has_recipient_verification": False,
+        "is_enabled": True,
+        "has_imap": False,
+        "has_pgp": False,
     }
 
     ####################################################################
@@ -1126,6 +1151,11 @@ class ForwardEmailBackend(ProviderBackend):
         Create a domain alias on forwardemail.net for an EmailAccount, or
         update it with our settings if it already exists.
 
+        If the alias already exists its live settings are fetched and compared
+        against DEFAULT_ALIAS_SETTINGS plus the per-account dynamic fields
+        (recipients, description); a PUT is issued only when something has
+        drifted.
+
         Args:
             email_account: The EmailAccount to create or update an alias for
         """
@@ -1133,58 +1163,63 @@ class ForwardEmailBackend(ProviderBackend):
         #
         domain_id = self.cache.get_domain_id(email_account.server.domain_name)
 
-        # Extract mailbox name from email address
-        #
         mailbox_name = email_account.email_address.split("@")[0]
-
-        # Construct webhook URL for this email account
-        #
         webhook_url = self.get_webhook_url(email_account)
 
-        # Prepare alias data
+        # The full desired state for this alias: static defaults plus the
+        # per-account fields that may change over time.
         #
-        alias_data = {
-            "name": mailbox_name,
+        wanted = {
+            **self.DEFAULT_ALIAS_SETTINGS,
             "recipients": [webhook_url],
             "description": f"Email account for {email_account.owner.username}",
-            "labels": "",
-            "has_recipient_verification": False,
-            "is_enabled": True,
-            "has_imap": False,
-            "has_pgp": False,
         }
 
-        # Check if the alias already exists by trying to get it
-        #
         try:
             alias_id = self.cache.get_alias_id(
                 domain_id, email_account.email_address
             )
 
-            # Alias exists - update it using PUT
+            # Alias exists -- fetch current settings and apply any updates.
             #
             r = self.api.req(
-                HTTPMethod.PUT,
+                HTTPMethod.GET,
                 f"v1/domains/{domain_id}/aliases/{alias_id}",
-                data=alias_data,
             )
             alias_info = r.json()
+
+            to_update = {
+                k: v for k, v in wanted.items() if alias_info.get(k) != v
+            }
+
+            if to_update:
+                logger.info(
+                    "Alias '%s' settings updated: %r",
+                    email_account.email_address,
+                    to_update,
+                )
+                r = self.api.req(
+                    HTTPMethod.PUT,
+                    f"v1/domains/{domain_id}/aliases/{alias_id}",
+                    data=to_update,
+                )
+                alias_info = r.json()
+            else:
+                logger.debug(
+                    "Alias '%s' already exists with correct settings (ID: %s)",
+                    email_account.email_address,
+                    alias_id,
+                )
+
             self.cache.set_alias(alias_info, email_account.server.domain_name)
 
-            logger.info(
-                "Updated forwardemail.net alias for %s (ID: %s), webhook: %s",
-                email_account.email_address,
-                alias_id,
-                webhook_url,
-            )
-
         except KeyError:
-            # Alias doesn't exist - create it using POST
+            # Alias doesn't exist - create it.
             #
             r = self.api.req(
                 HTTPMethod.POST,
                 f"v1/domains/{domain_id}/aliases",
-                data=alias_data,
+                data={"name": mailbox_name, **wanted},
             )
             alias_info = r.json()
             self.cache.set_alias(alias_info, email_account.server.domain_name)

@@ -994,73 +994,123 @@ class TestForwardEmailAPIMethods:
         self, email_account_factory, mocker, faker, caplog
     ) -> None:
         """
-        Given an EmailAccount that already exists on forwardemail.net
+        Given an EmailAccount that already exists on forwardemail.net with a
+        stale webhook URL
         When create_update_email_account is called
-        Then it should update the existing alias via PUT
+        Then it should GET the live alias, detect the drift, and PUT only the
+        changed fields
         """
         backend = ForwardEmailBackend()
         email_account = email_account_factory()
         domain_id = faker.uuid4()
         alias_id = faker.uuid4()
 
-        # Mock get_domain_id
         mocker.patch.object(
             backend.cache, "get_domain_id", return_value=domain_id
         )
-
-        # Mock get_webhook_url
         webhook_url = (
             f"https://example.com/webhook/{email_account.email_address}"
         )
         mocker.patch.object(
             backend, "get_webhook_url", return_value=webhook_url
         )
-
-        # Mock get_alias_id to return existing alias ID
         mocker.patch.object(
             backend.cache, "get_alias_id", return_value=alias_id
         )
 
-        # Mock API request for PUT (update)
-        mock_response = mocker.MagicMock()
-        mock_response.json.return_value = {
+        # GET returns alias with a stale webhook URL so recipients will drift
+        get_response = mocker.MagicMock()
+        get_response.json.return_value = {
+            "id": alias_id,
+            "name": email_account.email_address.split("@")[0],
+            "recipients": ["https://old-internal-host.example.com/hook"],
+            "description": f"Email account for {email_account.owner.username}",
+            "labels": "",
+            "has_recipient_verification": False,
+            "is_enabled": True,
+            "has_imap": False,
+            "has_pgp": False,
+        }
+        put_response = mocker.MagicMock()
+        put_response.json.return_value = {
             "id": alias_id,
             "name": email_account.email_address.split("@")[0],
         }
         mock_api_req = mocker.patch.object(
-            backend.api, "req", return_value=mock_response
+            backend.api, "req", side_effect=[get_response, put_response]
         )
-
-        # Mock cache.set_alias
         mock_set_alias = mocker.patch.object(backend.cache, "set_alias")
 
-        # Call create_update_email_account
         backend.create_update_email_account(email_account)
 
-        # Verify get_alias_id was called
         backend.cache.get_alias_id.assert_called_once_with(
             domain_id, email_account.email_address
         )
 
-        # Verify PUT was called with correct data
-        mock_api_req.assert_called_once()
-        call_args = mock_api_req.call_args
-        assert call_args[0][0].value == "put"  # HTTPMethod.PUT
-        assert f"v1/domains/{domain_id}/aliases/{alias_id}" in call_args[0][1]
-        assert call_args[1]["data"] == IsPartialDict(
-            name=email_account.email_address.split("@")[0],
-            recipients=[webhook_url],
-            is_enabled=True,
-            description=f"Email account for {email_account.owner.username}",
+        # First call: GET to fetch live settings
+        get_call = mock_api_req.call_args_list[0]
+        assert get_call[0][0] == HTTPMethod.GET
+        assert f"v1/domains/{domain_id}/aliases/{alias_id}" in get_call[0][1]
+
+        # Second call: PUT with only the drifted field (recipients)
+        put_call = mock_api_req.call_args_list[1]
+        assert put_call[0][0] == HTTPMethod.PUT
+        assert f"v1/domains/{domain_id}/aliases/{alias_id}" in put_call[0][1]
+        assert put_call[1]["data"] == {"recipients": [webhook_url]}
+
+        mock_set_alias.assert_called_once()
+        assert "settings updated" in caplog.text
+        assert email_account.email_address in caplog.text
+
+    ####################################################################
+    #
+    def test_create_update_email_account_no_put_when_settings_match(
+        self, email_account_factory, mocker, faker, caplog
+    ) -> None:
+        """
+        Given an EmailAccount whose live alias already matches DEFAULT_ALIAS_SETTINGS
+        and has the correct webhook URL
+        When create_update_email_account is called
+        Then it should GET the live alias but issue no PUT
+        """
+        backend = ForwardEmailBackend()
+        email_account = email_account_factory()
+        domain_id = faker.uuid4()
+        alias_id = faker.uuid4()
+
+        mocker.patch.object(
+            backend.cache, "get_domain_id", return_value=domain_id
+        )
+        webhook_url = (
+            f"https://example.com/webhook/{email_account.email_address}"
+        )
+        mocker.patch.object(
+            backend, "get_webhook_url", return_value=webhook_url
+        )
+        mocker.patch.object(
+            backend.cache, "get_alias_id", return_value=alias_id
         )
 
-        # Verify cache.set_alias was called
-        mock_set_alias.assert_called_once()
+        # GET returns alias that already matches everything we want
+        get_response = mocker.MagicMock()
+        get_response.json.return_value = {
+            "id": alias_id,
+            "name": email_account.email_address.split("@")[0],
+            "recipients": [webhook_url],
+            "description": f"Email account for {email_account.owner.username}",
+            **backend.DEFAULT_ALIAS_SETTINGS,
+        }
+        mock_api_req = mocker.patch.object(
+            backend.api, "req", return_value=get_response
+        )
+        mock_set_alias = mocker.patch.object(backend.cache, "set_alias")
 
-        # Verify logging
-        assert "Updated forwardemail.net alias for" in caplog.text
-        assert email_account.email_address in caplog.text
-        assert alias_id in caplog.text
+        backend.create_update_email_account(email_account)
+
+        # Only the GET should have been called; no PUT
+        assert mock_api_req.call_count == 1
+        assert mock_api_req.call_args[0][0] == HTTPMethod.GET
+        mock_set_alias.assert_called_once()
 
     ####################################################################
     #
@@ -1114,21 +1164,19 @@ class TestForwardEmailAPIMethods:
         self, email_account_factory, mocker, faker
     ) -> None:
         """
-        Given an EmailAccount
+        Given an EmailAccount that does not yet exist on forwardemail.net
         When create_update_email_account is called
-        Then it should construct alias data with correct fields
+        Then the POST payload should contain name, recipients, description,
+        and all DEFAULT_ALIAS_SETTINGS fields
         """
         backend = ForwardEmailBackend()
         email_account = email_account_factory()
         domain_id = faker.uuid4()
         alias_id = faker.uuid4()
 
-        # Mock get_domain_id
         mocker.patch.object(
             backend.cache, "get_domain_id", return_value=domain_id
         )
-
-        # Mock get_webhook_url
         webhook_url = (
             f"https://example.com/webhook/{email_account.email_address}"
         )
@@ -1136,12 +1184,11 @@ class TestForwardEmailAPIMethods:
             backend, "get_webhook_url", return_value=webhook_url
         )
 
-        # Mock get_alias_id to return existing alias ID
+        # Alias does not exist → POST path
         mocker.patch.object(
-            backend.cache, "get_alias_id", return_value=alias_id
+            backend.cache, "get_alias_id", side_effect=KeyError()
         )
 
-        # Mock API request
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = {
             "id": alias_id,
@@ -1150,15 +1197,13 @@ class TestForwardEmailAPIMethods:
         mock_api_req = mocker.patch.object(
             backend.api, "req", return_value=mock_response
         )
-
-        # Mock cache.set_alias
         mocker.patch.object(backend.cache, "set_alias")
 
-        # Call create_update_email_account
         backend.create_update_email_account(email_account)
 
-        # Verify alias data structure
+        # Verify POST was called and the payload has the full data structure
         call_args = mock_api_req.call_args
+        assert call_args[0][0] == HTTPMethod.POST
         alias_data = call_args[1]["data"]
 
         assert alias_data["name"] == email_account.email_address.split("@")[0]
