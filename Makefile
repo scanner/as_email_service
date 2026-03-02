@@ -61,42 +61,41 @@ ssl/ssl_key.pem ssl/ssl_crt.pem:
 
 certs: ssl ssl/ssl_key.pem ssl/ssl_crt.pem	## uses `mkcert` to create certificates for local development.
 
-up: build dirs certs	## build and then `docker compose up` for the `dev` profile. Use this to rebuild restart services that have changed.
-	@docker compose --profile dev up --remove-orphans --detach
+up: build dirs certs	## build and then `docker compose up`
+	@docker compose up --remove-orphans --detach
 
-down:	## `docker compose down` for the `dev` profile
-	@docker compose --profile dev down --remove-orphans
+down:	## `docker compose down`
+	@docker compose  down
 
 delete: clean	## docker compose down for `dev` and `prod` and `make clean`.
-	@docker compose --profile dev down --remove-orphans
-	@docker compose --profile prod down --remove-orphans
+	@docker compose down --remove-orphans
 
-restart:	## docker compose restart for the `dev` profile
-	@docker compose --profile dev restart
+restart:	## docker compose restart
+	@docker compose restart
 
-shell:	## Make a bash shell an ephemeral devweb container
-	@docker compose run --rm devweb /bin/bash
+shell:	## Make a bash shell an ephemeral web container
+	@docker compose run --rm web /bin/bash
 
-exec_shell: ## Make a bash shell in the docker-compose running devweb container
-	@docker compose exec devweb /bin/bash
+exec_shell: ## Make a bash shell in the docker-compose running web container
+	@docker compose exec web /bin/bash
 
-manage_shell:	## Run `manage.py shell_plus` in a devweb container.
-	@docker compose run --rm devweb /venv/bin/python /app/manage.py shell_plus
+manage_shell:	## Run `manage.py shell_plus` in a web container.
+	@docker compose run --rm web /venv/bin/python /app/manage.py shell_plus
 
 migrate:	## Run `manage.py migrate` to run all necessary migrations
-	@docker compose run --rm devweb /venv/bin/python /app/manage.py migrate
+	@docker compose run --rm web /venv/bin/python /app/manage.py migrate
 
 makemigrations: build	## Run `manage.py makemigrations` for the as_email app
-	@docker compose run --rm devweb python /app/manage.py makemigrations as_email
+	@docker compose run --rm web python /app/manage.py makemigrations as_email
 
 createadmin: migrate   ## Create django admin account `admin` with password `testpass1234`
 	@docker compose run -e DJANGO_SUPERUSER_EMAIL=admin@example.com \
                             -e DJANGO_SUPERUSER_PASSWORD=testpass1234 \
-                            --rm devweb \
+                            --rm web \
                             /venv/bin/python /app/manage.py createsuperuser --username admin --no-input
 
-logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
-	@docker compose logs -f worker devweb devsmtpd mailhog
+logs:	## Tail the logs for web, worker, smtpd, mailhog
+	@docker compose logs -f worker web smtpd mailhog
 
 test: .venv	## Run all of the tests
 	@$(UV_RUN) pytest --cov=as_email --cov-report=html app/
