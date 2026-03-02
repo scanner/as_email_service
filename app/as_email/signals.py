@@ -38,7 +38,7 @@ from .tasks import (
     provider_create_email_account,
     provider_create_server,
     provider_delete_email_account,
-    provider_enable_email_accounts_for_server,
+    provider_sync_server_aliases,
 )
 
 User = get_user_model()
@@ -286,14 +286,14 @@ def handle_receive_providers_changed(
     """
     match action:
         case "post_add":
-            # Provider(s) added to server - register server then enable email accounts
+            # Provider(s) added to server - register server then sync aliases
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
-                # Chain tasks: register server first, then enable email accounts
+                # Chain tasks: register server first, then sync aliases
                 pipeline = provider_create_server.s(
                     instance.pk, provider.backend_name
                 ).then(
-                    provider_enable_email_accounts_for_server,
+                    provider_sync_server_aliases,
                     instance.pk,
                     provider.backend_name,
                     True,
@@ -301,10 +301,9 @@ def handle_receive_providers_changed(
                 HUEY.enqueue(pipeline)
 
         case "post_remove":
-            # Provider(s) removed from server - disable email accounts
+            # Provider(s) removed from server - delete all aliases on the provider
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
-                # Disable all email accounts for this server on the provider
-                provider_enable_email_accounts_for_server(
+                provider_sync_server_aliases(
                     instance.pk, provider.backend_name, enabled=False
                 )

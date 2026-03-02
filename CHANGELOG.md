@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `sync_provider_aliases` management command re-pushes alias settings (including webhook URLs) to all configured providers — useful after changing `SITE_NAME`
+- `ProviderName` StrEnum in the provider package enumerates all registered backend names
+- `ForwardEmailBackend.DEFAULT_ALIAS_SETTINGS` class attribute documents and enforces desired per-alias configuration, mirroring the existing `DEFAULT_DOMAIN_SETTINGS` pattern
+
+### Changed
+
+- GH-196: `ForwardEmailBackend.create_update_domain()` now fetches the live domain, diffs it against `DEFAULT_DOMAIN_SETTINGS`, and issues a PUT only for fields that have drifted; no-op when settings are already correct
+- `ForwardEmailBackend.create_update_email_account()` applies the same idempotent GET → diff → conditional PUT pattern using `DEFAULT_ALIAS_SETTINGS`
+- Provider admin: `backend_name` is now a dropdown of registered backends instead of a free-text field
+- Provider admin: SMTP server configuration split into separate host and port fields; port accepts any valid port (1–65535, default 25); receive-only providers no longer require an SMTP host
+
 ## [0.4.0] - 2026-02-25
 
 ### Added

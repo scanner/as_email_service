@@ -220,7 +220,7 @@ class TestProviderSignals:
 
     ####################################################################
     #
-    def test_handle_receive_providers_changed_post_remove_disables_email_accounts(
+    def test_handle_receive_providers_changed_post_remove_deletes_aliases(
         self,
         server_factory: Callable[..., Server],
         mocker: MockerFixture,
@@ -228,24 +228,24 @@ class TestProviderSignals:
         """
         GIVEN: a server with one receive provider
         WHEN:  that provider is removed from server.receive_providers
-        THEN:  provider_enable_email_accounts_for_server is called with enabled=False
+        THEN:  provider_sync_server_aliases is called with enabled=False
         """
         server = server_factory()
         provider = server.receive_providers.first()
 
-        mock_enable = mocker.patch(
-            "as_email.signals.provider_enable_email_accounts_for_server"
+        mock_sync = mocker.patch(
+            "as_email.signals.provider_sync_server_aliases"
         )
 
         server.receive_providers.remove(provider)
 
-        mock_enable.assert_called_once_with(
+        mock_sync.assert_called_once_with(
             server.pk, provider.backend_name, enabled=False
         )
 
     ####################################################################
     #
-    def test_handle_receive_providers_changed_post_remove_disables_email_accounts_per_provider(
+    def test_handle_receive_providers_changed_post_remove_deletes_aliases_per_provider(
         self,
         server_factory: Callable[..., Server],
         provider_factory: Callable[..., Provider],
@@ -254,22 +254,21 @@ class TestProviderSignals:
         """
         GIVEN: a server with two receive providers
         WHEN:  both providers are removed from server.receive_providers in one call
-        THEN:  provider_enable_email_accounts_for_server is called once per provider
-               with enabled=False
+        THEN:  provider_sync_server_aliases is called once per provider with enabled=False
         """
         server = server_factory()
         second_provider = provider_factory()
         server.receive_providers.add(second_provider)
 
-        mock_enable = mocker.patch(
-            "as_email.signals.provider_enable_email_accounts_for_server"
+        mock_sync = mocker.patch(
+            "as_email.signals.provider_sync_server_aliases"
         )
 
         providers = list(server.receive_providers.all())
         server.receive_providers.remove(*providers)
 
-        assert mock_enable.call_count == 2
+        assert mock_sync.call_count == 2
         for provider in providers:
-            mock_enable.assert_any_call(
+            mock_sync.assert_any_call(
                 server.pk, provider.backend_name, enabled=False
             )

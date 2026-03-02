@@ -36,9 +36,9 @@ from ..tasks import (
     provider_create_email_account,
     provider_create_server,
     provider_delete_email_account,
-    provider_enable_email_accounts_for_server,
     provider_report_unused_servers,
     provider_sync_email_accounts,
+    provider_sync_server_aliases,
     retry_failed_incoming_email,
 )
 from ..utils import (
@@ -1070,12 +1070,12 @@ class TestProviderDeleteAlias:
 ########################################################################
 ########################################################################
 #
-class TestProviderEnableAllAliases:
-    """Tests for provider_enable_email_accounts_for_server task."""
+class TestProviderSyncServerAliases:
+    """Tests for provider_sync_server_aliases task."""
 
     ####################################################################
     #
-    def test_enable_all_aliases_creates_missing(
+    def test_creates_missing_aliases(
         self,
         mocker: MockerFixture,
         server_factory,
@@ -1085,7 +1085,7 @@ class TestProviderEnableAllAliases:
     ) -> None:
         """
         Given a server with email accounts but missing aliases on provider
-        When provider_enable_email_accounts_for_server is called
+        When provider_sync_server_aliases is called with enabled=True
         Then missing aliases should be created
         """
         server = server_factory(send_provider=None, receive_providers=[])
@@ -1093,7 +1093,7 @@ class TestProviderEnableAllAliases:
         ea2 = email_account_factory(server=server)
         email_accounts = sorted((ea1, ea2), key=lambda x: x.email_address)
 
-        res = provider_enable_email_accounts_for_server(
+        res = provider_sync_server_aliases(
             server.pk,
             dummy_provider.PROVIDER_NAME,
             enabled=True,
@@ -1109,7 +1109,7 @@ class TestProviderEnableAllAliases:
 
     ####################################################################
     #
-    def test_enable_all_aliases_updates_existing(
+    def test_enables_disabled_aliases(
         self,
         mocker: MockerFixture,
         server_factory,
@@ -1117,42 +1117,31 @@ class TestProviderEnableAllAliases:
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
-        Given aliases that exist but have wrong is_enabled state
-        When provider_enable_email_accounts_for_server is called
-        Then aliases should be updated
+        Given aliases that exist but are disabled on the provider
+        When provider_sync_server_aliases is called with enabled=True
+        Then aliases should be enabled
         """
         server = server_factory()
-
-        # Create the email accounts, since we did not specify providers when
-        # creating the server via the factory it used the dummy backend. By
-        # creating these email accounts they will be created in the provider
-        # backend (and enabled)
-        #
         email_accounts = [
             email_account_factory(server=server) for _ in range(3)
         ]
         for ea in email_accounts:
             dummy_provider.enable_email_account(ea, enabled=False)
 
-        # To make sure they got disabled check the backend..
-        #
         for ea in dummy_provider.list_email_accounts(server):
             assert ea.enabled is False
 
-        res = provider_enable_email_accounts_for_server(
+        res = provider_sync_server_aliases(
             server.pk, dummy_provider.PROVIDER_NAME, enabled=True
         )
         res()
 
-        # Go through each email account, and check its state. They should all
-        # be enabled now.
-        #
         for ea in dummy_provider.list_email_accounts(server):
             assert ea.enabled is True
 
     ####################################################################
     #
-    def test_enable_all_aliases_skips_correct_state(
+    def test_skips_already_correct_aliases(
         self,
         mocker: MockerFixture,
         server_factory,
@@ -1160,8 +1149,9 @@ class TestProviderEnableAllAliases:
         provider_factory,
     ) -> None:
         """
-        Given aliases already in correct is_enabled state When
-        provider_enable_email_accounts_for_server is called Then aliases should be skipped
+        Given aliases already enabled on the provider
+        When provider_sync_server_aliases is called with enabled=True
+        Then no create, enable, or delete calls should be made
         """
         provider = provider_factory(backend_name="dummy")
         server = server_factory()
@@ -1170,7 +1160,6 @@ class TestProviderEnableAllAliases:
         ea1 = email_account_factory(server=server)
         mailbox_name = ea1.email_address.split("@")[0]
 
-        # Mock backend to return alias that is already enabled
         mock_backend = mocker.Mock()
         mock_backend.list_email_accounts.return_value = [
             EmailAccountInfo(
@@ -1186,18 +1175,18 @@ class TestProviderEnableAllAliases:
             return_value=mock_backend,
         )
 
-        res = provider_enable_email_accounts_for_server(
+        res = provider_sync_server_aliases(
             server.pk, provider.backend_name, enabled=True
         )
         res()
 
-        # Verify no changes were made
-        mock_backend.create_update_email_account.assert_not_called()
+        mock_backend.create_email_account.assert_not_called()
         mock_backend.enable_email_account.assert_not_called()
+        mock_backend.delete_email_account_by_address.assert_not_called()
 
     ####################################################################
     #
-    def test_enable_all_aliases_mixed_operations(
+    def test_deletes_orphaned_aliases(
         self,
         mocker: MockerFixture,
         server_factory,
@@ -1205,26 +1194,80 @@ class TestProviderEnableAllAliases:
         provider_factory,
     ) -> None:
         """
-        Given a mix of enabled, disabled, and missing email accounts from the backend
-        When `provider_enable_email_accounts_for_server` is called
-        Then disabled accounts should be enabled, missing accounts created
+        Given aliases on the provider with no corresponding local EmailAccount
+        (e.g. catch-all "*", or leftovers from deleted accounts)
+        When provider_sync_server_aliases is called with enabled=True
+        Then orphaned aliases should be deleted
         """
         provider = provider_factory(backend_name="dummy")
         server = server_factory()
         server.receive_providers.add(provider)
 
-        ea1 = email_account_factory(server=server)  # Will need to be created
-        ea2 = email_account_factory(server=server)  # Needs update
-        ea3 = email_account_factory(server=server)  # Already correct
+        ea1 = email_account_factory(server=server)
+        mailbox1 = ea1.email_address.split("@")[0]
+
+        # Provider has ea1 plus a stray catch-all with no local counterpart
+        catchall_email = f"*@{server.domain_name}"
+        mock_backend = mocker.Mock()
+        mock_backend.list_email_accounts.return_value = [
+            EmailAccountInfo(
+                id=f"dummy-{mailbox1}",
+                email=ea1.email_address,
+                domain=server.domain_name,
+                enabled=True,
+                name=mailbox1,
+            ),
+            EmailAccountInfo(
+                id="dummy-catchall",
+                email=catchall_email,
+                domain=server.domain_name,
+                enabled=True,
+                name="*",
+            ),
+        ]
+        mocker.patch(
+            "as_email.tasks.get_backend",
+            return_value=mock_backend,
+        )
+
+        res = provider_sync_server_aliases(
+            server.pk, provider.backend_name, enabled=True
+        )
+        res()
+
+        mock_backend.delete_email_account_by_address.assert_called_once_with(
+            catchall_email, server
+        )
+        mock_backend.create_email_account.assert_not_called()
+        mock_backend.enable_email_account.assert_not_called()
+
+    ####################################################################
+    #
+    def test_mixed_operations(
+        self,
+        mocker: MockerFixture,
+        server_factory,
+        email_account_factory,
+        provider_factory,
+    ) -> None:
+        """
+        Given a mix of missing, disabled, correct, and orphaned aliases
+        When provider_sync_server_aliases is called with enabled=True
+        Then: missing are created, disabled are enabled, orphans are deleted,
+              correct are skipped
+        """
+        provider = provider_factory(backend_name="dummy")
+        server = server_factory()
+        server.receive_providers.add(provider)
+
+        ea1 = email_account_factory(server=server)  # missing from provider
+        ea2 = email_account_factory(server=server)  # disabled on provider
+        ea3 = email_account_factory(server=server)  # already enabled
 
         mailbox2 = ea2.email_address.split("@")[0]
         mailbox3 = ea3.email_address.split("@")[0]
+        catchall_email = f"*@{server.domain_name}"
 
-        # All the backends have the same methods. We are testing that this task
-        # will properly take the list of email accounts that the backend
-        # returns from `list_email_accounts` and issue commands to set them all
-        # to enabled.
-        #
         mock_backend = mocker.Mock()
         mock_backend.list_email_accounts.return_value = [
             EmailAccountInfo(
@@ -1233,36 +1276,98 @@ class TestProviderEnableAllAliases:
                 domain=server.domain_name,
                 enabled=False,
                 name=mailbox2,
-            ),  # Wrong state
+            ),
             EmailAccountInfo(
                 id=f"dummy-{mailbox3}",
                 email=ea3.email_address,
                 domain=server.domain_name,
                 enabled=True,
                 name=mailbox3,
-            ),  # Correct state
+            ),
+            EmailAccountInfo(
+                id="dummy-catchall",
+                email=catchall_email,
+                domain=server.domain_name,
+                enabled=True,
+                name="*",
+            ),
         ]
         mocker.patch(
             "as_email.tasks.get_backend",
             return_value=mock_backend,
         )
 
-        # Call the huey task. Remember in tests all huey tasks execute in
-        # immediate mode.
-        #
-        res = provider_enable_email_accounts_for_server(
+        res = provider_sync_server_aliases(
             server.pk, provider.backend_name, enabled=True
         )
         res()
 
-        # Verify operations
-        # ea1 should be created (not in backend list)
         mock_backend.create_email_account.assert_called_once_with(ea1)
-        # ea2 should be enabled (in backend list but wrong state)
         mock_backend.enable_email_account.assert_called_once_with(
             ea2, enabled=True
         )
-        # ea3 should not be touched (already in correct state)
+        mock_backend.delete_email_account_by_address.assert_called_once_with(
+            catchall_email, server
+        )
+
+    ####################################################################
+    #
+    def test_enabled_false_deletes_all_aliases(
+        self,
+        mocker: MockerFixture,
+        server_factory,
+        email_account_factory,
+        provider_factory,
+    ) -> None:
+        """
+        Given a server with aliases on the provider
+        When provider_sync_server_aliases is called with enabled=False
+        Then all remote aliases should be deleted (provider removed from server)
+        """
+        provider = provider_factory(backend_name="dummy")
+        server = server_factory()
+        server.receive_providers.add(provider)
+
+        ea1 = email_account_factory(server=server)
+        ea2 = email_account_factory(server=server)
+        mailbox1 = ea1.email_address.split("@")[0]
+        mailbox2 = ea2.email_address.split("@")[0]
+
+        mock_backend = mocker.Mock()
+        mock_backend.list_email_accounts.return_value = [
+            EmailAccountInfo(
+                id=f"dummy-{mailbox1}",
+                email=ea1.email_address,
+                domain=server.domain_name,
+                enabled=True,
+                name=mailbox1,
+            ),
+            EmailAccountInfo(
+                id=f"dummy-{mailbox2}",
+                email=ea2.email_address,
+                domain=server.domain_name,
+                enabled=True,
+                name=mailbox2,
+            ),
+        ]
+        mocker.patch(
+            "as_email.tasks.get_backend",
+            return_value=mock_backend,
+        )
+
+        res = provider_sync_server_aliases(
+            server.pk, provider.backend_name, enabled=False
+        )
+        res()
+
+        assert mock_backend.delete_email_account_by_address.call_count == 2
+        deleted_addresses = {
+            call.args[0]
+            for call in mock_backend.delete_email_account_by_address.call_args_list
+        }
+        assert deleted_addresses == {ea1.email_address, ea2.email_address}
+        mock_backend.create_email_account.assert_not_called()
+        mock_backend.enable_email_account.assert_not_called()
 
 
 ########################################################################
@@ -1285,7 +1390,7 @@ class TestProviderSyncAliases:
         """
         Given multiple providers with multiple servers
         When provider_sync_email_accounts is called
-        Then provider_enable_email_accounts_for_server should be called for all servers
+        Then provider_sync_server_aliases should be called for all servers
         """
         provider1 = provider_factory(backend_name="dummy")
         provider2 = provider_factory(backend_name="dummy")
@@ -1296,34 +1401,23 @@ class TestProviderSyncAliases:
         server4 = server_factory(receive_providers=[provider2])
 
         # We actually do not need any email address because we are going to
-        # mock the underlying function `provider_enable_email_accounts_for_server_for_server`
-        # and see that it is called. Testing _that_ task is a separate test
-        # from this one.
+        # mock the underlying provider_sync_server_aliases task and verify it
+        # is called. Testing _that_ task is a separate test from this one.
         #
         for server in (server1, server2, server3, server4):
             email_account_factory(server=server)
             email_account_factory(server=server)
 
-        # mock the `provider_enable_all_alises` task that will be called once
-        # for each server. We are doing it after the above factories because
-        # they will also call this task when setting up the intial aliases.
+        # Mock provider_sync_server_aliases after the factories run so we only
+        # capture the calls from the periodic task under test.
         #
-        provider_enable_email_accounts_for_server_mock = mocker.patch(
-            "as_email.tasks.provider_enable_email_accounts_for_server"
-        )
+        mock_sync = mocker.patch("as_email.tasks.provider_sync_server_aliases")
         res = provider_sync_email_accounts()
         res()
 
-        # Verify provider_enable_email_accounts_for_server was called once for each server.
-        #
-        assert provider_enable_email_accounts_for_server_mock.call_count == 4
+        assert mock_sync.call_count == 4
 
-        # Verify it was called with each server exactly once
-        #
-        called_server_ids = {
-            call[0][0]
-            for call in provider_enable_email_accounts_for_server_mock.call_args_list
-        }
+        called_server_ids = {call[0][0] for call in mock_sync.call_args_list}
         expected_server_ids = {server1.pk, server2.pk, server3.pk, server4.pk}
         assert called_server_ids == expected_server_ids
 
@@ -1356,10 +1450,9 @@ class TestProviderSyncAliases:
             side_effect=get_backend_side_effect,
         )
 
-        # Mock provider_enable_email_accounts_for_server
         mock_enable_task = mocker.Mock()
         mocker.patch(
-            "as_email.tasks.provider_enable_email_accounts_for_server",
+            "as_email.tasks.provider_sync_server_aliases",
             return_value=mock_enable_task,
         )
 
