@@ -566,20 +566,20 @@ class ForwardEmailBackend(ProviderBackend):
     #                                  because a hard 554 reject is too aggressive
     #   has_executable_protection  -- rejects executable attachments; False because
     #                                  legitimate mail sometimes carries executables
-    #   has_catchall               -- False; unknown addresses should bounce, not be
-    #                                  silently absorbed by a catch-all
     #   retention_days             -- outbound SMTP log retention (0–30 days);
     #                                  relevant once we add sending support
     #
     # NOTE: `plan` is intentionally excluded -- it is managed via the
     #       forwardemail.net website and must never be overwritten by code.
+    # NOTE: `catchall` is intentionally excluded -- it is only accepted at
+    #       domain creation time (POST), not on updates (PUT).  It is passed
+    #       separately in create_update_domain() when creating a new domain.
     #
     DEFAULT_DOMAIN_SETTINGS: dict[str, Any] = {
         "has_adult_content_protection": False,
         "has_phishing_protection": True,
         "has_executable_protection": False,
         "has_virus_protection": True,
-        "has_catchall": False,
         "has_delivery_logs": True,
         "retention_days": 7,
     }
@@ -1013,8 +1013,13 @@ class ForwardEmailBackend(ProviderBackend):
             pass
 
         # Create the domain with our desired settings.
+        # NOTE: `catchall` is a create-only field; it cannot be set via PUT.
         #
-        data = {"domain": server.domain_name, **self.DEFAULT_DOMAIN_SETTINGS}
+        data = {
+            "domain": server.domain_name,
+            "catchall": False,
+            **self.DEFAULT_DOMAIN_SETTINGS,
+        }
         r = self.api.req(HTTPMethod.POST, "v1/domains", data=data)
         domain_info = r.json()
         self.cache.set_domain(domain_info)

@@ -751,39 +751,33 @@ def provider_delete_email_account(
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_enable_email_accounts_for_server(
+def provider_sync_server_aliases(
     server_pk: int, provider_name: str, enabled: bool
 ) -> None:
     """
-    Enable or disable all email accounts for a server on the specified provider.
+    Bidirectional alias sync between local EmailAccounts and a provider.
 
-    This task fetches the current state of all email accounts from the provider,
-    compares with local EmailAccounts, and only updates those that need changing.
-    It will also create any missing email accounts.
+    When enabled=True (normal sync, e.g. hourly or on provider add):
+      - Creates aliases on the provider for any local EmailAccount that is missing
+      - Deletes aliases on the provider that have no corresponding local EmailAccount
+        (catches catch-all aliases, manually-created strays, leftovers from
+        deleted EmailAccounts, etc.)
+      - Enables any alias that is currently disabled on the provider
 
-    This task is triggered when:
-    - Provider is added to Server's receive_providers (enabled=True)
-    - Provider is removed from Server's receive_providers (enabled=False)
+    When enabled=False (provider removed from server's receive_providers):
+      - Deletes ALL aliases for this server from the provider (clean slate)
 
     Args:
         server_pk: Primary key of the Server instance
         provider_name: Name of the provider backend (e.g., 'forwardemail',
                        'postmark')
-        enabled: True to enable email accounts, False to disable them
+        enabled: True for normal sync; False to delete all remote aliases
     """
     server = Server.objects.get(pk=server_pk)
     backend = get_backend(provider_name)
 
-    # Get all EmailAccounts for this server
+    # Fetch all existing aliases from the provider.
     #
-    # NOTE: This obviously does not scale if you have thousands and thousands
-    # of email accounts. We likely need to do both fetches from django and from
-    # the provider in parallel using generators.
-    #
-    email_accounts = EmailAccount.objects.filter(server=server)
-    local_addresses = {ea.email_address: ea for ea in email_accounts}
-
-    # Fetch all existing email accounts from the provider
     try:
         remote_email_accounts = backend.list_email_accounts(server)
     except Exception as e:
@@ -795,65 +789,126 @@ def provider_enable_email_accounts_for_server(
         )
         raise
 
-    # Build a map of remote email accounts by their email address
-    #
     remote_map = {ea.email: ea for ea in remote_email_accounts}
 
+    if not enabled:
+        # Provider removed from server: delete every remote alias (clean slate).
+        #
+        deleted_count = 0
+        error_count = 0
+        for email_addr in list(remote_map.keys()):
+            try:
+                backend.delete_email_account_by_address(email_addr, server)
+                deleted_count += 1
+                logger.info(
+                    "Deleted email account '%s' from provider '%s' (provider removed)",
+                    email_addr,
+                    provider_name,
+                )
+            except Exception as e:
+                error_count += 1
+                logger.exception(
+                    "Failed to delete email account '%s' on provider '%s': %r",
+                    email_addr,
+                    provider_name,
+                    e,
+                )
+        logger.info(
+            "Provider removal sync for server '%s' on provider '%s': "
+            "%d deleted, %d errors",
+            server.domain_name,
+            provider_name,
+            deleted_count,
+            error_count,
+        )
+        return
+
+    # enabled=True: full bidirectional sync.
+    #
+    email_accounts = EmailAccount.objects.filter(server=server)
+    local_map = {ea.email_address: ea for ea in email_accounts}
+    local_set = set(local_map.keys())
+    remote_set = set(remote_map.keys())
+
+    to_create = local_set - remote_set  # missing on provider → create
+    to_delete = remote_set - local_set  # orphaned on provider → delete
+    to_check = local_set & remote_set  # present on both → ensure enabled
+
     created_count = 0
+    deleted_count = 0
     updated_count = 0
     skipped_count = 0
     error_count = 0
 
-    # Process each local EmailAccount
-    for email_addr, email_account in local_addresses.items():
+    for email_addr in to_create:
         try:
-            if email_addr not in remote_map:
-                # Email account doesn't exist on provider, create it
-                backend.create_email_account(email_account)
-                created_count += 1
-                logger.info(
-                    "Created missing email account '%s' on provider '%s'",
+            backend.create_email_account(local_map[email_addr])
+            created_count += 1
+            logger.info(
+                "Created missing email account '%s' on provider '%s'",
+                email_addr,
+                provider_name,
+            )
+        except Exception as e:
+            error_count += 1
+            logger.exception(
+                "Failed to create email account '%s' on provider '%s': %r",
+                email_addr,
+                provider_name,
+                e,
+            )
+
+    for email_addr in to_delete:
+        try:
+            backend.delete_email_account_by_address(email_addr, server)
+            deleted_count += 1
+            logger.info(
+                "Deleted orphaned alias '%s' from provider '%s'",
+                email_addr,
+                provider_name,
+            )
+        except Exception as e:
+            error_count += 1
+            logger.exception(
+                "Failed to delete orphaned alias '%s' on provider '%s': %r",
+                email_addr,
+                provider_name,
+                e,
+            )
+
+    for email_addr in to_check:
+        try:
+            if not remote_map[email_addr].enabled:
+                backend.enable_email_account(
+                    local_map[email_addr], enabled=True
+                )
+                updated_count += 1
+                logger.debug(
+                    "Enabled email account '%s' on provider '%s'",
                     email_addr,
                     provider_name,
                 )
             else:
-                # Email account exists, check if enabled needs updating
-                remote_email_account = remote_map[email_addr]
-                remote_enabled = remote_email_account.enabled
-
-                if remote_enabled != enabled:
-                    # Need to update enabled flag
-                    backend.enable_email_account(email_account, enabled=enabled)
-                    updated_count += 1
-                    logger.debug(
-                        "Updated enabled=%s for email account '%s' on provider '%s'",
-                        enabled,
-                        email_addr,
-                        provider_name,
-                    )
-                else:
-                    # Already in correct state, skip
-                    skipped_count += 1
-
+                skipped_count += 1
         except Exception as e:
             error_count += 1
             logger.exception(
-                "Failed to process email account '%s' on provider '%s': %r",
+                "Failed to enable email account '%s' on provider '%s': %r",
                 email_addr,
                 provider_name,
                 e,
             )
 
     logger.info(
-        "Bulk email account sync for server '%s' on provider '%s': "
-        "%d created, %d updated, %d skipped, %d errors (target enabled=%s)",
+        "Alias sync for server '%s' on provider '%s': "
+        "%d created, %d deleted, %d enabled, %d skipped, %d errors",
         server.domain_name,
         provider_name,
         created_count,
+        deleted_count,
         updated_count,
         skipped_count,
         error_count,
-        enabled,
     )
 
 
@@ -887,9 +942,7 @@ def provider_sync_email_accounts() -> None:
 
         for server in servers_with_provider:
             try:
-                # Use the same logic as provider_enable_email_accounts_for_server
-                # to sync all email accounts for this server (target: enabled=True)
-                provider_enable_email_accounts_for_server(
+                provider_sync_server_aliases(
                     server.pk, provider.backend_name, enabled=True
                 )
             except Exception as e:
