@@ -566,8 +566,8 @@ class ForwardEmailBackend(ProviderBackend):
     #                                  because a hard 554 reject is too aggressive
     #   has_executable_protection  -- rejects executable attachments; False because
     #                                  legitimate mail sometimes carries executables
-    #   has_catchall               -- False for now; will be True once we add sending
-    #                                  support so unrouted mail has somewhere to land
+    #   has_catchall               -- False; unknown addresses should bounce, not be
+    #                                  silently absorbed by a catch-all
     #   retention_days             -- outbound SMTP log retention (0–30 days);
     #                                  relevant once we add sending support
     #

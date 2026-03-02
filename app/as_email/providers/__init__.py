@@ -9,18 +9,35 @@ webhooks for a specific email service provider (e.g., Postmark, ForwardEmail).
 # system imports
 #
 import importlib
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .base import ProviderBackend
 
-# Mapping of provider backend names to their class name prefixes
-# Used to handle multi-word backend class names
+
+####################################################################
 #
-PROVIDER_NAME_TO_BACKEND_MAPPING = {
-    "forwardemail": "ForwardEmail",
-    "postmark": "Postmark",
+class ProviderName(StrEnum):
+    """
+    Enumeration of registered email provider backend names.
+
+    Each member corresponds to a backend module in the providers
+    package.  Add a new entry here (and the matching module) to
+    register a new provider.
+    """
+
+    FORWARDEMAIL = "forwardemail"
+    POSTMARK = "postmark"
+
+
+# Mapping of provider backend names to their class name prefixes.
+# Used to handle multi-word backend class names.
+#
+PROVIDER_NAME_TO_BACKEND_MAPPING: dict[ProviderName, str] = {
+    ProviderName.FORWARDEMAIL: "ForwardEmail",
+    ProviderName.POSTMARK: "Postmark",
 }
 
 
