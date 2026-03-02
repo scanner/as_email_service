@@ -8,8 +8,8 @@ LATEST_TAG := $(shell git describe --abbrev=0)
 .PHONY: clean test logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs sync lock add add-dev upgrade help api-schema api-docs
 
 build: version	## Build prod and dev Docker images
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --target prod --tag as_email_service_app:$(VERSION) --tag as_email_service_app:latest .
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --target dev --tag as_email_service_app:$(VERSION)-dev --tag as_email_service_app:dev .
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --target prod --tag as_email_service:$(VERSION) --tag as_email_service:latest .
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --target dev --tag as_email_service:$(VERSION)-dev --tag as_email_service:dev .
 
 uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
 	@uv sync
@@ -102,10 +102,10 @@ test: .venv	## Run all of the tests
 	@$(UV_RUN) pytest --cov=as_email --cov-report=html app/
 	@echo "HTML coverage report generated in htmlcov/index.html"
 
-release: build	## Make a release. Builds and then tags the latest docker image with most recent git tag. Then pushes it to ghcr.io/scanner/as_email_service_app
-	docker tag as_email_service_app:latest as_email_service_app:$(LATEST_TAG)
-	docker tag as_email_service_app:latest ghcr.io/scanner/as_email_service_app:$(LATEST_TAG)
-	docker push ghcr.io/scanner/as_email_service_app:$(LATEST_TAG)
+release: build	## Make a release. Builds and then tags the latest docker image with most recent git tag. Then pushes it to ghcr.io/scanner/as_email_service
+	docker tag as_email_service:latest as_email_service:$(LATEST_TAG)
+	docker tag as_email_service:latest ghcr.io/scanner/as_email_service:$(LATEST_TAG)
+	docker push ghcr.io/scanner/as_email_service:$(LATEST_TAG)
 
 api-schema: .venv docs	## Generate OpenAPI schema YAML into docs/openapi.yaml
 	@$(UV_RUN) python app/manage.py spectacular --color --file docs/openapi.yaml
