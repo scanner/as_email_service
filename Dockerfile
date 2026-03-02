@@ -1,9 +1,12 @@
+# PYTHON_VERSION is set via --build-arg by `make build`, which reads .python-version
+ARG PYTHON_VERSION=3.13.12
+
 #########################
 #
 # Builder stage - Use slim image with build tools
 # This stage installs build dependencies temporarily to compile Python packages
 #
-FROM python:3.13-slim AS builder
+FROM python:${PYTHON_VERSION}-slim AS builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -44,7 +47,7 @@ RUN find /venv -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null ||
 # Development stage - includes development requirements and debugging tools
 # This is a larger image with all the tools you need for development
 #
-FROM python:3.13-slim AS dev
+FROM python:${PYTHON_VERSION}-slim AS dev
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
 LABEL org.opencontainers.image.description="Apricot Systematic Email Service (Development)"
@@ -106,7 +109,7 @@ CMD ["/app/scripts/start_app.sh"]
 # Production stage - smallest possible runtime image
 # Uses slim base and only copies runtime dependencies and the built venv
 #
-FROM python:3.13-slim AS prod
+FROM python:${PYTHON_VERSION}-slim AS prod
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/as_email_service
 LABEL org.opencontainers.image.description="Apricot Systematic Email Service"
