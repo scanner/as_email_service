@@ -46,10 +46,13 @@ SITE_NAME=your_email_server.your.domain
 DEFAULT_FROM_EMAIL = "you@example.com"
 SERVER_EMAIL = "your-server@example.com"
 
-# Key/value pairs for your configured servers at postmark. The key is the name
-# of the server, they key is the API key for that server.
+# JSON mapping of provider name to its API keys. Each provider has an
+# "account_api_key" plus per-domain sending keys.
+# Must be compact single-line JSON (docker-compose does not support multiline
+# .env values). Tip: keep a readable JSON file and generate this with:
+#   jq -c '.' email_server_tokens.json >> .env
 #
-EMAIL_SERVER_TOKENS="example.com=foo,example.org=baz"
+EMAIL_SERVER_TOKENS={"forwardemail":{"account_api_key":"<forwardemail-account-api-key>","example.com":"<forwardemail-account-api-key>"},"postmark":{"account_api_key":"<postmark-account-api-token>","example.com":"<postmark-server-api-token>","example.org":"<postmark-server-api-token>"}}
 
 # All of these parts are setup based on the default docker-compose file that
 # mounts file values under /mnt/db, /mnt/spool, /mnt/mail_dirs/, /mnt/ssl

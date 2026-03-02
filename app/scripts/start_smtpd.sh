@@ -11,16 +11,12 @@ wait-for-it --service spamassassin:783 -- echo "SpamAssassin available"
 : "${SMTPD_SUBMISSION_PORT:=587}"
 : "${SMTPD_SMTP_PORT:=off}"
 
-# Default SMTPD_CERT and SMTPD_KEY from HOST_SSL_DIR when it is set and the
-# cert/key exist there; allow override via the env vars directly.
+# SSL cert/key default to the container-internal mount point /mnt/ssl.
+# HOST_SSL_DIR is a host-side path used by docker-compose for the volume mount
+# and must not be used here. Override SMTPD_CERT/SMTPD_KEY directly if needed.
 #
-if [ -n "${HOST_SSL_DIR:-}" ]; then
-    : "${SMTPD_CERT:=${HOST_SSL_DIR}/ssl_cert.pem}"
-    : "${SMTPD_KEY:=${HOST_SSL_DIR}/ssl_key.pem}"
-else
-    : "${SMTPD_CERT:=}"
-    : "${SMTPD_KEY:=}"
-fi
+: "${SMTPD_CERT:=/mnt/ssl/ssl_crt.pem}"
+: "${SMTPD_KEY:=/mnt/ssl/ssl_key.pem}"
 
 echo "Starting SMTP daemon (submission port: ${SMTPD_SUBMISSION_PORT}, SMTP port: ${SMTPD_SMTP_PORT})"
 exec /venv/bin/python /app/manage.py aiosmtpd \
