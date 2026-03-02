@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Documentation — {{ settings.SITE_NAME }}{% endblock title %}
+
+{% block content_title %}
+<h1 class="title">Documentation</h1>
+{% endblock content_title %}
+
+{% block content %}
+<div class="content">
+
+  <h2 class="subtitle">Your Email Accounts</h2>
+  <p>
+    You may have one or more email accounts on this server, each with its own email
+    address. All of your email accounts are listed on the
+    <a href="{% url 'as_email:index' %}">main page</a> after you log in.
+  </p>
+  <p>
+    Each email account has its own password used to authenticate for both sending
+    (SMTP) and receiving (IMAP) on this server. This password is separate from your
+    login password for this web interface. Set or change an email account's password
+    from its card on the main page.
+  </p>
+
+  <h2 class="subtitle">Sending Email</h2>
+  <p>
+    Configure your email client with one set of SMTP credentials per email account.
+    Use the email address and its account password (not your web login password).
+  </p>
+  <table class="table">
+    <tbody>
+      <tr><th>Server</th><td>{{ settings.SITE_NAME }}</td></tr>
+      <tr><th>Port</th><td>587 (STARTTLS)</td></tr>
+      <tr><th>Username</th><td>The email account address (e.g. <em>you@{{ settings.SITE_NAME }}</em>)</td></tr>
+      <tr><th>Password</th><td>The email account password (set on the main page)</td></tr>
+      <tr><th>Authentication</th><td>Required</td></tr>
+    </tbody>
+  </table>
+
+  <h2 class="subtitle">Local Delivery</h2>
+  <p>
+    Local delivery stores incoming mail in directories on this server. This is the
+    simplest delivery method and requires no external accounts or services.
+  </p>
+  <p>
+    This server also runs an IMAP service that provides access to those local mail
+    directories. To read your email directly from this service, configure your email
+    client to connect via IMAP using your email account's address and password:
+  </p>
+  <table class="table">
+    <tbody>
+      <tr><th>Server</th><td>{{ settings.SITE_NAME }}</td></tr>
+      <tr><th>Port</th><td>993 (SSL)</td></tr>
+      <tr><th>Username</th><td>The email account address</td></tr>
+      <tr><th>Password</th><td>The email account password (set on the main page)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 class="subtitle">IMAP Delivery</h2>
+  <p>
+    IMAP delivery forwards incoming mail received by this service to a third-party
+    IMAP server of your choice (e.g. Gmail, Fastmail, or your own hosted server).
+    Each message is deposited via the IMAP protocol into the inbox of that remote
+    server. If spam auto-filing is enabled, spam is filed into the junk folder as
+    designated by the remote IMAP service. Configure IMAP delivery per email account
+    on the main page.
+  </p>
+  <ul>
+    <li>Set the remote IMAP server, port, username, and password</li>
+    <li>Normal mail is delivered to the inbox</li>
+    <li>Spam (when auto-filing is enabled) is delivered to the remote junk folder</li>
+  </ul>
+
+  <h2 class="subtitle">Alias Delivery</h2>
+  <p>
+    Alias delivery lets you receive email sent to multiple addresses and have it all
+    delivered to a single email account. For example, if you have a primary account
+    <em>alice@{{ settings.SITE_NAME }}</em> and a second account
+    <em>info@{{ settings.SITE_NAME }}</em>, you can set the second account to alias
+    to the first — so mail sent to either address arrives in Alice's inbox.
+  </p>
+  <p>
+    This is the recommended way to consolidate several email addresses without
+    managing separate inboxes for each one.
+  </p>
+
+  <h2 class="subtitle">Spam Filtering</h2>
+  <p>
+    Incoming mail is automatically scanned by SpamAssassin. You can configure how
+    spam is handled per email account:
+  </p>
+  <ul>
+    <li><strong>Do nothing</strong> — deliver as normal regardless of spam score</li>
+    <li><strong>Auto-file</strong> — move spam to a designated spam folder</li>
+  </ul>
+  <p>
+    SpamAssassin uses a Bayesian filter that can be trained over time to improve
+    accuracy for your specific mail patterns.
+  </p>
+
+  <h2 class="subtitle">Need Help?</h2>
+  <p>
+    Contact the administrator at
+    <a href="mailto:{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}">{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}</a>
+    or <a href="{{ settings.GITHUB_URL }}/issues" target="_blank" rel="noopener noreferrer">open an issue</a>
+    on GitHub.
+  </p>
+
+</div>
+{% endblock content %}

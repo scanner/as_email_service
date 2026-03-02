@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Contact — {{ settings.SITE_NAME }}{% endblock title %}
+
+{% block content_title %}
+<h1 class="title">Contact</h1>
+{% endblock content_title %}
+
+{% block content %}
+<div class="content">
+  <p>For questions, account issues, or anything else, contact the administrator:</p>
+  <p>
+    <a class="button is-link" href="mailto:{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}">
+      <span class="icon">
+        <ion-icon name="mail-outline"></ion-icon>
+      </span>
+      <span>{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}</span>
+    </a>
+  </p>
+  <p class="mt-4">
+    To report a bug or request a feature, please use the
+    <a href="{{ settings.GITHUB_URL }}/issues" target="_blank" rel="noopener noreferrer">issue tracker</a>.
+  </p>
+</div>
+{% endblock content %}

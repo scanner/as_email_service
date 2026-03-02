@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}About — {{ settings.SITE_NAME }}{% endblock title %}
+
+{% block content_title %}
+<h1 class="title">About</h1>
+{% endblock content_title %}
+
+{% block content %}
+<div class="content">
+  <p>
+    <strong>{{ settings.SITE_NAME }}</strong> is a self-hosted email service that lets you send and
+    receive email through your own domain using a provider of your choice.
+  </p>
+  <h2 class="subtitle mt-4">Features</h2>
+  <ul>
+    <li>Send email via SMTP from your own domain</li>
+    <li>Send and receive email via <a href="https://postmarkapp.com" target="_blank" rel="noopener noreferrer">Postmark</a> or <a href="https://forwardemail.net" target="_blank" rel="noopener noreferrer">ForwardEmail.net</a></li>
+    <li>Deliver incoming mail to your IMAP server of choice</li>
+    <li>Automatic spam classification via SpamAssassin with Bayesian filter training</li>
+    <li>Alias addresses per email account</li>
+    <li>Multiple delivery methods per account</li>
+  </ul>
+  <h2 class="subtitle mt-4">Version</h2>
+  <p>{{ settings.VERSION }}</p>
+  <h2 class="subtitle mt-4">Source</h2>
+  <p>
+    <a href="{{ settings.GITHUB_URL }}" target="_blank" rel="noopener noreferrer">
+      {{ settings.GITHUB_URL }}
+    </a>
+  </p>
+</div>
+{% endblock content %}

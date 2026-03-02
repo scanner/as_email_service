@@ -35,8 +35,12 @@
     {% block header %}
       <nav class="navbar" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
-          <a class="navbar-item" href="/">AS Email</a>
-          <span class="navbar-item has-text-weight-semibold">{{ settings.SITE_NAME }}</span>
+          <a class="navbar-item has-tooltip-right" href="/" data-tooltip="Home — Email Service Manager">
+            <span class="icon-text">
+              <span class="icon"><ion-icon name="home-outline"></ion-icon></span>
+              <span>AS Email</span>
+            </span>
+          </a>
 
           <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
             <span aria-hidden="true"></span>
@@ -47,6 +51,20 @@
 
         <div id="navbarBasicExample" class="navbar-menu">
           <div class="navbar-start">
+            {% if user.is_authenticated %}
+              <a class="navbar-item" href="{% url 'as_email:documentation' %}">
+                <ion-icon name="document-text-outline"></ion-icon>&nbsp;Docs
+              </a>
+              <a class="navbar-item" href="{% url 'as_email:about' %}">
+                <ion-icon name="information-circle-outline"></ion-icon>&nbsp;About
+              </a>
+              <a class="navbar-item" href="{% url 'as_email:contact' %}">
+                <ion-icon name="mail-outline"></ion-icon>&nbsp;Contact
+              </a>
+              <a class="navbar-item" href="{{ settings.GITHUB_URL }}/issues" target="_blank" rel="noopener noreferrer">
+                <ion-icon name="bug-outline"></ion-icon>&nbsp;Report Issue
+              </a>
+            {% endif %}
           </div>
 
           <div class="navbar-end">
@@ -125,7 +143,7 @@
       <div class="container is-fullhd">
         <div class="content has-text-centered">
           {% block footer %}
-            <p>Version: {{ settings.VERSION }}</p>
+            <p>{{ settings.SITE_NAME }} &mdash; Version: {{ settings.VERSION }}</p>
           {% endblock footer %}
         </div>
       </div>

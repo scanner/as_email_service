@@ -70,6 +70,7 @@ env = environ.FileAwareEnv(
     SENTRY_DSN=(str, None),
     SENTRY_PROFILES_SAMPLE_RATE=(float, 0.0),
     SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
+    GITHUB_URL=(str, "https://github.com/scanner/as_email_service"),
     SITE_NAME=(str, "example.com"),
     SPAMD_HOST=(str, "spamassassin:783"),
     TZ=(str, "America/Los_Angeles"),
@@ -301,6 +302,7 @@ EMAIL_SERVER_TOKENS = json.loads(env("EMAIL_SERVER_TOKENS"))
 # Email address for administrative notifications and reports
 #
 ADMINISTRATIVE_EMAIL_ADDRESS = env("ADMINISTRATIVE_EMAIL_ADDRESS")
+GITHUB_URL = env("GITHUB_URL")
 
 # The email spool dir is where incoming and outgoing emails are temporarily
 # stored. There should be a directory for every 'Server' and in that server's
@@ -410,7 +412,9 @@ BULMA_SETTINGS = {
 # What settings do we export to the template system
 #
 SETTINGS_EXPORT = [
+    "ADMINISTRATIVE_EMAIL_ADDRESS",
     "DEBUG",
+    "GITHUB_URL",
     "SITE_NAME",
     "VERSION",
 ]

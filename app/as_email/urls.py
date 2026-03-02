@@ -19,6 +19,9 @@ from .views import (
     DeliveryMethodViewSet,
     EmailAccountViewSet,
     MessageFilterRuleViewSet,
+    about,
+    contact,
+    documentation,
     hook_bounce,
     hook_forward_valid,
     hook_incoming,
@@ -69,6 +72,9 @@ api_urls = api_router.urls + api_email_account_router.urls
 app_name = "as_email"
 urlpatterns = [
     path("", index, name="index"),
+    path("about/", about, name="about"),
+    path("contact/", contact, name="contact"),
+    path("docs/", documentation, name="documentation"),
     path("api/v1/", include(api_urls)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

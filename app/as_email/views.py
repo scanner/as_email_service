@@ -99,6 +99,30 @@ def _validate_server_api_key(request, domain_name: str) -> Server:
 ####################################################################
 #
 @login_required
+def about(request):
+    """Simple about page."""
+    return render(request, "as_email/about.html", {})
+
+
+####################################################################
+#
+@login_required
+def contact(request):
+    """Simple contact page with mailto link to the admin address."""
+    return render(request, "as_email/contact.html", {})
+
+
+####################################################################
+#
+@login_required
+def documentation(request):
+    """User-facing documentation page."""
+    return render(request, "as_email/documentation.html", {})
+
+
+####################################################################
+#
+@login_required
 def index(request):
     """
     returns a simple view of the email accounts that belong to the user

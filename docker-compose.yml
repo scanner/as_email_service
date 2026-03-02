@@ -3,67 +3,17 @@ volumes:
     name: "as_email_redis_data_01"
 
 services:
-  web: &web
-    image: "as_email_service_app:latest"
+  web:
+    image: "as_email_service:dev"
     container_name: app
     build:
       context: .
       dockerfile: ./Dockerfile
-      target: prod
+      target: dev
       platforms:
         - "linux/amd64"
         - "linux/arm64"
         # - "linux/arm/v7"   # when we want to build for raspberry pi's
-    ports:
-      - "11578:8000"
-    command: /app/scripts/start_app.sh
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - "${HOST_DB_DIR}:/mnt/db:z"
-      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
-      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
-    profiles:
-      - prod
-
-  smtpd:
-    image: as_email_service_app
-    container_name: smtpd
-    ports:
-      - "25:25"
-      - "587:587"
-    command: /app/scripts/start_smtpd.sh
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - "${HOST_DB_DIR}:/mnt/db:z"
-      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
-      - "${HOST_SSL_DIR}:/mnt/ssl:ro"
-    profiles:
-      - prod
-
-  worker:
-    image: as_email_service_app
-    container_name: worker
-    command: /app/scripts/start_worker.sh
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - "${HOST_DB_DIR}:/mnt/db:z"
-      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
-      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
-    profiles:
-      - dev
-      - prod
-
-  devweb:
-    <<: *web
-    image: as_email_service_app_dev:latest
-    container_name: dev_app
-    build:
-      context: .
-      dockerfile: ./Dockerfile
-      target: dev
     depends_on:
       - mailhog
       - redis
@@ -82,18 +32,16 @@ services:
         source: ./pyproject.toml
         target: /app/pyproject.toml
         read_only: true
-    profiles:
-      - dev
 
-  devsmtpd:
-    <<: *web
-    image: as_email_service_app_dev:latest
-    container_name: dev_smtpd
+  smtpd:
+    image: as_email_service:dev
+    container_name: smtpd
     build:
       context: .
       dockerfile: ./Dockerfile
       target: dev
     ports:
+      # - "25:25"
       - "587:587"
     command: /app/scripts/start_smtpd.sh
     restart: unless-stopped
@@ -103,8 +51,17 @@ services:
       - "${HOST_DB_DIR}:/mnt/db:z"
       - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
       - "${HOST_SSL_DIR}:/mnt/ssl:ro"
-    profiles:
-      - dev
+
+  worker:
+    image: as_email_service:dev
+    container_name: worker
+    command: /app/scripts/start_worker.sh
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
 
   redis:
     image: redis:latest
@@ -117,9 +74,6 @@ services:
         target: /usr/local/etc/redis/redis.conf
     expose:
       - 6379
-    profiles:
-      - dev
-      - prod
 
   mailhog:
     image: druidfi/mailhog:1.0.1
@@ -127,8 +81,6 @@ services:
     restart: unless-stopped
     ports:
       - "8025:8025"
-    profiles:
-      - dev
 
   spamassassin:
     image: instantlinux/spamassassin:4.0.1-1
@@ -150,6 +102,3 @@ services:
     env_file: .env
     expose:
       - 783
-    profiles:
-      - dev
-      - prod
