@@ -2,7 +2,7 @@
 name = "as-email-service"
 version = "0.4.0"
 description = "Apricot Systematic Email Service"
-requires-python = ">=3.13"
+requires-python = ">=3.13.12"
 dependencies = [
     "aiofiles",
     "aiologger",

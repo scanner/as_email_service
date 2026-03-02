@@ -106,12 +106,23 @@ The default docker-compose mounts the training & ham data under `/mnt/training/`
 **NOTE**: This project uses `mkcert` to generate and use SSL certificates for
 development. See [https://github.com/FiloSottile/mkcert](https://github.com/FiloSottile/mkcert) for details. The `Makefile` and supporting scripts assume that you have already run `mkcert -install` to setup the local trusted CA for development.
 
+### Python Version Management
+
+The canonical Python version is defined in `.python-version` at the project root.
+`uv` and `make build` read it automatically.
+
+To bump the Python version:
+
+1. Update `requires-python` in `pyproject.toml` to the new `x.y.z` version
+2. Update the `image:` field in `.drone.yml` to `python:<x.y.z>`
+3. Run `make uv-sync` to rebuild the local venv
+
 ### Required Installed Packages
 
 Even if you are not going to download new python and node modules you need at
 least these packages installed for local development:
 
-- python (3.11 or greater)
+- python (3.13 or greater)
 - npm
 - docker
 
