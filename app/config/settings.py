@@ -245,7 +245,7 @@ STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.FileSystemFinder",
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
     "compressor.finders.CompressorFinder",
-    "django_simple_bulma.finders.SimpleBulmaFinder",
+    "config.finders.SimpleBulmaFinder",
 ]
 
 # Default primary key field type
