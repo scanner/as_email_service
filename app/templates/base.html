@@ -47,6 +47,32 @@
 
         <div id="navbarBasicExample" class="navbar-menu">
           <div class="navbar-start">
+            {% if user.is_authenticated %}
+              <a class="navbar-item" href="{% url 'as_email:documentation' %}">
+                <span class="icon-text">
+                  <span class="icon"><ion-icon name="document-text-outline"></ion-icon></span>
+                  <span>Documentation</span>
+                </span>
+              </a>
+              <a class="navbar-item" href="{% url 'as_email:about' %}">
+                <span class="icon-text">
+                  <span class="icon"><ion-icon name="information-circle-outline"></ion-icon></span>
+                  <span>About</span>
+                </span>
+              </a>
+              <a class="navbar-item" href="{% url 'as_email:contact' %}">
+                <span class="icon-text">
+                  <span class="icon"><ion-icon name="mail-outline"></ion-icon></span>
+                  <span>Contact</span>
+                </span>
+              </a>
+              <a class="navbar-item" href="{{ settings.GITHUB_URL }}/issues" target="_blank" rel="noopener noreferrer">
+                <span class="icon-text">
+                  <span class="icon"><ion-icon name="bug-outline"></ion-icon></span>
+                  <span>Report Issue</span>
+                </span>
+              </a>
+            {% endif %}
           </div>
 
           <div class="navbar-end">
