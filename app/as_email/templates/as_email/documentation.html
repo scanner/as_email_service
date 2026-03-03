@@ -85,8 +85,14 @@
 
   <h2 class="subtitle">Spam Filtering</h2>
   <p>
-    Incoming mail is automatically scanned by SpamAssassin. You can configure how
-    spam is handled per email account:
+    Each email account has a <strong>Scan incoming email for spam</strong> toggle
+    (enabled by default). When on, incoming messages are run through SpamAssassin
+    before delivery and <code>X-Spam-*</code> headers are added, including a score
+    in <code>X-Spam-Status</code>. When off, any spam headers injected by the
+    upstream provider are left untouched and no local scan is run.
+  </p>
+  <p>
+    You can configure what happens to messages identified as spam per email account:
   </p>
   <ul>
     <li><strong>Do nothing</strong> — deliver as normal regardless of spam score</li>
