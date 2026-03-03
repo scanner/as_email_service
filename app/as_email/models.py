@@ -445,6 +445,15 @@ class EmailAccount(models.Model):
         blank=True,
     )
 
+    scan_incoming_spam = models.BooleanField(
+        default=True,
+        help_text=_(
+            "When enabled, incoming email is scanned by SpamAssassin and "
+            "X-Spam-* headers are added. When disabled, provider-injected "
+            "spam headers are preserved without rescanning (if they exist)."
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -1128,10 +1137,10 @@ class LocalDelivery(DeliveryMethod):
         ),
     )
     spam_score_threshold = models.IntegerField(
-        default=15,
+        default=5,
         help_text=_(
             "Messages with an X-Spam-Score at or above this value are "
-            "considered spam. 15 is a reasonable default."
+            "considered spam. 5 is a reasonable default."
         ),
     )
 

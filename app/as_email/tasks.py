@@ -5,6 +5,7 @@ Huey dispatchable (and periodic) tasks.
 """
 # system imports
 #
+import asyncio
 import email
 import email.policy
 import json
@@ -15,6 +16,7 @@ from typing import cast
 
 # 3rd party imports
 #
+import aiospamc
 import pytz
 from django.conf import settings
 from django.core.mail import send_mail
@@ -213,6 +215,52 @@ def decrement_num_bounces_counter():
 
 ####################################################################
 #
+def scan_message_for_spam(
+    msg: email.message.EmailMessage,
+) -> email.message.EmailMessage:
+    """
+    Scan a message for spam and return it with X-Spam-* headers added.
+
+    SpamAssassin strips any existing X-Spam-* headers before rescanning, so
+    provider-injected headers are automatically replaced by our results.
+    On failure the original message is returned unmodified and a warning is
+    logged so delivery still proceeds.
+
+    Args:
+        msg: The email message to scan.
+
+    Returns:
+        Message with X-Spam-* headers from our scanner, or the original
+        message when the scan fails.
+    """
+    try:
+        msg_bytes = msg.as_bytes(policy=email.policy.default)
+        # NOTE: Use new_event_loop() + run_until_complete() instead of
+        # asyncio.run() to avoid touching the global event loop policy.
+        # asyncio.run() sets _set_called=True on the policy thread-local,
+        # causing subsequent asyncio.get_event_loop() calls (e.g. in pydnsbl)
+        # to raise RuntimeError rather than auto-creating a loop.
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(
+                aiospamc.process(
+                    msg_bytes,
+                    host=settings.SPAMD_HOST,
+                    port=settings.SPAMD_PORT,
+                )
+            )
+        finally:
+            loop.close()
+        return email.message_from_bytes(
+            result.body, policy=email.policy.default
+        )
+    except Exception as e:
+        logger.warning("Spam scan failed for incoming email: %r", e)
+        return msg
+
+
+####################################################################
+#
 @db_task()
 def dispatch_incoming_email(email_account_pk: int, email_fname: str) -> None:
     """
@@ -229,6 +277,8 @@ def dispatch_incoming_email(email_account_pk: int, email_fname: str) -> None:
     msg = email.message_from_string(
         email_msg["raw_email"], policy=email.policy.default
     )
+    if email_account.scan_incoming_spam:
+        msg = scan_message_for_spam(msg)
     try:
         email_account.deliver(msg)
     except Exception:

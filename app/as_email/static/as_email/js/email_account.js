@@ -77,6 +77,13 @@ export default {
       default: "set_password/",
       required: false,
     },
+    // Whether incoming email is scanned for spam by our system.
+    //
+    scanIncomingSpam: {
+      type: Boolean,
+      default: true,
+      required: false,
+    },
     // Email addresses of other accounts that alias (forward) to this account.
     //
     aliasedFrom: {
@@ -98,6 +105,10 @@ export default {
 
   ////////////////////////////////////////////////////////////////////////////
   //
+  emits: ["update:scanIncomingSpam"],
+
+  ////////////////////////////////////////////////////////////////////////////
+  //
   components: {
     MessageFilterRules: MessageFilterRules,
     DeliveryMethodList: DeliveryMethodList,
@@ -112,7 +123,7 @@ export default {
 
   ////////////////////////////////////////////////////////////////////////////
   //
-  setup(props) {
+  setup(props, { emit }) {
     // Card expand/collapse state — seeded from prop so single-account users
     // land with the card already open.
     //
@@ -130,6 +141,7 @@ export default {
     const isEditingSettings = ref(false);
     const editPassword = ref("");
     const showEditPassword = ref(false);
+    const editScanIncomingSpam = ref(props.scanIncomingSpam);
     const settingsSaving = ref(false);
     const settingsError = ref("");
 
@@ -254,6 +266,32 @@ export default {
           }
         }
 
+        if (editScanIncomingSpam.value !== props.scanIncomingSpam) {
+          const res = await fetch(props.url, {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json; charset=UTF-8" },
+            body: JSON.stringify({
+              scan_incoming_spam: editScanIncomingSpam.value,
+            }),
+          });
+          if (!res.ok) {
+            if (res.status === 401 || res.status === 403) {
+              settingsError.value = "Session expired — please reload the page.";
+            } else {
+              try {
+                const err = await res.json();
+                settingsError.value =
+                  err.details || err.detail || `HTTP ${res.status}`;
+              } catch {
+                settingsError.value = `HTTP ${res.status}: ${res.statusText}`;
+              }
+            }
+            return;
+          }
+          emit("update:scanIncomingSpam", editScanIncomingSpam.value);
+        }
+
         isEditingSettings.value = false;
         editPassword.value = "";
         showEditPassword.value = false;
@@ -268,6 +306,7 @@ export default {
       isEditingSettings.value = false;
       editPassword.value = "";
       showEditPassword.value = false;
+      editScanIncomingSpam.value = props.scanIncomingSpam;
       settingsError.value = "";
     };
 
@@ -280,6 +319,7 @@ export default {
       isEditingSettings,
       editPassword,
       showEditPassword,
+      editScanIncomingSpam,
       settingsSaving,
       settingsError,
       labelErrorMessages,

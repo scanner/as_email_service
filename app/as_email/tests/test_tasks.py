@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # 3rd party imports
 #
@@ -40,6 +40,7 @@ from ..tasks import (
     provider_sync_email_accounts,
     provider_sync_server_aliases,
     retry_failed_incoming_email,
+    scan_message_for_spam,
 )
 from ..utils import (
     read_emailaccount_pwfile,
@@ -94,6 +95,7 @@ def test_dispatch_incoming_email(
     Then the message is delivered to recipient's inbox
     """
     ea = email_account_factory()
+    ea.scan_incoming_spam = False
     ea.save()
     msg = email_factory(to=ea.email_address)
     now = datetime.now()
@@ -130,6 +132,7 @@ def test_dispatch_incoming_mail_failure(
         "as_email.models.EmailAccount.deliver", side_effect=Exception("ERROR")
     )
     ea = email_account_factory()
+    ea.scan_incoming_spam = False
     ea.save()
     msg = email_factory(to=ea.email_address)
     now = datetime.now()
@@ -147,6 +150,128 @@ def test_dispatch_incoming_mail_failure(
     failed_msg_file = list(settings.FAILED_INCOMING_MSG_DIR.iterdir())[0]
     email_msg = json.loads(failed_msg_file.read_text())
     assert email_msg["message-id"] == message_id
+
+
+####################################################################
+#
+def test_scan_message_for_spam_success(
+    mocker: MockerFixture,
+    email_factory: Callable[..., EmailMessage],
+    caplog: LogCaptureFixture,
+) -> None:
+    """
+    GIVEN a valid message and aiospamc.process returning spam headers
+    WHEN scan_message_for_spam is called
+    THEN the returned message contains X-Spam-* headers
+    """
+    original = email_factory()
+    scanned_bytes = (
+        b"X-Spam-Status: No, score=2.0\r\n"
+        b"X-Spam-Score: 2.0\r\n"
+        b"\r\n"
+        b"body text"
+    )
+    mock_result = MagicMock()
+    mock_result.body = scanned_bytes
+    mock_process = mocker.patch(
+        "as_email.tasks.aiospamc.process",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    )
+
+    result = scan_message_for_spam(original)
+
+    assert mock_process.call_count == 1
+    assert result["X-Spam-Score"] == "2.0"
+    assert result["X-Spam-Status"] is not None
+    assert "Spam scan failed" not in caplog.text
+
+
+####################################################################
+#
+def test_scan_message_for_spam_failure(
+    mocker: MockerFixture,
+    email_factory: Callable[..., EmailMessage],
+    caplog: LogCaptureFixture,
+) -> None:
+    """
+    GIVEN aiospamc.process raises a connection error
+    WHEN scan_message_for_spam is called
+    THEN the original message is returned unmodified and a warning is logged
+    """
+    original = email_factory()
+    mocker.patch(
+        "as_email.tasks.aiospamc.process",
+        new_callable=AsyncMock,
+        side_effect=ConnectionError("spamd unreachable"),
+    )
+
+    result = scan_message_for_spam(original)
+
+    assert result is original
+    assert "Spam scan failed" in caplog.text
+
+
+####################################################################
+#
+def test_dispatch_incoming_email_scan_enabled(
+    mocker: MockerFixture,
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    tmp_path: Path,
+) -> None:
+    """
+    GIVEN an account with scan_incoming_spam=True
+    WHEN dispatch_incoming_email task runs
+    THEN scan_message_for_spam is called before delivery
+    """
+    mock_scan = mocker.patch(
+        "as_email.tasks.scan_message_for_spam", side_effect=lambda m: m
+    )
+    ea = email_account_factory()
+    ea.scan_incoming_spam = True
+    ea.save()
+    msg = email_factory(to=ea.email_address)
+    now = datetime.now()
+    message_id = msg["Message-ID"]
+    fname = write_spooled_email(msg["To"], tmp_path, msg, str(now), message_id)
+
+    res = dispatch_incoming_email(ea.pk, str(fname))
+    res()
+
+    assert mock_scan.call_count == 1
+
+
+####################################################################
+#
+def test_dispatch_incoming_email_scan_disabled(
+    mocker: MockerFixture,
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    tmp_path: Path,
+) -> None:
+    """
+    GIVEN an account with scan_incoming_spam=False
+    WHEN dispatch_incoming_email task runs
+    THEN scan_message_for_spam is not called and delivery still succeeds
+    """
+    mock_scan = mocker.patch("as_email.tasks.scan_message_for_spam")
+    ea = email_account_factory()
+    ea.scan_incoming_spam = False
+    ea.save()
+    msg = email_factory(to=ea.email_address)
+    now = datetime.now()
+    message_id = msg["Message-ID"]
+    fname = write_spooled_email(msg["To"], tmp_path, msg, str(now), message_id)
+
+    res = dispatch_incoming_email(ea.pk, str(fname))
+    res()
+
+    assert mock_scan.call_count == 0
+    ld = LocalDelivery.objects.get(email_account=ea)
+    mh = ld.MH()
+    folder = mh.get_folder("inbox")
+    assert folder.get("1") is not None
 
 
 ####################################################################

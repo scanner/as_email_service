@@ -18,6 +18,7 @@ This module provides the lower-level helpers called by those delivery methods:
 #
 import email.utils
 import logging
+import re
 import time
 from contextlib import contextmanager
 from email.message import EmailMessage
@@ -179,12 +180,18 @@ def deliver_message_locally(
     #     delivered to?
     #
     if not delivered_to:
+        # SpamAssassin adds an `X-Spam-Status` header.
+        # in X-Spam-Status as "score=<value>".  Example:
+        #   X-Spam-Status: No, score=-102.0 required=5.0 tests=...
         spam_score = 0
-        if "X-Spam-Score" in msg:
-            try:
-                spam_score = int(float(msg["X-Spam-Score"].strip()))
-            except ValueError:
-                spam_score = 0
+        status_header = msg.get("X-Spam-Status", "")
+        if status_header:
+            m = re.search(r"score=([-\d.]+)", status_header)
+            if m:
+                try:
+                    spam_score = int(float(m.group(1)))
+                except ValueError:
+                    spam_score = 0
 
         if (
             local_delivery.autofile_spam

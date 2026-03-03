@@ -24,7 +24,6 @@ from typing import Any, Iterable, List, Optional, Tuple
 
 # 3rd party imports
 #
-import aiospamc
 import sentry_sdk
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import (
@@ -86,28 +85,6 @@ def format_dnsbl_providers(detected_by: Iterable[Tuple[str, List[str]]]) -> str:
         category = ",".join(categories)
         providers.append(f"{name}: {category}")
     return ", ".join(providers)
-
-
-########################################################################
-#
-async def check_spam(msg_bytes: bytes) -> bytes:
-    """
-    Run the message through SpamAssassin and return it with spam headers added.
-
-    Args:
-        msg_bytes: The original message bytes
-
-    Returns:
-        Message bytes with spam headers added, or original bytes if check fails
-    """
-    try:
-        result = await aiospamc.process(
-            msg_bytes, host=settings.SPAMD_HOST, port=settings.SPAMD_PORT
-        )
-        return result.body
-    except Exception as e:
-        logger.error("SpamAssassin check failed: %r", e)
-        return msg_bytes
 
 
 ########################################################################
@@ -916,9 +893,8 @@ class RelayHandler:
             envelope.mail_from,
         )
 
-        # Check spam and parse the message
+        # Parse the message
         msg_bytes = envelope.original_content
-        msg_bytes_with_spam_headers = await check_spam(msg_bytes)
         msg = email.message_from_bytes(msg_bytes, policy=email.policy.default)
 
         # Validate FROM header for authenticated sessions
@@ -928,9 +904,7 @@ class RelayHandler:
         # Deliver to local addresses if any
         if local_addrs:
             try:
-                await deliver_email_locally(
-                    account, local_addrs, msg_bytes_with_spam_headers
-                )
+                await deliver_email_locally(account, local_addrs, msg_bytes)
             except Exception as exc:
                 logger.error("Local delivery failed: %r", exc)
                 return f"500 Local delivery error: {exc!r}"

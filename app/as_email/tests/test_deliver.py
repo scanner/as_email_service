@@ -98,7 +98,7 @@ def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
     # Low spam score — should be delivered to inbox.
     #
     msg = email_factory()
-    msg["X-Spam-Score"] = "-0.0"
+    msg["X-Spam-Status"] = "No, score=-0.0 required=5.0 tests=NONE"
 
     deliver_message_locally(ld, msg)
 
@@ -109,7 +109,10 @@ def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
 
     # Set the spam score over the limit configured on the LocalDelivery.
     #
-    msg.replace_header("X-Spam-Score", str(ld.spam_score_threshold))
+    msg.replace_header(
+        "X-Spam-Status",
+        f"Yes, score={ld.spam_score_threshold}.0 required=5.0 tests=NONE",
+    )
     deliver_message_locally(ld, msg)
 
     # The message should land in the spam folder.

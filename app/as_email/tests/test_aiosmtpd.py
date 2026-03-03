@@ -22,7 +22,6 @@ from ..management.commands.aiosmtpd import (
     Authenticator,
     RelayHandler,
     categorize_recipients,
-    check_spam,
     format_dnsbl_providers,
     relay_email_to_provider,
     validate_from_header,
@@ -34,25 +33,6 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 ########################################################################
 #
-@pytest.fixture
-def mock_aiospamc_process(mocker):
-    """
-    Fixture to mock aiospamc.process.
-    Returns the mock so tests can customize return values or verify calls.
-    By default returns a successful response with spam headers.
-    """
-    mock_result = mocker.Mock()
-    mock_result.body = (
-        b"X-Spam-Status: No\r\nX-Spam-Score: 0.1\r\n\r\noriginal message body"
-    )
-
-    return mocker.patch(
-        "as_email.management.commands.aiosmtpd.aiospamc.process",
-        new_callable=mocker.AsyncMock,
-        return_value=mock_result,
-    )
-
-
 ####################################################################
 #
 @pytest.fixture
@@ -195,46 +175,6 @@ class TestHelperFunctions:
         result = validate_from_header(msg, ea)
         assert result is not None
         assert result.startswith("551 FROM must be")
-
-    ####################################################################
-    #
-    @pytest.mark.asyncio
-    async def test_check_spam_success(self, mock_aiospamc_process, mocker):
-        """
-        Given aiospamc.process that successfully processes a message
-        When check_spam is called
-        Then it should return the message body with spam headers added
-        """
-        # Customize the mock result for this test
-        mock_result = mocker.Mock()
-        mock_result.body = b"message with spam headers"
-        mock_aiospamc_process.return_value = mock_result
-
-        original = b"original message"
-        result = await check_spam(original)
-
-        assert result == b"message with spam headers"
-        mock_aiospamc_process.assert_called_once_with(
-            original, host=mocker.ANY, port=mocker.ANY
-        )
-
-    ####################################################################
-    #
-    @pytest.mark.asyncio
-    async def test_check_spam_failure(self, mock_aiospamc_process):
-        """
-        Given aiospamc.process that raises an exception
-        When check_spam is called
-        Then it should return the original message unmodified
-        And the error should be logged
-        """
-        # Configure the mock to raise an exception
-        mock_aiospamc_process.side_effect = Exception("Connection failed")
-
-        original = b"original message"
-        result = await check_spam(original)
-
-        assert result == original
 
     ####################################################################
     #
@@ -933,7 +873,6 @@ class TestHandleDATA:
         aiosmtp_session,
         aiosmtp_envelope,
         mocker,
-        mock_aiospamc_process,
         tmp_path,
     ):
         """
@@ -982,7 +921,6 @@ class TestHandleDATA:
         aiosmtp_envelope,
         tmp_path,
         mocker,
-        mock_aiospamc_process,
     ):
         """
         Given an envelope with no valid recipients (all rejected in RCPT)
@@ -1020,7 +958,6 @@ class TestHandleDATA:
         aiosmtp_envelope,
         smtp,
         mocker,
-        mock_aiospamc_process,
         tmp_path,
     ):
         """
@@ -1063,7 +1000,6 @@ class TestHandleDATA:
         aiosmtp_envelope,
         smtp,
         mocker,
-        mock_aiospamc_process,
         tmp_path,
     ):
         """
@@ -1126,7 +1062,6 @@ class TestFromHeaderValidation:
         aiosmtp_envelope,
         smtp,
         mocker,
-        mock_aiospamc_process,
         tmp_path,
     ):
         """
@@ -1168,7 +1103,6 @@ class TestFromHeaderValidation:
         aiosmtp_envelope,
         smtp,
         mocker,
-        mock_aiospamc_process,
         tmp_path,
     ):
         """
@@ -1276,124 +1210,6 @@ class TestDNSBL:
         )
 
         assert response.startswith("554 Your IP is blacklisted")
-
-
-########################################################################
-########################################################################
-#
-class TestSpamAssassinIntegration:
-    """Tests for SpamAssassin spam checking."""
-
-    ####################################################################
-    #
-    @pytest.mark.asyncio
-    async def test_handle_DATA_spam_check_success(
-        self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mocker,
-        mock_aiospamc_process,
-        tmp_path,
-    ):
-        """
-        Given a successful SpamAssassin check that adds headers
-        When handle_DATA is called for local delivery
-        Then the spam-checked message with headers should be delivered
-        """
-        ea = await sync_to_async(email_account_factory)()
-        await ea.asave()
-
-        sess = aiosmtp_session
-        sess.authenticated = False
-
-        mock_deliver_local = mocker.patch(
-            "as_email.management.commands.aiosmtpd.deliver_email_locally",
-            new_callable=mocker.AsyncMock,
-        )
-
-        authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
-
-        # Mock successful spam check with headers
-        spam_headers = b"X-Spam-Score: 5.0\r\nX-Spam-Status: Yes\r\n"
-        mock_result = mocker.Mock()
-        mock_result.body = spam_headers
-        mock_aiospamc_process.return_value = mock_result
-
-        smtp_server = SMTP(handler, authenticator=authenticator)
-        from_addr = faker.email()
-        envelope = aiosmtp_envelope(msg_from=from_addr, to=ea.email_address)
-
-        # Simulate proper SMTP flow
-        await handler.handle_MAIL(smtp_server, sess, envelope, from_addr, [])
-        await handler.handle_RCPT(
-            smtp_server, sess, envelope, ea.email_address, []
-        )
-
-        response = await handler.handle_DATA(smtp_server, sess, envelope)
-
-        assert response.startswith("250 OK")
-        # Verify spam-checked bytes passed to deliver_email_locally
-        mock_deliver_local.assert_called_once()
-        assert mock_deliver_local.call_args[0][2] == spam_headers
-
-    ####################################################################
-    #
-    @pytest.mark.asyncio
-    async def test_handle_DATA_spam_check_failure(
-        self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mocker,
-        mock_aiospamc_process,
-        tmp_path,
-    ):
-        """
-        Given a SpamAssassin check that fails with an exception
-        When handle_DATA is called
-        Then the original message should be delivered unchanged
-        And the error should be logged
-        """
-        ea = await sync_to_async(email_account_factory)()
-        await ea.asave()
-
-        sess = aiosmtp_session
-        sess.authenticated = False
-
-        mock_deliver_local = mocker.patch(
-            "as_email.management.commands.aiosmtpd.deliver_email_locally",
-            new_callable=mocker.AsyncMock,
-        )
-
-        authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
-
-        # Mock spam check failure
-        mock_aiospamc_process.side_effect = Exception(
-            "SpamAssassin connection failed"
-        )
-
-        smtp_server = SMTP(handler, authenticator=authenticator)
-        from_addr = faker.email()
-        envelope = aiosmtp_envelope(msg_from=from_addr, to=ea.email_address)
-
-        # Simulate proper SMTP flow
-        await handler.handle_MAIL(smtp_server, sess, envelope, from_addr, [])
-        await handler.handle_RCPT(
-            smtp_server, sess, envelope, ea.email_address, []
-        )
-
-        response = await handler.handle_DATA(smtp_server, sess, envelope)
-
-        # Should still succeed
-        assert response.startswith("250 OK")
-        # Should deliver original message
-        mock_deliver_local.assert_called_once()
-        assert mock_deliver_local.call_args[0][2] == envelope.original_content
 
 
 ########################################################################
@@ -1510,7 +1326,6 @@ class TestSMTPIntegration:
         aiosmtp_session,
         aiosmtp_envelope,
         mocker,
-        mock_aiospamc_process,
         smtp,
         tmp_path,
     ):

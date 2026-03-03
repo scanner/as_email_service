@@ -12,10 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - GH-104: Documentation, About, Contact, and Report Issue pages added to the navbar (authenticated users only)
+- GH-203: Spam classification on incoming email — each email account has a per-account `scan_incoming_spam` toggle (default on) that runs SpamAssassin via `dispatch_incoming_email()` before delivery; all delivery methods see consistent X-Spam-\* headers
 
 ### Changed
 
 - GH-104: Site name moved from navbar to footer (alongside version number); navbar brand now shows a home icon with tooltip
+
+### Fixed
+
+- GH-203: Spam auto-filing now correctly reads the score from `X-Spam-Status` (e.g. `score=8.0`); previously looked for `X-Spam-Score` which SpamAssassin does not add
 
 ## [0.4.0] - 2026-02-25
 

@@ -142,7 +142,7 @@ class TestLocalDeliveryModel:
     ) -> None:
         """
         GIVEN a LocalDelivery with autofile_spam=True and threshold=5
-        WHEN  a message with X-Spam-Score above the threshold arrives
+        WHEN  a message with X-Spam-Status score above the threshold arrives
         THEN  it is filed in spam_delivery_folder, not inbox
         """
         ea = email_account_factory()
@@ -153,7 +153,7 @@ class TestLocalDeliveryModel:
         ld.save()
 
         msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Score"] = "8.0"
+        msg["X-Spam-Status"] = "Yes, score=8.0 required=5.0 tests=NONE"
         ea.deliver(msg)
 
         mh = ld.MH()
@@ -171,7 +171,7 @@ class TestLocalDeliveryModel:
     ) -> None:
         """
         GIVEN a LocalDelivery with autofile_spam=True and threshold=10
-        WHEN  a message with X-Spam-Score below the threshold arrives
+        WHEN  a message with X-Spam-Status score below the threshold arrives
         THEN  it is delivered to inbox normally
         """
         ea = email_account_factory()
@@ -181,7 +181,7 @@ class TestLocalDeliveryModel:
         ld.save()
 
         msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Score"] = "4.2"
+        msg["X-Spam-Status"] = "No, score=4.2 required=5.0 tests=NONE"
         ea.deliver(msg)
 
         mh = ld.MH()
@@ -207,7 +207,7 @@ class TestLocalDeliveryModel:
         ld.save()
 
         msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Score"] = "99.0"
+        msg["X-Spam-Status"] = "Yes, score=99.0 required=5.0 tests=NONE"
         ea.deliver(msg)
 
         mh = ld.MH()
