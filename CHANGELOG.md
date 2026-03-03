@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GH-203: Spam classification on incoming email — each email account has a per-account `scan_incoming_spam` toggle (default on) that runs SpamAssassin via `dispatch_incoming_email()` before delivery; all delivery methods see consistent X-Spam-\* headers
+
 ## [0.4.1] - 2026-03-02
 
 ### Added

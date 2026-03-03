@@ -88,8 +88,16 @@
               <p class="help">Used for SMTP (sending) and IMAP (reading local mail)</p>
             </div>
 
+            <div class="field">
+              <label class="label">Incoming Spam Scanning</label>
+              <p class="has-tooltip-arrow has-tooltip-multiline has-tooltip-top"
+                 data-tooltip="When enabled, incoming email is scanned by our spam filter and X-Spam-* headers are added. Delivery methods use these headers to auto-file spam.">
+                [[ props.scanIncomingSpam ? 'Enabled' : 'Disabled' ]]
+              </p>
+            </div>
+
             <button class="button is-info has-tooltip-arrow has-tooltip-top"
-                    data-tooltip="Change your account password"
+                    data-tooltip="Change your account password and settings"
                     @click="isEditingSettings = true">
               Edit Account Settings
             </button>
@@ -125,6 +133,16 @@
               </div>
               <p v-if="settingsError" class="help is-danger">[[ settingsError ]]</p>
               <p class="help">Leave blank to keep the current password. Used for SMTP (sending) and IMAP (reading local mail)</p>
+            </div>
+
+            <div class="field">
+              <label class="checkbox has-tooltip-arrow has-tooltip-multiline has-tooltip-top"
+                     data-tooltip="When enabled, incoming email is scanned by our spam filter and X-Spam-* headers are added. Delivery methods use these headers to auto-file spam.">
+                <input type="checkbox"
+                       :checked="editScanIncomingSpam"
+                       @change="editScanIncomingSpam = $event.target.checked">
+                Scan incoming email for spam
+              </label>
             </div>
 
             <div class="buttons mt-3">
@@ -414,6 +432,12 @@
                  @change="update('autofile_spam', $event.target.checked)">
           Auto-file spam emails
         </label>
+        <p class="help">
+          Files messages whose <code>X-Spam-Score</code> meets or exceeds the
+          threshold into the spam folder. The score may come from your email
+          provider or, when <em>incoming spam scanning</em> is enabled on the
+          account, from our system.
+        </p>
         <p v-if="errors.autofile_spam" class="help is-danger">[[ errors.autofile_spam ]]</p>
       </div>
 
@@ -442,7 +466,7 @@
           <p v-if="errors.spam_score_threshold" class="help is-danger">
             [[ errors.spam_score_threshold ]]
           </p>
-          <p class="help">Messages with an X-Spam-Score at or above this value are considered spam. 15 is a reasonable default.</p>
+          <p class="help">Messages with an X-Spam-Score at or above this value are filed as spam. 5 is a reasonable default.</p>
         </div>
       </div>
     </div>
@@ -598,6 +622,7 @@
             :dm-total="emailAccountsData.pk{{ email_account.pk }}.dm_total"
             :dm-enabled="emailAccountsData.pk{{ email_account.pk }}.dm_enabled"
             :aliased-from="emailAccountsData.pk{{ email_account.pk }}.aliased_from"
+            v-model:scan-incoming-spam="emailAccountsData.pk{{ email_account.pk }}.scan_incoming_spam"
             :refresh-aliased-from="refreshAliasedFrom"
             :valid-email-addresses="initialData.valid_email_addresses"
             :field-info="initialData.email_account_field_info"

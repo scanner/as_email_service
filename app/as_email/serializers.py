@@ -100,6 +100,7 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
             "modified_at",
             "num_bounces",
             "owner",
+            "scan_incoming_spam",
             "server",
             "url",
         ]
