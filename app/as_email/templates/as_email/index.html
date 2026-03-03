@@ -89,11 +89,12 @@
             </div>
 
             <div class="field">
-              <label class="label">Incoming Spam Scanning</label>
-              <p class="has-tooltip-arrow has-tooltip-multiline has-tooltip-top"
-                 data-tooltip="When enabled, incoming email is scanned by our spam filter and X-Spam-* headers are added. Delivery methods use these headers to auto-file spam.">
-                [[ props.scanIncomingSpam ? 'Enabled' : 'Disabled' ]]
-              </p>
+              <label class="checkbox has-tooltip-arrow has-tooltip-multiline has-tooltip-right"
+                     style="opacity: 0.55; cursor: default;"
+                     data-tooltip="When enabled, incoming email is scanned by our spam filter and X-Spam-* headers are added. Delivery methods use these headers to auto-file spam.">
+                <input type="checkbox" :checked="props.scanIncomingSpam" disabled>
+                Scan incoming email for spam
+              </label>
             </div>
 
             <button class="button is-info has-tooltip-arrow has-tooltip-top"
@@ -136,7 +137,7 @@
             </div>
 
             <div class="field">
-              <label class="checkbox has-tooltip-arrow has-tooltip-multiline has-tooltip-top"
+              <label class="checkbox has-tooltip-arrow has-tooltip-multiline has-tooltip-right"
                      data-tooltip="When enabled, incoming email is scanned by our spam filter and X-Spam-* headers are added. Delivery methods use these headers to auto-file spam.">
                 <input type="checkbox"
                        :checked="editScanIncomingSpam"
