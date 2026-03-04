@@ -21,6 +21,7 @@ from ..models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,
+    ImapDelivery,
     LocalDelivery,
     MessageFilterRule,
 )
@@ -1200,6 +1201,14 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
+    def _test_imap_url(self, ea):
+        return reverse(
+            "as_email:delivery-method-test-imap",
+            kwargs={"email_account_pk": ea.pk},
+        )
+
+    ####################################################################
+    #
     def test_list_unauthenticated_is_forbidden(self, api_client, setup):
         """
         GIVEN an unauthenticated client
@@ -1515,3 +1524,197 @@ class TestDeliveryMethodEndpoints:
         resp = client.delete(self._detail_url(ea_other, ld_other))
         assert resp.status_code == 403
         assert DeliveryMethod.objects.filter(pk=ld_other.pk).exists()
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "test_result, expected_status",
+        [
+            pytest.param(
+                (True, "Connection successful."),
+                200,
+                id="success",
+            ),
+            pytest.param(
+                (False, "Authentication failed: bad password"),
+                400,
+                id="failure",
+            ),
+        ],
+    )
+    def test_test_imap_action(
+        self, setup, mocker, test_result, expected_status
+    ) -> None:
+        """
+        GIVEN valid input posted to the test_imap action
+        WHEN  test_connection() returns success or failure
+        THEN  the response status and body reflect the result
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        mocker.patch(
+            "as_email.models.ImapDelivery.test_connection",
+            return_value=test_result,
+        )
+        resp = client.post(
+            self._test_imap_url(ea),
+            {
+                "imap_host": "imap.example.com",
+                "imap_port": 993,
+                "username": "user@example.com",
+                "password": "s3cr3t",
+            },
+            format="json",
+        )
+        assert resp.status_code == expected_status
+        assert resp.data["success"] == test_result[0]
+        assert resp.data["message"] == test_result[1]
+
+    ####################################################################
+    #
+    def test_test_imap_action_missing_field_returns_400(self, setup) -> None:
+        """
+        GIVEN a POST to test_imap with the required password field missing
+        WHEN  the request is processed
+        THEN  400 is returned with a validation error for that field
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        resp = client.post(
+            self._test_imap_url(ea),
+            {
+                "imap_host": "imap.example.com",
+                "imap_port": 993,
+                "username": "user@example.com",
+                # password intentionally omitted
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "password" in resp.data
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "test_result, expected_status",
+        [
+            pytest.param(
+                (True, "Connection successful."), 201, id="valid-credentials"
+            ),
+            pytest.param(
+                (False, "Authentication failed: wrong"),
+                400,
+                id="bad-credentials",
+            ),
+        ],
+    )
+    def test_create_imap_delivery_validates_credentials(
+        self, setup, mocker, test_result, expected_status
+    ) -> None:
+        """
+        GIVEN a POST to create an ImapDelivery with a password
+        WHEN  test_connection() returns success or failure
+        THEN  the create succeeds (201) or is rejected (400) accordingly
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        mocker.patch(
+            "as_email.models.ImapDelivery.test_connection",
+            return_value=test_result,
+        )
+        resp = client.post(
+            self._list_url(ea),
+            {
+                "delivery_type": "ImapDelivery",
+                "imap_host": "imap.example.com",
+                "imap_port": 993,
+                "username": "user@example.com",
+                "password": "s3cr3t",
+            },
+            format="json",
+        )
+        assert resp.status_code == expected_status
+
+    ####################################################################
+    #
+    def test_patch_imap_delivery_with_new_password_triggers_validation(
+        self, setup, mocker
+    ) -> None:
+        """
+        GIVEN an existing ImapDelivery PATCHed with a new password
+        WHEN  test_connection() returns failure
+        THEN  the PATCH is rejected with 400 and the password is not changed
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        imap_d = ImapDelivery.objects.create(
+            email_account=ea,
+            imap_host="imap.example.com",
+            imap_port=993,
+            username="user@example.com",
+            password="original_password",
+        )
+        mocker.patch(
+            "as_email.models.ImapDelivery.test_connection",
+            return_value=(False, "Authentication failed: wrong password"),
+        )
+        resp = client.patch(
+            self._detail_url(ea, imap_d),
+            {"password": "new_bad_password"},
+            format="json",
+        )
+        assert resp.status_code == 400
+        imap_d.refresh_from_db()
+        assert imap_d.password == "original_password"
+
+    ####################################################################
+    #
+    def test_patch_imap_delivery_without_password_skips_validation(
+        self, setup, mocker
+    ) -> None:
+        """
+        GIVEN an existing ImapDelivery PATCHed without a password field
+        WHEN  the PATCH is processed
+        THEN  test_connection() is not called and the update succeeds
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        imap_d = ImapDelivery.objects.create(
+            email_account=ea,
+            imap_host="imap.example.com",
+            imap_port=993,
+            username="user@example.com",
+            password="stored_password",
+        )
+        mock_test = mocker.patch("as_email.models.ImapDelivery.test_connection")
+        resp = client.patch(
+            self._detail_url(ea, imap_d),
+            {"imap_host": "imap2.example.com"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        mock_test.assert_not_called()
+        imap_d.refresh_from_db()
+        assert imap_d.imap_host == "imap2.example.com"
+        assert imap_d.password == "stored_password"
+
+    ####################################################################
+    #
+    def test_imap_delivery_password_not_in_response(self, setup) -> None:
+        """
+        GIVEN an ImapDelivery with a stored password
+        WHEN  the detail or list endpoint is fetched
+        THEN  the password field is absent from the response
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        imap_d = ImapDelivery.objects.create(
+            email_account=ea,
+            imap_host="imap.example.com",
+            imap_port=993,
+            username="user@example.com",
+            password="super_secret",
+        )
+        resp = client.get(self._detail_url(ea, imap_d))
+        assert resp.status_code == 200
+        assert "password" not in resp.data

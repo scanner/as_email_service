@@ -7,10 +7,11 @@ Delivery integration tests (loops, hop limits, alias chains) live in
 test_deliver.py.  This file covers model-level properties — maildir creation,
 spam routing, enabled/disabled dispatch, and multi-method fan-out.
 """
-from email.message import EmailMessage
-
 # system imports
 #
+import socket
+import ssl
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Callable
 
@@ -583,3 +584,92 @@ class TestImapDeliveryModel:
             imap_d.deliver(msg, set())
 
         mock_client.append.assert_not_called()
+
+    ####################################################################
+    #
+    def test_test_connection_success(self, mocker: MockerFixture) -> None:
+        """
+        GIVEN valid credentials and a reachable IMAP server
+        WHEN  test_connection() is called
+        THEN  (True, "Connection successful.") is returned
+        """
+        mocker.patch("as_email.models.imapclient.IMAPClient")
+        ok, msg = ImapDelivery.test_connection(
+            "imap.example.com", 993, "user@example.com", "s3cr3t"
+        )
+        assert ok is True
+        assert "successful" in msg.lower()
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "exc_location, exception, expected_fragment",
+        [
+            pytest.param(
+                "cls",
+                socket.gaierror(8, "Name or service not known"),
+                "not found",
+                id="bad-hostname",
+            ),
+            pytest.param(
+                "cls",
+                ConnectionRefusedError(),
+                "refused",
+                id="connection-refused",
+            ),
+            pytest.param(
+                "cls",
+                TimeoutError(),
+                "timed out",
+                id="timeout",
+            ),
+            pytest.param(
+                "cls",
+                ssl.SSLError(1, "CERTIFICATE_VERIFY_FAILED"),
+                "SSL/TLS error",
+                id="ssl-error",
+            ),
+            pytest.param(
+                "cls",
+                Exception("something unexpected"),
+                "Connection failed",
+                id="generic-exception",
+            ),
+            pytest.param(
+                "login",
+                Exception(b"\"No such user 'user@example.com'\""),
+                "Authentication failed: No such user",
+                id="auth-failure-bytes",
+            ),
+            pytest.param(
+                "login",
+                Exception("b\"'bad!'\""),
+                "Authentication failed: 'bad!'",
+                id="auth-failure-bytes-repr",
+            ),
+        ],
+    )
+    def test_test_connection_failures(
+        self,
+        mocker: MockerFixture,
+        exc_location: str,
+        exception: Exception,
+        expected_fragment: str,
+    ) -> None:
+        """
+        GIVEN an IMAP server that raises a specific exception
+        WHEN  test_connection() is called
+        THEN  (False, message) is returned with a user-friendly description
+        """
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+        if exc_location == "cls":
+            mock_cls.side_effect = exception
+        else:
+            mock_client.login.side_effect = exception
+
+        ok, msg = ImapDelivery.test_connection(
+            "imap.example.com", 993, "user@example.com", "s3cr3t"
+        )
+        assert ok is False
+        assert expected_fragment in msg

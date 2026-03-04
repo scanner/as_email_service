@@ -73,6 +73,7 @@ from .serializers import (
     MessageFilterRuleSerializer,
     MoveOrderSerializer,
     PasswordSerializer,
+    TestImapConnectionSerializer,
 )
 
 logger = logging.getLogger("as_email.views")
@@ -794,4 +795,51 @@ class DeliveryMethodViewSet(ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
+    ####################################################################
+    #
+    @extend_schema(
+        request=TestImapConnectionSerializer,
+        responses={
+            200: inline_serializer(
+                "TestImapOk",
+                fields={
+                    "success": drf_fields.BooleanField(),
+                    "message": drf_fields.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                "TestImapFail",
+                fields={
+                    "success": drf_fields.BooleanField(),
+                    "message": drf_fields.CharField(),
+                },
+            ),
+        },
+        description=(
+            "Test IMAP connection credentials without saving to the database. "
+            "Returns {success, message}."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="test_imap")
+    def test_imap(self, request, **kwargs):
+        """
+        Attempt a live IMAP connection with the supplied credentials and report
+        the result. Nothing is read from or written to the database.
+        """
+        serializer = TestImapConnectionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+            )
+        ok, message = ImapDelivery.test_connection(
+            host=serializer.validated_data["imap_host"],
+            port=serializer.validated_data["imap_port"],
+            username=serializer.validated_data["username"],
+            password=serializer.validated_data["password"],
+        )
+        return Response(
+            {"success": ok, "message": message},
+            status=status.HTTP_200_OK if ok else status.HTTP_400_BAD_REQUEST,
         )

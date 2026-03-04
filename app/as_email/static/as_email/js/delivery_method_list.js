@@ -69,6 +69,19 @@ export default {
 
     ////////////////////////////////////////////////////////////////////////
     //
+    // Merge DELIVERY_TYPE_DEFAULTS under every object that arrives from the
+    // API so frontend-only fields (e.g. ImapDelivery.auth_type) are always
+    // present when the edit form opens. The API object is spread last so its
+    // values always win: once the backend starts persisting and returning a
+    // field, the default is silently overridden with no changes needed here.
+    //
+    const applyFrontendDefaults = (dm) => {
+      const defaults = DELIVERY_TYPE_DEFAULTS[dm.delivery_type] ?? {};
+      return { ...defaults, ...dm };
+    };
+
+    ////////////////////////////////////////////////////////////////////////
+    //
     // Fetch the list from the API.
     //
     const fetchDeliveryMethods = async () => {
@@ -79,7 +92,7 @@ export default {
           credentials: "same-origin",
         });
         if (res.ok) {
-          deliveryMethods.value = await res.json();
+          deliveryMethods.value = (await res.json()).map(applyFrontendDefaults);
           emitCounts();
         } else {
           error.value = `Failed to load delivery methods: ${res.status} ${res.statusText}`;

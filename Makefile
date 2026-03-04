@@ -11,7 +11,7 @@ build: version	## Build prod and dev Docker images
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY=build-placeholder --target prod --tag as_email_service:$(VERSION) --tag as_email_service:latest .
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY=build-placeholder --target dev --tag as_email_service:$(VERSION)-dev --tag as_email_service:dev .
 
-uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
+uv-sync: .venv	## Sync .venv with uv.lock after dependency changes
 	@uv sync
 
 uv-lock:	## Update uv.lock file from pyproject.toml dependencies
@@ -24,7 +24,7 @@ uv-add:	## Add a new dependency (usage: make add PACKAGE=requests)
 	fi
 	@uv add $(PACKAGE)
 
-uv-add-dev:	## Add a new dev dependency (usage: make add-dev PACKAGE=pytest-xdist)
+uv-add-dev:	## Add a dev dependency (PACKAGE=pytest-xdist)
 	@if [ -z "$(PACKAGE)" ]; then \
 		echo "Error: PACKAGE not specified. Usage: make add-dev PACKAGE=pytest-xdist"; \
 		exit 1; \
@@ -88,7 +88,7 @@ migrate:	## Run `manage.py migrate` to run all necessary migrations
 makemigrations:	## Run `manage.py makemigrations` for the as_email app
 	@PYTHONPATH=$(ROOT_DIR)/app $(UV_RUN) python app/manage.py makemigrations as_email
 
-createadmin: migrate   ## Create django admin account `admin` with password `testpass1234`
+createadmin: migrate   ## Create admin account (admin / testpass1234)
 	@docker compose run -e DJANGO_SUPERUSER_EMAIL=admin@example.com \
                             -e DJANGO_SUPERUSER_PASSWORD=testpass1234 \
                             --rm web \
@@ -101,7 +101,7 @@ test: .venv	## Run all of the tests
 	@$(UV_RUN) pytest --cov=as_email --cov-report=html app/
 	@echo "HTML coverage report generated in htmlcov/index.html"
 
-release: build	## Make a release. Builds and then tags the latest docker image with most recent git tag. Then pushes it to ghcr.io/scanner/as_email_service
+release: build	## Tag and push latest image to ghcr.io (requires git tag)
 	docker tag as_email_service:latest as_email_service:$(LATEST_TAG)
 	docker tag as_email_service:latest ghcr.io/scanner/as_email_service:$(LATEST_TAG)
 	docker push ghcr.io/scanner/as_email_service:$(LATEST_TAG)
@@ -118,4 +118,4 @@ docs:
 	@mkdir -p $(ROOT_DIR)/docs
 
 help:	## Show this help.
-	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'

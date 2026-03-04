@@ -298,6 +298,42 @@ class ImapDeliverySerializer(DeliveryMethodSerializer):
 
     ####################################################################
     #
+    def validate(self, attrs: dict) -> dict:
+        """
+        When a password is supplied, test the IMAP connection before saving.
+
+        This runs for both create and PATCH so that the REST API rejects bad
+        credentials even when callers bypass the UI's pre-save check. For
+        PATCH requests some fields may be absent from attrs (only the fields
+        being changed are included); those fall back to the current instance
+        values.
+        """
+        if "password" in attrs:
+            instance = self.instance  # None on create
+            host = attrs.get(
+                "imap_host",
+                getattr(instance, "imap_host", ""),
+            )
+            port = attrs.get(
+                "imap_port",
+                getattr(instance, "imap_port", 993),
+            )
+            username = attrs.get(
+                "username",
+                getattr(instance, "username", ""),
+            )
+            ok, message = ImapDelivery.test_connection(
+                host=host,
+                port=port,
+                username=username,
+                password=attrs["password"],
+            )
+            if not ok:
+                raise serializers.ValidationError({"password": message})
+        return attrs
+
+    ####################################################################
+    #
     def update(
         self, instance: ImapDelivery, validated_data: dict
     ) -> ImapDelivery:
@@ -308,3 +344,23 @@ class ImapDeliverySerializer(DeliveryMethodSerializer):
         if "password" not in self.initial_data:
             validated_data.pop("password", None)
         return super().update(instance, validated_data)
+
+
+########################################################################
+########################################################################
+#
+class TestImapConnectionSerializer(serializers.Serializer):
+    """
+    Input for the ``test_imap`` action on DeliveryMethodViewSet.
+
+    Validates connection parameters without touching the database.
+    """
+
+    imap_host = serializers.CharField(required=True)
+    imap_port = serializers.IntegerField(
+        required=True, min_value=1, max_value=65535
+    )
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(
+        required=True, style={"input_type": "password"}
+    )

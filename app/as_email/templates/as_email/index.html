@@ -296,10 +296,11 @@
                       @click="startAdd('AliasToDelivery')">
                 [[ DELIVERY_TYPE_LABELS.AliasToDelivery ]]
               </button>
-              {# IMAP Delivery — uncomment when backend support lands #}
-              {# <button class="dropdown-item" @click="startAdd('ImapDelivery')"> #}
-              {#   [[ DELIVERY_TYPE_LABELS.ImapDelivery ]] #}
-              {# </button> #}
+              <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
+                      data-tooltip="Deliver email to an external IMAP server"
+                      @click="startAdd('ImapDelivery')">
+                [[ DELIVERY_TYPE_LABELS.ImapDelivery ]]
+              </button>
             </div>
           </div>
         </div>
@@ -385,6 +386,7 @@
             :form-data="formData"
             :errors="errors"
             :valid-email-addresses="validEmailAddresses"
+            :delivery-methods-url="deliveryMethodsUrl"
             @update:field="onFieldUpdate"
           ></component>
 
@@ -552,13 +554,42 @@
 
         <div class="field">
           <label class="label">Password</label>
-          <div class="control">
-            <input type="password" class="input"
-                   placeholder="IMAP password"
-                   :value="formData.password"
-                   @input="update('password', $event.target.value)">
+          <div class="field has-addons mb-0">
+            <div class="control is-expanded">
+              <input class="input"
+                     :type="showPassword ? 'text' : 'password'"
+                     placeholder="IMAP password"
+                     :value="passwordDisplayValue"
+                     @focus="onPasswordFocus"
+                     @blur="onPasswordBlur"
+                     @input="update('password', $event.target.value)">
+            </div>
+            <div class="control">
+              <button class="button has-tooltip-arrow has-tooltip-top" type="button"
+                      :data-tooltip="showPassword ? 'Hide password' : 'Show password'"
+                      @click="showPassword = !showPassword">
+                <span>[[ showPassword ? '🙈' : '👁' ]]</span>
+              </button>
+            </div>
           </div>
+          <p v-if="passwordMasked" class="help">Password is set — leave blank to keep it unchanged, or type a new one to replace it.</p>
           <p v-if="errors.password" class="help is-danger">[[ errors.password ]]</p>
+        </div>
+        <div class="field mt-3">
+          <div class="control">
+            <button class="button is-info is-light has-tooltip-arrow has-tooltip-top"
+                    type="button"
+                    :data-tooltip="canTest ? 'Test these credentials against the IMAP server' : 'Fill in all fields and enter a password to enable the test'"
+                    :disabled="!canTest || testing"
+                    :style="(!canTest || testing) ? { pointerEvents: 'none' } : {}"
+                    @click="testConnection">
+              [[ testing ? 'Testing…' : 'Test Connection' ]]
+            </button>
+          </div>
+          <p v-if="testResult" class="help mt-1"
+             :class="testResult.success ? 'is-success' : 'is-danger'">
+            [[ testResult.success ? '✓' : '✗' ]] [[ testResult.message ]]
+          </p>
         </div>
       </div>
 

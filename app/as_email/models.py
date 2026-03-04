@@ -13,6 +13,8 @@ import logging
 import mailbox
 import re
 import shlex
+import socket
+import ssl
 from typing import List
 
 # 3rd party imports
@@ -1375,6 +1377,71 @@ class ImapDelivery(DeliveryMethod):
             pass
 
         return "INBOX"
+
+    ####################################################################
+    #
+    @staticmethod
+    def test_connection(
+        host: str, port: int, username: str, password: str
+    ) -> tuple[bool, str]:
+        """
+        Attempt to connect and authenticate to an IMAP server.
+
+        Returns ``(True, "Connection successful.")`` on success, or
+        ``(False, <user-friendly message>)`` on any failure. Common failures
+        are mapped to specific messages; unexpected errors fall back to a
+        generic message that includes the exception text.
+
+        Args:
+            host: IMAP server hostname.
+            port: IMAP server port (e.g. 993).
+            username: IMAP login username.
+            password: IMAP login password.
+        """
+        try:
+            with imapclient.IMAPClient(
+                host=host, port=port, ssl=True, timeout=10
+            ) as client:
+                try:
+                    client.login(username, password)
+                except Exception as exc:
+                    # imapclient passes server error responses as bytes (or as
+                    # str(bytes), e.g. b"'bad!'"). Unwrap either form and strip
+                    # IMAP quoted-string delimiters for a readable message.
+                    raw = exc.args[0] if exc.args else str(exc)
+                    if isinstance(raw, bytes):
+                        raw = raw.decode("utf-8", errors="replace")
+                    else:
+                        raw = str(raw)
+                        # Strip Python bytes-literal repr: b'...' or b"..."
+                        if (
+                            len(raw) >= 4
+                            and raw[0] == "b"
+                            and raw[1] in ('"', "'")
+                        ):
+                            raw = raw[2:-1]
+                    raw = raw.strip('"')
+                    return False, f"Authentication failed: {raw}"
+        except socket.gaierror:
+            return (
+                False,
+                f"Host '{host}' not found — check the server hostname.",
+            )
+        except ConnectionRefusedError:
+            return (
+                False,
+                f"Connection to {host}:{port} was refused — check the hostname and port.",
+            )
+        except (TimeoutError, socket.timeout):
+            return (
+                False,
+                f"Connection to {host}:{port} timed out — server may be unreachable.",
+            )
+        except ssl.SSLError as exc:
+            return False, f"SSL/TLS error: {str(exc)}"
+        except Exception as exc:
+            return False, f"Connection failed: {exc!r}"
+        return True, "Connection successful."
 
     ####################################################################
     #
