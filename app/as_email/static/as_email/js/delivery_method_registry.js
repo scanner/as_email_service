@@ -19,7 +19,7 @@ import ImapDeliveryForm from "./imap_delivery_form.js";
 export const DELIVERY_TYPE_COMPONENTS = {
   LocalDelivery: LocalDeliveryForm,
   AliasToDelivery: AliasToDeliveryForm,
-  // ImapDelivery: ImapDeliveryForm,  ← uncomment when backend support lands
+  ImapDelivery: ImapDeliveryForm,
 };
 
 ////////////////////////////////////////////////////////////////////////////
@@ -61,13 +61,15 @@ export const DELIVERY_TYPE_DEFAULTS = {
     enabled: true,
     target_account: "",
   },
-  // ImapDelivery: {
-  //   delivery_type: "ImapDelivery",
-  //   enabled: true,
-  //   imap_host: "",
-  //   imap_port: 993,
-  //   auth_type: "password",  // "password" | "oauth2"
-  //   username: "",
-  //   password: "",
-  // },
+  ImapDelivery: {
+    delivery_type: "ImapDelivery",
+    enabled: true,
+    imap_host: "",
+    imap_port: 993,
+    auth_type: "password",
+    username: "",
+    password: "",
+    autofile_spam: true,
+    spam_score_threshold: 5,
+  },
 };

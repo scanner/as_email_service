@@ -496,9 +496,6 @@
 
   {# ------------------------------------------------------------------ #}
   {# ImapDeliveryForm template                                           #}
-  {# NOTE: Kept here so the UI is ready when the backend lands.         #}
-  {# The component is registered but ImapDelivery is commented out in   #}
-  {# delivery_method_registry.js until backend support is added.        #}
   {# ------------------------------------------------------------------ #}
   <template id="template-imap-delivery-form">
     <div class="box">
@@ -587,6 +584,34 @@
           </div>
           <p class="help">Opens Gmail OAuth flow in a new window</p>
         </div>
+      </div>
+
+      <hr>
+
+      <div class="field">
+        <label class="checkbox">
+          <input type="checkbox"
+                 :checked="formData.autofile_spam"
+                 @change="update('autofile_spam', $event.target.checked)">
+          Auto-file spam emails
+        </label>
+        <p class="help">
+          Files messages whose <code>X-Spam-Score</code> meets or exceeds the
+          threshold into the server's Junk folder instead of INBOX.
+        </p>
+        <p v-if="errors.autofile_spam" class="help is-danger">[[ errors.autofile_spam ]]</p>
+      </div>
+
+      <div v-if="formData.autofile_spam" class="field">
+        <label class="label">Spam Score Threshold</label>
+        <div class="control">
+          <input type="number" class="input"
+                 min="1"
+                 :value="formData.spam_score_threshold"
+                 @input="update('spam_score_threshold', Number($event.target.value))">
+        </div>
+        <p class="help">Messages with an X-Spam-Score at or above this value are filed as spam. 5 is a reasonable default.</p>
+        <p v-if="errors.spam_score_threshold" class="help is-danger">[[ errors.spam_score_threshold ]]</p>
       </div>
     </div>
   </template>

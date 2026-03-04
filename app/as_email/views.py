@@ -58,6 +58,7 @@ from .models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,
+    ImapDelivery,
     LocalDelivery,
     MessageFilterRule,
     Provider,
@@ -67,6 +68,7 @@ from .serializers import (
     AliasToDeliverySerializer,
     DeliveryMethodSerializer,
     EmailAccountSerializer,
+    ImapDeliverySerializer,
     LocalDeliverySerializer,
     MessageFilterRuleSerializer,
     MoveOrderSerializer,
@@ -607,6 +609,7 @@ _DELIVERY_TYPE_MAP: dict[
 ] = {
     "LocalDelivery": (LocalDelivery, LocalDeliverySerializer),
     "AliasToDelivery": (AliasToDelivery, AliasToDeliverySerializer),
+    "ImapDelivery": (ImapDelivery, ImapDeliverySerializer),
 }
 
 
@@ -627,7 +630,11 @@ class DeliveryMethodOwnerFilterBackend(DRYPermissionFiltersBase):
 #
 _delivery_method_polymorphic = PolymorphicProxySerializer(
     component_name="DeliveryMethodPolymorphic",
-    serializers=[LocalDeliverySerializer, AliasToDeliverySerializer],
+    serializers=[
+        LocalDeliverySerializer,
+        AliasToDeliverySerializer,
+        ImapDeliverySerializer,
+    ],
     resource_type_field_name="delivery_type",
 )
 
@@ -646,7 +653,7 @@ _delivery_method_polymorphic = PolymorphicProxySerializer(
         responses=_delivery_method_polymorphic,
         description=(
             "Create a new delivery method. Include `delivery_type` "
-            '("LocalDelivery" or "AliasToDelivery") to select the subtype.'
+            '("LocalDelivery", "AliasToDelivery", or "ImapDelivery") to select the subtype.'
         ),
     ),
     update=extend_schema(
@@ -662,9 +669,9 @@ class DeliveryMethodViewSet(ModelViewSet):
     """
     CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-    Supports LocalDelivery and AliasToDelivery subtypes. The request body
-    must include a `delivery_type` field (e.g. "LocalDelivery") to select
-    the correct subtype serializer on create/update.
+    Supports LocalDelivery, AliasToDelivery, and ImapDelivery subtypes. The
+    request body must include a `delivery_type` field (e.g. "LocalDelivery")
+    to select the correct subtype serializer on create/update.
     """
 
     permission_classes = (IsAuthenticated, DRYPermissions)

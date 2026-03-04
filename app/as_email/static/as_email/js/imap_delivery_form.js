@@ -4,17 +4,14 @@
 // Does NOT talk to the API — it only emits field changes up to
 // DeliveryMethodForm, which owns the save/delete logic.
 //
-// NOTE: ImapDelivery backend support is not yet implemented. This component
-// is registered in the template but kept commented out in
-// delivery_method_registry.js until the backend schema lands.
-//
 // Fields:
-//   imap_host         (string)
-//   imap_port         (integer, default 993)
-//   auth_type         ("password" | "oauth2")
-//   username          (string, visible when auth_type == "password")
-//   password          (string, visible when auth_type == "password")
-//   oauth2 flow       (visible when auth_type == "oauth2")
+//   imap_host             (string)
+//   imap_port             (integer, default 993)
+//   auth_type             ("password" | "oauth2"; oauth2 is a future placeholder)
+//   username              (string, visible when auth_type == "password")
+//   password              (string, visible when auth_type == "password")
+//   autofile_spam         (boolean)
+//   spam_score_threshold  (integer, visible when autofile_spam is true)
 //
 import { computed } from "vue";
 

@@ -18,6 +18,7 @@ from .models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,
+    ImapDelivery,
     InactiveEmail,
     LocalDelivery,
     MessageFilterRule,
@@ -265,3 +266,45 @@ class AliasToDeliverySerializer(DeliveryMethodSerializer):
         fields = DeliveryMethodSerializer.Meta.fields + [
             "target_account",
         ]
+
+
+########################################################################
+########################################################################
+#
+class ImapDeliverySerializer(DeliveryMethodSerializer):
+    """
+    Serializer for ImapDelivery. The `password` field is write-only — it is
+    accepted on create and update but never returned in GET responses. On
+    PATCH, omitting `password` leaves the stored value unchanged.
+    """
+
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        style={"input_type": "password"},
+        help_text=ImapDelivery.password.field.help_text,
+    )
+
+    class Meta(DeliveryMethodSerializer.Meta):
+        model = ImapDelivery
+        fields = DeliveryMethodSerializer.Meta.fields + [
+            "imap_host",
+            "imap_port",
+            "username",
+            "password",
+            "autofile_spam",
+            "spam_score_threshold",
+        ]
+
+    ####################################################################
+    #
+    def update(
+        self, instance: ImapDelivery, validated_data: dict
+    ) -> ImapDelivery:
+        """
+        Remove `password` from validated_data when it is absent so a PATCH
+        without a password field does not overwrite the stored credential.
+        """
+        if "password" not in self.initial_data:
+            validated_data.pop("password", None)
+        return super().update(instance, validated_data)

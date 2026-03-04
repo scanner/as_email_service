@@ -8,8 +8,8 @@ LATEST_TAG := $(shell git describe --abbrev=0)
 .PHONY: clean test logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs sync lock add add-dev upgrade help api-schema api-docs
 
 build: version	## Build prod and dev Docker images
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --target prod --tag as_email_service:$(VERSION) --tag as_email_service:latest .
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --target dev --tag as_email_service:$(VERSION)-dev --tag as_email_service:dev .
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY=build-placeholder --target prod --tag as_email_service:$(VERSION) --tag as_email_service:latest .
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY=build-placeholder --target dev --tag as_email_service:$(VERSION)-dev --tag as_email_service:dev .
 
 uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
 	@uv sync
@@ -85,8 +85,8 @@ manage_shell:	## Run `manage.py shell_plus` in a web container.
 migrate:	## Run `manage.py migrate` to run all necessary migrations
 	@docker compose run --rm web /venv/bin/python /app/manage.py migrate
 
-makemigrations: build	## Run `manage.py makemigrations` for the as_email app
-	@docker compose run --rm web python /app/manage.py makemigrations as_email
+makemigrations:	## Run `manage.py makemigrations` for the as_email app
+	@PYTHONPATH=$(ROOT_DIR)/app $(UV_RUN) python app/manage.py makemigrations as_email
 
 createadmin: migrate   ## Create django admin account `admin` with password `testpass1234`
 	@docker compose run -e DJANGO_SUPERUSER_EMAIL=admin@example.com \

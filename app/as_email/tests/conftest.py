@@ -86,6 +86,16 @@ def use_fakeredis(
     #
     settings.HUEY["connection"]["connection_pool"] = huey_pool  # type: ignore[index]
 
+    # Django's cache backend (used by django-compressor and others) connects
+    # to Redis via CACHES["default"], independently of the pools above. Switch
+    # it to an in-memory cache so tests never need a real Redis server.
+    #
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+
     # And return a redis client talking to the same FakeServer in case some
     # tests need access to the redis instance.
     #

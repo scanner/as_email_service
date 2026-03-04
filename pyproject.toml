@@ -1,6 +1,6 @@
 [project]
 name = "as-email-service"
-version = "0.4.1"
+version = "0.5.0"
 description = "Apricot Systematic Email Service"
 requires-python = ">=3.13.12"
 dependencies = [
@@ -15,8 +15,8 @@ dependencies = [
     "django-anymail",
     "django-compressor",
     "django-crispy-forms",
-    "django-cryptography",
     "django-dry-rest-permissions",
+    "django-fernet-encrypted-fields>=0.1.3",
     "django-environ",
     "django-extensions",
     "django-filter",
@@ -34,6 +34,7 @@ dependencies = [
     "gunicorn",
     "httpx",
     "huey",
+    "imapclient>=3.1.0",
     "influxdb-client",
     "postmarker",
     "proxy-protocol",

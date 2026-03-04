@@ -43,6 +43,8 @@ steps:
       registry: ghcr.io
       auto_tag: true
       target: prod
+      build_args:
+        - SALT_KEY=build-placeholder
 
   - name: Build dev
     image: plugins/docker
@@ -56,6 +58,8 @@ steps:
       auto_tag: true
       auto_tag_suffix: dev
       target: dev
+      build_args:
+        - SALT_KEY=build-placeholder
 
 trigger:
   event:

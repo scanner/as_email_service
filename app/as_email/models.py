@@ -11,11 +11,13 @@ import email
 import email.message
 import logging
 import mailbox
+import re
 import shlex
 from typing import List
 
 # 3rd party imports
 #
+import imapclient
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -26,6 +28,7 @@ from django.db.models import QuerySet
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
+from encrypted_fields.fields import EncryptedCharField
 from model_utils import FieldTracker
 from ordered_model.models import OrderedModel
 from polymorphic.models import PolymorphicModel
@@ -1267,3 +1270,144 @@ class AliasToDelivery(DeliveryMethod):
 
         visited_accounts.add(self.target_account_id)
         self.target_account.deliver(msg, visited_accounts)
+
+
+########################################################################
+########################################################################
+#
+class ImapDelivery(DeliveryMethod):
+    """
+    Delivers incoming email to a remote IMAP server over SSL.
+
+    Credentials are stored encrypted using Fernet symmetric encryption
+    (see the FERNET_KEYS Django setting). Spam auto-filing uses the server's
+    SPECIAL-USE \\Junk mailbox (RFC 6154); falls back to the literal folder
+    name "Junk", then to INBOX if neither exists.
+    """
+
+    imap_host = models.CharField(
+        max_length=253,
+        help_text=_("Hostname of the remote IMAP server."),
+    )
+    imap_port = models.PositiveIntegerField(
+        default=993,
+        help_text=_("IMAP port (default 993 for IMAPS)."),
+    )
+    username = EncryptedCharField(
+        max_length=254,
+        help_text=_("IMAP login username. Stored encrypted at rest."),
+    )
+    password = EncryptedCharField(
+        max_length=1024,
+        help_text=_("IMAP login password. Stored encrypted at rest."),
+    )
+    autofile_spam = models.BooleanField(
+        default=True,
+        help_text=_(
+            "When enabled, messages whose X-Spam-Score meets or exceeds the "
+            "threshold are filed in the server's Junk folder instead of INBOX."
+        ),
+    )
+    spam_score_threshold = models.IntegerField(
+        default=5,
+        help_text=_(
+            "Messages with an X-Spam-Score at or above this value are "
+            "considered spam. 5 is a reasonable default."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "IMAP Delivery"
+        verbose_name_plural = "IMAP Deliveries"
+
+    ####################################################################
+    #
+    def __str__(self) -> str:
+        return (
+            f"ImapDelivery({self.username}@{self.imap_host}:{self.imap_port})"
+        )
+
+    ####################################################################
+    #
+    @staticmethod
+    def _get_spam_score(msg: email.message.EmailMessage) -> int:
+        """
+        Parse the X-Spam-Score value from the X-Spam-Status header.
+
+        Returns the integer score, or 0 if the header is absent or unparseable.
+        The header format is: ``Yes, score=6.7 required=5.0 tests=...``
+        """
+        status_header = msg.get("X-Spam-Status", "")
+        if status_header:
+            m = re.search(r"score=([-\d.]+)", status_header)
+            if m:
+                try:
+                    return int(float(m.group(1)))
+                except ValueError:
+                    pass
+        return 0
+
+    ####################################################################
+    #
+    @staticmethod
+    def _resolve_junk_folder(client: imapclient.IMAPClient) -> str:
+        """
+        Resolve the junk folder name on the IMAP server.
+
+        Resolution order (RFC 6154):
+        1. A folder advertising the \\Junk SPECIAL-USE attribute.
+        2. The literal folder name "Junk".
+        3. "INBOX" as a last-resort fallback.
+
+        Returns the folder name to use for spam messages.
+        """
+        try:
+            for flags, _delimiter, name in client.list_folders():
+                if r"\Junk" in flags:
+                    return name
+        except Exception:
+            pass
+
+        try:
+            if client.folder_exists("Junk"):
+                return "Junk"
+        except Exception:
+            pass
+
+        return "INBOX"
+
+    ####################################################################
+    #
+    def deliver(
+        self,
+        msg: email.message.EmailMessage,
+        visited_accounts: set[int],
+    ) -> None:
+        """
+        Deliver the message to the remote IMAP server.
+
+        Connects over SSL, authenticates, resolves the target folder (Junk
+        for spam when autofile_spam is enabled, INBOX otherwise), and appends
+        the message. Any exception is re-raised so the caller can move the
+        message to the failed-incoming queue.
+
+        Args:
+            msg: The email message to deliver.
+            visited_accounts: Unused for IMAP delivery; required by interface.
+        """
+        msg_bytes = msg.as_bytes(policy=email.policy.default)
+
+        with imapclient.IMAPClient(
+            host=self.imap_host, port=self.imap_port, ssl=True
+        ) as client:
+            client.login(self.username, self.password)
+
+            if (
+                self.autofile_spam
+                and self._get_spam_score(msg) >= self.spam_score_threshold
+            ):
+                folder = self._resolve_junk_folder(client)
+            else:
+                folder = "INBOX"
+
+            client.append(folder, msg_bytes)
