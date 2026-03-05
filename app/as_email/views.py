@@ -58,6 +58,7 @@ from .models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,
+    ImapDelivery,
     LocalDelivery,
     MessageFilterRule,
     Provider,
@@ -67,10 +68,12 @@ from .serializers import (
     AliasToDeliverySerializer,
     DeliveryMethodSerializer,
     EmailAccountSerializer,
+    ImapDeliverySerializer,
     LocalDeliverySerializer,
     MessageFilterRuleSerializer,
     MoveOrderSerializer,
     PasswordSerializer,
+    TestImapConnectionSerializer,
 )
 
 logger = logging.getLogger("as_email.views")
@@ -116,8 +119,27 @@ def contact(request):
 #
 @login_required
 def documentation(request):
-    """User-facing documentation page."""
-    return render(request, "as_email/documentation.html", {})
+    """
+    Render the user-facing documentation page.
+
+    Passes the current user's email account addresses to the template so that
+    configuration examples (SMTP username, alias examples, etc.) can show the
+    user's actual addresses rather than a generic placeholder. The template
+    falls back to a placeholder when the list is empty.
+
+    Linked from the main page (``as_email:index``) and referenced in
+    ``urls.py`` as ``as_email:documentation``.
+    """
+    email_accounts = list(
+        EmailAccount.objects.filter(owner=request.user).values_list(
+            "email_address", flat=True
+        )
+    )
+    return render(
+        request,
+        "as_email/documentation.html",
+        {"email_accounts": email_accounts},
+    )
 
 
 ####################################################################
@@ -607,6 +629,7 @@ _DELIVERY_TYPE_MAP: dict[
 ] = {
     "LocalDelivery": (LocalDelivery, LocalDeliverySerializer),
     "AliasToDelivery": (AliasToDelivery, AliasToDeliverySerializer),
+    "ImapDelivery": (ImapDelivery, ImapDeliverySerializer),
 }
 
 
@@ -627,7 +650,11 @@ class DeliveryMethodOwnerFilterBackend(DRYPermissionFiltersBase):
 #
 _delivery_method_polymorphic = PolymorphicProxySerializer(
     component_name="DeliveryMethodPolymorphic",
-    serializers=[LocalDeliverySerializer, AliasToDeliverySerializer],
+    serializers=[
+        LocalDeliverySerializer,
+        AliasToDeliverySerializer,
+        ImapDeliverySerializer,
+    ],
     resource_type_field_name="delivery_type",
 )
 
@@ -646,7 +673,7 @@ _delivery_method_polymorphic = PolymorphicProxySerializer(
         responses=_delivery_method_polymorphic,
         description=(
             "Create a new delivery method. Include `delivery_type` "
-            '("LocalDelivery" or "AliasToDelivery") to select the subtype.'
+            '("LocalDelivery", "AliasToDelivery", or "ImapDelivery") to select the subtype.'
         ),
     ),
     update=extend_schema(
@@ -662,9 +689,9 @@ class DeliveryMethodViewSet(ModelViewSet):
     """
     CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-    Supports LocalDelivery and AliasToDelivery subtypes. The request body
-    must include a `delivery_type` field (e.g. "LocalDelivery") to select
-    the correct subtype serializer on create/update.
+    Supports LocalDelivery, AliasToDelivery, and ImapDelivery subtypes. The
+    request body must include a `delivery_type` field (e.g. "LocalDelivery")
+    to select the correct subtype serializer on create/update.
     """
 
     permission_classes = (IsAuthenticated, DRYPermissions)
@@ -787,4 +814,51 @@ class DeliveryMethodViewSet(ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
+    ####################################################################
+    #
+    @extend_schema(
+        request=TestImapConnectionSerializer,
+        responses={
+            200: inline_serializer(
+                "TestImapOk",
+                fields={
+                    "success": drf_fields.BooleanField(),
+                    "message": drf_fields.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                "TestImapFail",
+                fields={
+                    "success": drf_fields.BooleanField(),
+                    "message": drf_fields.CharField(),
+                },
+            ),
+        },
+        description=(
+            "Test IMAP connection credentials without saving to the database. "
+            "Returns {success, message}."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="test_imap")
+    def test_imap(self, request, **kwargs):
+        """
+        Attempt a live IMAP connection with the supplied credentials and report
+        the result. Nothing is read from or written to the database.
+        """
+        serializer = TestImapConnectionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+            )
+        ok, message = ImapDelivery.test_connection(
+            host=serializer.validated_data["imap_host"],
+            port=serializer.validated_data["imap_port"],
+            username=serializer.validated_data["username"],
+            password=serializer.validated_data["password"],
+        )
+        return Response(
+            {"success": ok, "message": message},
+            status=status.HTTP_200_OK if ok else status.HTTP_400_BAD_REQUEST,
         )

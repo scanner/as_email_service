@@ -1,22 +1,25 @@
 #!/usr/bin/env python
 #
 """
-Tests for LocalDelivery and AliasToDelivery model behaviour.
+Tests for LocalDelivery, AliasToDelivery, and ImapDelivery model behaviour.
 
 Delivery integration tests (loops, hop limits, alias chains) live in
 test_deliver.py.  This file covers model-level properties — maildir creation,
 spam routing, enabled/disabled dispatch, and multi-method fan-out.
 """
-from email.message import EmailMessage
-
 # system imports
 #
+import socket
+import ssl
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Callable
 
 # 3rd party imports
 #
 import pytest
+from faker import Faker
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -24,6 +27,7 @@ from ..models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,
+    ImapDelivery,
     LocalDelivery,
 )
 
@@ -403,3 +407,273 @@ class TestMultipleDeliveryMethods:
             .email_account_id
             == ea1.pk
         )
+
+
+########################################################################
+########################################################################
+#
+@pytest.fixture
+def imap_delivery_factory(
+    email_account_factory: Callable[..., EmailAccount],
+    faker: Faker,
+) -> Callable[..., ImapDelivery]:
+    """Return a factory that creates an ImapDelivery attached to a fresh account."""
+
+    def make(**kwargs) -> ImapDelivery:
+        ea = email_account_factory(local_delivery=False)
+        return ImapDelivery.objects.create(
+            email_account=ea,
+            imap_host="imap.example.com",
+            imap_port=993,
+            username="user@example.com",
+            password=faker.password(),
+            **kwargs,
+        )
+
+    return make
+
+
+########################################################################
+########################################################################
+#
+class TestImapDeliveryModel:
+    """Tests for ImapDelivery model delivery behaviour.
+
+    imapclient.IMAPClient is mocked in every test so no real IMAP
+    connection is attempted.  The mock is set up via mocker.patch on the
+    symbol ``as_email.models.imapclient.IMAPClient``.  The pattern::
+
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+
+    gives us the object that the ``with`` block binds to ``client``.
+    """
+
+    ####################################################################
+    #
+    def test_deliver_normal_message_to_inbox(
+        self,
+        imap_delivery_factory: Callable[..., ImapDelivery],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN an ImapDelivery and a message with no spam header
+        WHEN  deliver() is called
+        THEN  the message is appended to INBOX
+        """
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+
+        imap_d = imap_delivery_factory()
+        msg = email_factory()
+        imap_d.deliver(msg, set())
+
+        mock_cls.assert_called_once_with(
+            host="imap.example.com", port=993, ssl=True
+        )
+        mock_client.login.assert_called_once_with(
+            "user@example.com", imap_d.password
+        )
+        mock_client.append.assert_called_once()
+        folder_used = mock_client.append.call_args[0][0]
+        assert folder_used == "INBOX"
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "list_folders_result, folder_exists_result, expected_folder",
+        [
+            pytest.param(
+                [((r"\Junk",), "/", "Junk Mail")],
+                False,
+                "Junk Mail",
+                id="special-use-Junk",
+            ),
+            pytest.param(
+                [((r"\HasNoChildren",), "/", "INBOX")],
+                True,
+                "Junk",
+                id="literal-Junk-exists",
+            ),
+            pytest.param(
+                [],
+                False,
+                "INBOX",
+                id="inbox-fallback",
+            ),
+        ],
+    )
+    def test_spam_routed_to_correct_junk_folder(
+        self,
+        imap_delivery_factory: Callable[..., ImapDelivery],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+        list_folders_result: list,
+        folder_exists_result: bool,
+        expected_folder: str,
+    ) -> None:
+        """
+        GIVEN an ImapDelivery with autofile_spam=True and threshold=5
+          AND the server's folder layout varies by parameter
+        WHEN  a spam message (score >= threshold) is delivered
+        THEN  it is appended to the correct junk folder:
+              - \\Junk SPECIAL-USE folder when advertised (RFC 6154)
+              - literal "Junk" folder when it exists
+              - INBOX as a last resort
+        """
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+        mock_client.list_folders.return_value = list_folders_result
+        mock_client.folder_exists.return_value = folder_exists_result
+
+        imap_d = imap_delivery_factory(
+            autofile_spam=True, spam_score_threshold=5
+        )
+        msg = email_factory()
+        msg["X-Spam-Status"] = "Yes, score=8.0 required=5.0 tests=NONE"
+        imap_d.deliver(msg, set())
+
+        folder_used = mock_client.append.call_args[0][0]
+        assert folder_used == expected_folder
+
+    ####################################################################
+    #
+    def test_autofile_spam_disabled_delivers_spam_to_inbox(
+        self,
+        imap_delivery_factory: Callable[..., ImapDelivery],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN an ImapDelivery with autofile_spam=False
+        WHEN  a high-scoring spam message is delivered
+        THEN  it is appended to INBOX (spam filtering disabled)
+        """
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+
+        imap_d = imap_delivery_factory(
+            autofile_spam=False, spam_score_threshold=1
+        )
+        msg = email_factory()
+        msg["X-Spam-Status"] = "Yes, score=99.0 required=5.0 tests=NONE"
+        imap_d.deliver(msg, set())
+
+        folder_used = mock_client.append.call_args[0][0]
+        assert folder_used == "INBOX"
+        mock_client.list_folders.assert_not_called()
+
+    ####################################################################
+    #
+    def test_deliver_exception_propagates(
+        self,
+        imap_delivery_factory: Callable[..., ImapDelivery],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN an ImapDelivery whose IMAPClient raises on login
+        WHEN  deliver() is called
+        THEN  the exception propagates out (caller moves mail to failed dir)
+        """
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+        mock_client.login.side_effect = Exception("auth failure")
+
+        imap_d = imap_delivery_factory()
+        msg = email_factory()
+
+        with pytest.raises(Exception, match="auth failure"):
+            imap_d.deliver(msg, set())
+
+        mock_client.append.assert_not_called()
+
+    ####################################################################
+    #
+    def test_test_connection_success(self, mocker: MockerFixture) -> None:
+        """
+        GIVEN valid credentials and a reachable IMAP server
+        WHEN  test_connection() is called
+        THEN  (True, "Connection successful.") is returned
+        """
+        mocker.patch("as_email.models.imapclient.IMAPClient")
+        ok, msg = ImapDelivery.test_connection(
+            "imap.example.com", 993, "user@example.com", "s3cr3t"
+        )
+        assert ok is True
+        assert "successful" in msg.lower()
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "exc_location, exception, expected_fragment",
+        [
+            pytest.param(
+                "cls",
+                socket.gaierror(8, "Name or service not known"),
+                "not found",
+                id="bad-hostname",
+            ),
+            pytest.param(
+                "cls",
+                ConnectionRefusedError(),
+                "refused",
+                id="connection-refused",
+            ),
+            pytest.param(
+                "cls",
+                TimeoutError(),
+                "timed out",
+                id="timeout",
+            ),
+            pytest.param(
+                "cls",
+                ssl.SSLError(1, "CERTIFICATE_VERIFY_FAILED"),
+                "SSL/TLS error",
+                id="ssl-error",
+            ),
+            pytest.param(
+                "cls",
+                Exception("something unexpected"),
+                "Connection failed",
+                id="generic-exception",
+            ),
+            pytest.param(
+                "login",
+                Exception(b"\"No such user 'user@example.com'\""),
+                "Authentication failed: No such user",
+                id="auth-failure-bytes",
+            ),
+            pytest.param(
+                "login",
+                Exception("b\"'bad!'\""),
+                "Authentication failed: 'bad!'",
+                id="auth-failure-bytes-repr",
+            ),
+        ],
+    )
+    def test_test_connection_failures(
+        self,
+        mocker: MockerFixture,
+        exc_location: str,
+        exception: Exception,
+        expected_fragment: str,
+    ) -> None:
+        """
+        GIVEN an IMAP server that raises a specific exception
+        WHEN  test_connection() is called
+        THEN  (False, message) is returned with a user-friendly description
+        """
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+        if exc_location == "cls":
+            mock_cls.side_effect = exception
+        else:
+            mock_client.login.side_effect = exception
+
+        ok, msg = ImapDelivery.test_connection(
+            "imap.example.com", 993, "user@example.com", "s3cr3t"
+        )
+        assert ok is False
+        assert expected_fragment in msg

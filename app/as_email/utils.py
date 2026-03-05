@@ -12,6 +12,7 @@ import email.policy
 import io
 import json
 import logging
+import re
 import smtplib
 from datetime import UTC, datetime
 from email.message import EmailMessage
@@ -469,6 +470,37 @@ def redis_client() -> redis.Redis:
 
 ####################################################################
 #
+def clear_delivery_retry_for_method(method_pk: int) -> int:
+    """
+    Scan Redis for all ``delivery_retry:*`` hash keys whose
+    ``failed_method_pks`` list includes ``method_pk`` and delete them.
+
+    Deleting a key resets the retry record so that the corresponding file in
+    FAILED_INCOMING_MSG_DIR is retried on the next periodic run without
+    waiting out the existing backoff delay.  This should be called whenever a
+    DeliveryMethod is updated (e.g. corrected IMAP credentials) so that the
+    fix takes effect promptly.
+
+    Returns the number of keys deleted.
+    """
+    r = redis_client()
+    deleted = 0
+    for key in r.scan_iter("delivery_retry:*"):
+        raw = r.hget(key, "failed_method_pks")
+        if raw is None:
+            continue
+        try:
+            pks = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+        except (ValueError, json.JSONDecodeError):
+            continue
+        if method_pk in pks:
+            r.delete(key)
+            deleted += 1
+    return deleted
+
+
+####################################################################
+#
 def utc_now_str() -> str:
     utc_now = datetime.now(UTC)
     return utc_now.strftime(DATETIME_FMT_STR)
@@ -478,3 +510,25 @@ def utc_now_str() -> str:
 #
 def now_str_datetime(datetime_str: str) -> datetime:
     return datetime.strptime(datetime_str, DATETIME_FMT_STR)
+
+
+####################################################################
+#
+def get_spam_score(msg: EmailMessage) -> int:
+    """
+    Parse the spam score from the SpamAssassin ``X-Spam-Status`` header.
+
+    The header format is: ``Yes, score=6.7 required=5.0 tests=...``
+
+    Returns the integer score (truncated from float), or 0 if the header is
+    absent or the score field cannot be parsed.
+    """
+    status_header = msg.get("X-Spam-Status", "")
+    if status_header:
+        m = re.search(r"score=([-\d.]+)", status_header)
+        if m:
+            try:
+                return int(float(m.group(1)))
+            except ValueError:
+                pass
+    return 0

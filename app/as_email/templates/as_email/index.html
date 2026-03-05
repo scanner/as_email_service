@@ -296,10 +296,11 @@
                       @click="startAdd('AliasToDelivery')">
                 [[ DELIVERY_TYPE_LABELS.AliasToDelivery ]]
               </button>
-              {# IMAP Delivery — uncomment when backend support lands #}
-              {# <button class="dropdown-item" @click="startAdd('ImapDelivery')"> #}
-              {#   [[ DELIVERY_TYPE_LABELS.ImapDelivery ]] #}
-              {# </button> #}
+              <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
+                      data-tooltip="Deliver email to an external IMAP server"
+                      @click="startAdd('ImapDelivery')">
+                [[ DELIVERY_TYPE_LABELS.ImapDelivery ]]
+              </button>
             </div>
           </div>
         </div>
@@ -385,6 +386,7 @@
             :form-data="formData"
             :errors="errors"
             :valid-email-addresses="validEmailAddresses"
+            :delivery-methods-url="deliveryMethodsUrl"
             @update:field="onFieldUpdate"
           ></component>
 
@@ -434,7 +436,7 @@
           Auto-file spam emails
         </label>
         <p class="help">
-          Files messages whose <code>X-Spam-Score</code> meets or exceeds the
+          Files messages whose spam score (from <code>X-Spam-Status</code>) meets or exceeds the
           threshold into the spam folder. The score may come from your email
           provider or, when <em>incoming spam scanning</em> is enabled on the
           account, from our system.
@@ -467,7 +469,7 @@
           <p v-if="errors.spam_score_threshold" class="help is-danger">
             [[ errors.spam_score_threshold ]]
           </p>
-          <p class="help">Messages with an X-Spam-Score at or above this value are filed as spam. 5 is a reasonable default.</p>
+          <p class="help">Messages with a spam score (from <code>X-Spam-Status</code>) at or above this value are filed as spam. 5 is a reasonable default.</p>
         </div>
       </div>
     </div>
@@ -496,9 +498,6 @@
 
   {# ------------------------------------------------------------------ #}
   {# ImapDeliveryForm template                                           #}
-  {# NOTE: Kept here so the UI is ready when the backend lands.         #}
-  {# The component is registered but ImapDelivery is commented out in   #}
-  {# delivery_method_registry.js until backend support is added.        #}
   {# ------------------------------------------------------------------ #}
   <template id="template-imap-delivery-form">
     <div class="box">
@@ -555,13 +554,42 @@
 
         <div class="field">
           <label class="label">Password</label>
-          <div class="control">
-            <input type="password" class="input"
-                   placeholder="IMAP password"
-                   :value="formData.password"
-                   @input="update('password', $event.target.value)">
+          <div class="field has-addons mb-0">
+            <div class="control is-expanded">
+              <input class="input"
+                     :type="showPassword ? 'text' : 'password'"
+                     placeholder="IMAP password"
+                     :value="passwordDisplayValue"
+                     @focus="onPasswordFocus"
+                     @blur="onPasswordBlur"
+                     @input="update('password', $event.target.value)">
+            </div>
+            <div class="control">
+              <button class="button has-tooltip-arrow has-tooltip-top" type="button"
+                      :data-tooltip="showPassword ? 'Hide password' : 'Show password'"
+                      @click="showPassword = !showPassword">
+                <span>[[ showPassword ? '🙈' : '👁' ]]</span>
+              </button>
+            </div>
           </div>
+          <p v-if="passwordMasked" class="help">Password is set — leave blank to keep it unchanged, or type a new one to replace it.</p>
           <p v-if="errors.password" class="help is-danger">[[ errors.password ]]</p>
+        </div>
+        <div class="field mt-3">
+          <div class="control">
+            <button class="button is-info is-light has-tooltip-arrow has-tooltip-top"
+                    type="button"
+                    :data-tooltip="canTest ? 'Test these credentials against the IMAP server' : 'Fill in all fields and enter a password to enable the test'"
+                    :disabled="!canTest || testing"
+                    :style="(!canTest || testing) ? { pointerEvents: 'none' } : {}"
+                    @click="testConnection">
+              [[ testing ? 'Testing…' : 'Test Connection' ]]
+            </button>
+          </div>
+          <p v-if="testResult" class="help mt-1"
+             :class="testResult.success ? 'is-success' : 'is-danger'">
+            [[ testResult.success ? '✓' : '✗' ]] [[ testResult.message ]]
+          </p>
         </div>
       </div>
 
@@ -587,6 +615,34 @@
           </div>
           <p class="help">Opens Gmail OAuth flow in a new window</p>
         </div>
+      </div>
+
+      <hr>
+
+      <div class="field">
+        <label class="checkbox">
+          <input type="checkbox"
+                 :checked="formData.autofile_spam"
+                 @change="update('autofile_spam', $event.target.checked)">
+          Auto-file spam emails
+        </label>
+        <p class="help">
+          Files messages whose spam score (from <code>X-Spam-Status</code>) meets or exceeds the
+          threshold into the server's Junk folder instead of INBOX.
+        </p>
+        <p v-if="errors.autofile_spam" class="help is-danger">[[ errors.autofile_spam ]]</p>
+      </div>
+
+      <div v-if="formData.autofile_spam" class="field">
+        <label class="label">Spam Score Threshold</label>
+        <div class="control">
+          <input type="number" class="input"
+                 min="1"
+                 :value="formData.spam_score_threshold"
+                 @input="update('spam_score_threshold', Number($event.target.value))">
+        </div>
+        <p class="help">Messages with a spam score (from <code>X-Spam-Status</code>) at or above this value are filed as spam. 5 is a reasonable default.</p>
+        <p v-if="errors.spam_score_threshold" class="help is-danger">[[ errors.spam_score_threshold ]]</p>
       </div>
     </div>
   </template>

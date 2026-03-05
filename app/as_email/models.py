@@ -12,10 +12,13 @@ import email.message
 import logging
 import mailbox
 import shlex
+import socket
+import ssl
 from typing import List
 
 # 3rd party imports
 #
+import imapclient
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -26,6 +29,7 @@ from django.db.models import QuerySet
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
 from dry_rest_permissions.generics import authenticated_users
+from encrypted_fields.fields import EncryptedCharField
 from model_utils import FieldTracker
 from ordered_model.models import OrderedModel
 from polymorphic.models import PolymorphicModel
@@ -34,6 +38,7 @@ from postmarker.core import PostmarkClient
 # project imports
 #
 from .providers import get_backend
+from .utils import get_spam_score
 
 # Various models that belong to a specific user need the User object.
 #
@@ -625,12 +630,25 @@ class EmailAccount(models.Model):
         visited_accounts: set[int] | None = None,
     ) -> None:
         """
-        Deliver the given message to this account using all enabled delivery
-        methods in order. The `visited_accounts` set is threaded through alias
-        chains to detect loops and enforce the hop limit.
+        Deliver ``msg`` to every enabled DeliveryMethod on this account in
+        order.
+
+        This method is **not** the entry point for dispatching ordinary
+        incoming user email.  For that, use ``dispatch_incoming_email``
+        (tasks.py), which iterates methods individually so that per-method
+        failures are tracked in Redis and retried selectively with backoff.
+
+        This method is appropriate in two narrower contexts where that
+        per-method tracking is not needed:
+
+        - **Alias chains** — ``AliasToDelivery.deliver()`` calls this on the
+          target account to recurse through forwarding hops.
+        - **DSN / notification messages** — ``report_failed_message()``
+          (deliver.py) calls this to deliver delivery-status notifications
+          back to the account via whatever methods remain active.
 
         Args:
-            msg: The email message to deliver
+            msg: The email message to deliver.
             visited_accounts: PKs of EmailAccounts already visited in this
                 delivery chain; initialised to an empty set on first call.
         """
@@ -1139,7 +1157,7 @@ class LocalDelivery(DeliveryMethod):
     spam_score_threshold = models.IntegerField(
         default=5,
         help_text=_(
-            "Messages with an X-Spam-Score at or above this value are "
+            "Messages with a spam score (from X-Spam-Status) at or above this value are "
             "considered spam. 5 is a reasonable default."
         ),
     )
@@ -1241,10 +1259,17 @@ class AliasToDelivery(DeliveryMethod):
         visited_accounts: set[int],
     ) -> None:
         """
-        Deliver the message to the target account, with loop detection.
+        Forward ``msg`` to the target account by calling
+        ``target_account.deliver()``, with alias-loop detection and a hop
+        limit.
+
+        This is one of the two internal callers of ``EmailAccount.deliver()``
+        that do not need per-method failure tracking (the other is
+        ``report_failed_message``).  Ordinary incoming email is dispatched
+        via ``dispatch_incoming_email`` (tasks.py) instead.
 
         Args:
-            msg: The email message to deliver
+            msg: The email message to forward.
             visited_accounts: PKs of accounts already in this chain; prevents
                 loops and enforces the MAX_HOPS limit.
         """
@@ -1267,3 +1292,189 @@ class AliasToDelivery(DeliveryMethod):
 
         visited_accounts.add(self.target_account_id)
         self.target_account.deliver(msg, visited_accounts)
+
+
+########################################################################
+########################################################################
+#
+class ImapDelivery(DeliveryMethod):
+    """
+    Delivers incoming email to a remote IMAP server over SSL.
+
+    Credentials are stored encrypted using Fernet symmetric encryption
+    (see the FERNET_KEYS Django setting). Spam auto-filing uses the server's
+    SPECIAL-USE \\Junk mailbox (RFC 6154); falls back to the literal folder
+    name "Junk", then to INBOX if neither exists.
+    """
+
+    imap_host = models.CharField(
+        max_length=253,
+        help_text=_("Hostname of the remote IMAP server."),
+    )
+    imap_port = models.PositiveIntegerField(
+        default=993,
+        help_text=_("IMAP port (default 993 for IMAPS)."),
+    )
+    username = EncryptedCharField(
+        max_length=254,
+        help_text=_("IMAP login username. Stored encrypted at rest."),
+    )
+    password = EncryptedCharField(
+        max_length=1024,
+        help_text=_("IMAP login password. Stored encrypted at rest."),
+    )
+    autofile_spam = models.BooleanField(
+        default=True,
+        help_text=_(
+            "When enabled, messages whose spam score (from X-Spam-Status) meets or exceeds the "
+            "threshold are filed in the server's Junk folder instead of INBOX."
+        ),
+    )
+    spam_score_threshold = models.IntegerField(
+        default=5,
+        help_text=_(
+            "Messages with a spam score (from X-Spam-Status) at or above this value are "
+            "considered spam. 5 is a reasonable default."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "IMAP Delivery"
+        verbose_name_plural = "IMAP Deliveries"
+
+    ####################################################################
+    #
+    def __str__(self) -> str:
+        return (
+            f"ImapDelivery({self.username}@{self.imap_host}:{self.imap_port})"
+        )
+
+    ####################################################################
+    #
+    @staticmethod
+    def _resolve_junk_folder(client: imapclient.IMAPClient) -> str:
+        """
+        Resolve the junk folder name on the IMAP server.
+
+        Resolution order (RFC 6154):
+        1. A folder advertising the \\Junk SPECIAL-USE attribute.
+        2. The literal folder name "Junk".
+        3. "INBOX" as a last-resort fallback.
+
+        Returns the folder name to use for spam messages.
+        """
+        try:
+            for flags, _delimiter, name in client.list_folders():
+                if r"\Junk" in flags:
+                    return name
+        except Exception:
+            pass
+
+        try:
+            if client.folder_exists("Junk"):
+                return "Junk"
+        except Exception:
+            pass
+
+        return "INBOX"
+
+    ####################################################################
+    #
+    @staticmethod
+    def test_connection(
+        host: str, port: int, username: str, password: str
+    ) -> tuple[bool, str]:
+        """
+        Attempt to connect and authenticate to an IMAP server.
+
+        Returns ``(True, "Connection successful.")`` on success, or
+        ``(False, <user-friendly message>)`` on any failure. Common failures
+        are mapped to specific messages; unexpected errors fall back to a
+        generic message that includes the exception text.
+
+        Args:
+            host: IMAP server hostname.
+            port: IMAP server port (e.g. 993).
+            username: IMAP login username.
+            password: IMAP login password.
+        """
+        try:
+            with imapclient.IMAPClient(
+                host=host, port=port, ssl=True, timeout=10
+            ) as client:
+                try:
+                    client.login(username, password)
+                except Exception as exc:
+                    # imapclient passes server error responses as bytes (or as
+                    # str(bytes), e.g. b"'bad!'"). Unwrap either form and strip
+                    # IMAP quoted-string delimiters for a readable message.
+                    raw = exc.args[0] if exc.args else str(exc)
+                    if isinstance(raw, bytes):
+                        raw = raw.decode("utf-8", errors="replace")
+                    else:
+                        raw = str(raw)
+                        # Strip Python bytes-literal repr: b'...' or b"..."
+                        if (
+                            len(raw) >= 4
+                            and raw[0] == "b"
+                            and raw[1] in ('"', "'")
+                        ):
+                            raw = raw[2:-1]
+                    raw = raw.strip('"')
+                    return False, f"Authentication failed: {raw}"
+        except socket.gaierror:
+            return (
+                False,
+                f"Host '{host}' not found — check the server hostname.",
+            )
+        except ConnectionRefusedError:
+            return (
+                False,
+                f"Connection to {host}:{port} was refused — check the hostname and port.",
+            )
+        except (TimeoutError, socket.timeout):
+            return (
+                False,
+                f"Connection to {host}:{port} timed out — server may be unreachable.",
+            )
+        except ssl.SSLError as exc:
+            return False, f"SSL/TLS error: {str(exc)}"
+        except Exception as exc:
+            return False, f"Connection failed: {exc!r}"
+        return True, "Connection successful."
+
+    ####################################################################
+    #
+    def deliver(
+        self,
+        msg: email.message.EmailMessage,
+        visited_accounts: set[int],
+    ) -> None:
+        """
+        Deliver the message to the remote IMAP server.
+
+        Connects over SSL, authenticates, resolves the target folder (Junk
+        for spam when autofile_spam is enabled, INBOX otherwise), and appends
+        the message. Any exception is re-raised so the caller can move the
+        message to the failed-incoming queue.
+
+        Args:
+            msg: The email message to deliver.
+            visited_accounts: Unused for IMAP delivery; required by interface.
+        """
+        msg_bytes = msg.as_bytes(policy=email.policy.default)
+
+        with imapclient.IMAPClient(
+            host=self.imap_host, port=self.imap_port, ssl=True
+        ) as client:
+            client.login(self.username, self.password)
+
+            if (
+                self.autofile_spam
+                and get_spam_score(msg) >= self.spam_score_threshold
+            ):
+                folder = self._resolve_junk_folder(client)
+            else:
+                folder = "INBOX"
+
+            client.append(folder, msg_bytes)

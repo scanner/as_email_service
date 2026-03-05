@@ -49,6 +49,21 @@ export default {
     const deleting = ref(false);
     const errors = ref({});
 
+    // DRF wraps every field error in an array even when there is only one
+    // message. Flatten single-item arrays to plain strings for clean display.
+    //
+    // DRF wraps field errors in arrays. Join them into a single string for
+    // clean display.
+    //
+    const flattenErrors = (body) => {
+      if (!body || typeof body !== "object") return body;
+      return Object.fromEntries(
+        Object.entries(body).map(([k, v]) =>
+          Array.isArray(v) ? [k, v.join(", ")] : [k, v],
+        ),
+      );
+    };
+
     // View/edit mode for existing methods. New methods start in edit mode
     // immediately (they have no saved state to display).
     //
@@ -84,10 +99,49 @@ export default {
     //
     // Save: POST for new, PATCH for existing.
     //
+    // For ImapDelivery: if the password field contains a value (meaning the
+    // user has typed a new password), run a connection test first and abort
+    // with an error if it fails. This prevents saving credentials that are
+    // known to be wrong.
+    //
     const save = async () => {
       saving.value = true;
       errors.value = {};
       try {
+        if (
+          formData.value.delivery_type === "ImapDelivery" &&
+          formData.value.password &&
+          props.deliveryMethodsUrl
+        ) {
+          const testRes = await fetch(props.deliveryMethodsUrl + "test_imap/", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imap_host: formData.value.imap_host,
+              imap_port: formData.value.imap_port,
+              username: formData.value.username,
+              password: formData.value.password,
+            }),
+          });
+          if (!testRes.ok) {
+            let errBody;
+            try {
+              errBody = await testRes.json();
+            } catch {
+              errBody = {};
+            }
+            errors.value = {
+              detail: `Connection test failed: ${
+                errBody.message ??
+                errBody.detail ??
+                "please verify your credentials."
+              }`,
+            };
+            return;
+          }
+        }
+
         let res;
         const body = JSON.stringify(formData.value);
         if (props.isNew) {
@@ -121,7 +175,7 @@ export default {
           } catch {
             errBody = { detail: `HTTP ${res.status}: ${res.statusText}` };
           }
-          errors.value = errBody;
+          errors.value = flattenErrors(errBody);
           if (res.status === 401 || res.status === 403) {
             errors.value = {
               detail: "Session expired — please reload the page.",
@@ -179,7 +233,7 @@ export default {
           } catch {
             errBody = { detail: `HTTP ${res.status}: ${res.statusText}` };
           }
-          errors.value = errBody;
+          errors.value = flattenErrors(errBody);
         }
       } finally {
         saving.value = false;
@@ -208,7 +262,7 @@ export default {
           ctx.emit("deleted", props.deliveryMethod.pk);
         } else {
           try {
-            errors.value = await res.json();
+            errors.value = flattenErrors(await res.json());
           } catch {
             errors.value = {
               detail: `Delete failed: HTTP ${res.status}: ${res.statusText}`,

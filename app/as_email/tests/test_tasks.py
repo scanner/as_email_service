@@ -7,7 +7,7 @@ Test the huey tasks
 #
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -44,6 +44,7 @@ from ..tasks import (
 )
 from ..utils import (
     read_emailaccount_pwfile,
+    redis_client,
     spool_message,
     write_spooled_email,
 )
@@ -118,22 +119,23 @@ def test_dispatch_incoming_email(
 #
 def test_dispatch_incoming_mail_failure(
     mocker: MockerFixture,
-    email_spool_dir: Path,
     email_account_factory: Callable[..., EmailAccount],
     email_factory: Callable[..., EmailMessage],
     settings: LazySettings,
 ) -> None:
     """
-    Given deliver_message raises an exception
-    When dispatch_incoming_email task runs
-    Then the message is moved to failed incoming directory
+    GIVEN a delivery method that raises a transient exception
+    WHEN dispatch_incoming_email task runs
+    THEN the message is moved to FAILED_INCOMING_MSG_DIR and a Redis retry
+         record is created containing the failing method's PK
     """
-    mocker.patch(
-        "as_email.models.EmailAccount.deliver", side_effect=Exception("ERROR")
-    )
     ea = email_account_factory()
     ea.scan_incoming_spam = False
     ea.save()
+    mocker.patch(
+        "as_email.models.LocalDelivery.deliver",
+        side_effect=Exception("connection refused"),
+    )
     msg = email_factory(to=ea.email_address)
     now = datetime.now()
     message_id = msg["Message-ID"]
@@ -144,12 +146,65 @@ def test_dispatch_incoming_mail_failure(
     res = dispatch_incoming_email(ea.pk, str(fname))
     res()
 
-    # We should find a single file in the failed message directory that has the
-    # same message id from above.
+    # Message should be in the failed directory.
     #
-    failed_msg_file = list(settings.FAILED_INCOMING_MSG_DIR.iterdir())[0]
-    email_msg = json.loads(failed_msg_file.read_text())
+    failed_files = list(settings.FAILED_INCOMING_MSG_DIR.iterdir())
+    assert len(failed_files) == 1
+    email_msg = json.loads(failed_files[0].read_text())
     assert email_msg["message-id"] == message_id
+
+    # A Redis retry record should exist with the failing method's PK.
+    #
+    r = redis_client()
+    ld = LocalDelivery.objects.get(email_account=ea)
+    redis_key = f"delivery_retry:{failed_files[0].stem}"
+    retry_data = r.hgetall(redis_key)
+    assert retry_data, "Expected Redis retry record"
+    assert json.loads(retry_data[b"failed_method_pks"].decode()) == [ld.pk]
+    assert retry_data[b"attempt_count"].decode() == "1"
+
+
+####################################################################
+#
+def test_dispatch_incoming_email_auth_failure_auto_disables(
+    mocker: MockerFixture,
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    settings: LazySettings,
+) -> None:
+    """
+    GIVEN a delivery method that raises an IMAP authentication error
+    WHEN dispatch_incoming_email task runs
+    THEN the method is immediately auto-disabled, no retry record is created,
+         and the spool file is removed (not queued for retry)
+    """
+    ea = email_account_factory()
+    ea.scan_incoming_spam = False
+    ea.save()
+    mocker.patch(
+        "as_email.models.LocalDelivery.deliver",
+        side_effect=Exception("AUTHENTICATIONFAILED Invalid credentials"),
+    )
+    msg = email_factory(to=ea.email_address)
+    now = datetime.now()
+    fname = write_spooled_email(
+        msg["To"], settings.EMAIL_SPOOL_DIR, msg, str(now), msg["Message-ID"]
+    )
+
+    res = dispatch_incoming_email(ea.pk, str(fname))
+    res()
+
+    # Delivery method must be disabled.
+    #
+    ld = LocalDelivery.objects.get(email_account=ea)
+    ld.refresh_from_db()
+    assert not ld.enabled
+
+    # Auth failures are not queued for retry.
+    #
+    assert not list(settings.FAILED_INCOMING_MSG_DIR.iterdir())
+    r = redis_client()
+    assert not list(r.scan_iter(b"delivery_retry:*"))
 
 
 ####################################################################
@@ -278,21 +333,23 @@ def test_dispatch_incoming_email_scan_disabled(
 #
 def test_retry_failed_incoming_email_failure(
     caplog: LogCaptureFixture,
-    email_spool_dir: Path,
     email_factory: Callable[..., EmailMessage],
     settings: LazySettings,
 ) -> None:
     """
-    Given multiple failed messages without valid EmailAccounts
-    When retry_failed_incoming_email task runs
-    Then it attempts 5 redeliveries and stops
+    GIVEN multiple failed messages whose recipients have no EmailAccount
+    WHEN retry_failed_incoming_email task runs
+    THEN it logs a warning for each unreadable file and stops after
+         NUM_DELIVER_FAILURE_ATTEMPTS_PER_RUN consecutive failures
     """
-    # Create 5 email messages, but do not create any EmailAccount's. This will
-    # result in the lookup failing.
+    # Create 6 files with addresses that have no matching EmailAccount so the
+    # lookup raises DoesNotExist and the file is counted as a failure.
+    # NUM_DELIVER_FAILURE_ATTEMPTS_PER_RUN = 5: the guard fires at the start
+    # of the 6th iteration (when count == 5), logging the "Stopping" message
+    # and breaking before processing that file.
     #
-    settings.FAILED_INCOMING_MSG_DIR.mkdir(parents=True, exist_ok=True)
     failed_email_files = []
-    for _ in range(5):
+    for _ in range(6):
         msg = email_factory()
         now = datetime.now()
         message_id = msg["Message-ID"]
@@ -308,63 +365,164 @@ def test_retry_failed_incoming_email_failure(
     res = retry_failed_incoming_email()
     res()
 
-    # Make sure our five failed retry messages were logged.
-    #
     assert "Stopping redelivery attempts after" in caplog.text
-    for msg_path in failed_email_files:
-        assert f"Unable to deliver failed message '{msg_path}'" in caplog.text
+    # Exactly 5 of the 6 files are processed; one is skipped when the loop
+    # breaks after reaching NUM_DELIVER_FAILURE_ATTEMPTS_PER_RUN.
+    assert caplog.text.count("Unable to read failed message") == 5
 
 
 ####################################################################
 #
 def test_retry_failed_incoming_email(
-    mocker: MockerFixture,
-    email_spool_dir,
-    email_account_factory,
-    email_factory,
-    settings,
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    settings: LazySettings,
 ) -> None:
     """
-    Given failed messages with valid EmailAccounts
-    When retry_failed_incoming_email task runs
-    Then deliver_message is called for each EmailAccount
+    GIVEN failed messages in FAILED_INCOMING_MSG_DIR with Redis retry records
+         whose next_retry_at is in the past
+    WHEN retry_failed_incoming_email task runs
+    THEN each message is delivered successfully, its file is deleted, and its
+         Redis record is removed
     """
-    # Mock EmailAccount.deliver so we can verify that it was called properly.
-    # autospec=True ensures the mock captures (self, msg) correctly.
-    #
-    mock_deliver_message = mocker.patch(
-        "as_email.models.EmailAccount.deliver", autospec=True, return_value=None
-    )
-    deliveries = []
-    for _ in range(6):
+    r = redis_client()
+    pending = []
+    for _ in range(3):
         ea = email_account_factory()
         msg = email_factory(to=ea.email_address)
         now = datetime.now()
-        message_id = msg["Message-ID"]
-        write_spooled_email(
+        fname = write_spooled_email(
             msg["To"],
             settings.FAILED_INCOMING_MSG_DIR,
             msg,
             str(now),
-            message_id,
+            msg["Message-ID"],
         )
-        deliveries.append((ea.email_address, msg))
+        ld = LocalDelivery.objects.get(email_account=ea)
+        redis_key = f"delivery_retry:{fname.stem}"
+        r.hset(
+            redis_key,
+            mapping={
+                "first_failure": datetime.now(UTC).isoformat(),
+                "attempt_count": "1",
+                "failed_method_pks": json.dumps([ld.pk]),
+                # next_retry_at in the past so the file is processed now.
+                "next_retry_at": (
+                    datetime.now(UTC) - timedelta(seconds=60)
+                ).isoformat(),
+            },
+        )
+        pending.append((fname, redis_key))
 
     res = retry_failed_incoming_email()
     res()
 
-    # And check to see that all messages were delivered.
+    # All files and Redis records should be cleaned up after successful retry.
     #
-    expected = sorted(deliveries, key=lambda x: x[0])
-    mock_call_args = mock_deliver_message.call_args_list
-    assert mock_call_args
-    called = sorted(
-        [(x[0][0].email_address, x[0][1]) for x in mock_call_args],
-        key=lambda x: x[0],
+    for fname, redis_key in pending:
+        assert not fname.exists(), f"{fname} should have been deleted"
+        assert not r.exists(redis_key), f"{redis_key} should have been deleted"
+
+
+####################################################################
+#
+def test_retry_respects_backoff(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    settings: LazySettings,
+) -> None:
+    """
+    GIVEN a failed message whose Redis record has next_retry_at in the future
+    WHEN retry_failed_incoming_email task runs
+    THEN the file is skipped and attempt_count is unchanged
+    """
+    r = redis_client()
+    ea = email_account_factory()
+    msg = email_factory(to=ea.email_address)
+    fname = write_spooled_email(
+        msg["To"],
+        settings.FAILED_INCOMING_MSG_DIR,
+        msg,
+        str(datetime.now()),
+        msg["Message-ID"],
     )
-    for exp, call in zip(expected, called):
-        assert exp[0] == call[0]
-        assert_email_equal(exp[1], call[1])
+    ld = LocalDelivery.objects.get(email_account=ea)
+    redis_key = f"delivery_retry:{fname.stem}"
+    r.hset(
+        redis_key,
+        mapping={
+            "first_failure": datetime.now(UTC).isoformat(),
+            "attempt_count": "1",
+            "failed_method_pks": json.dumps([ld.pk]),
+            # next_retry_at is one hour in the future.
+            "next_retry_at": (
+                datetime.now(UTC) + timedelta(hours=1)
+            ).isoformat(),
+        },
+    )
+
+    res = retry_failed_incoming_email()
+    res()
+
+    # File must still be present (skipped due to backoff).
+    #
+    assert fname.exists()
+    data = r.hgetall(redis_key)
+    assert data[b"attempt_count"].decode() == "1"
+
+
+####################################################################
+#
+def test_retry_auto_disable_after_window(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    settings: LazySettings,
+) -> None:
+    """
+    GIVEN a failed message whose first_failure is older than DELIVERY_RETRY_DAYS
+    WHEN retry_failed_incoming_email task runs
+    THEN the still-failing method is auto-disabled, the file is deleted, and
+         the Redis record is removed
+    """
+    r = redis_client()
+    ea = email_account_factory()
+    msg = email_factory(to=ea.email_address)
+    fname = write_spooled_email(
+        msg["To"],
+        settings.FAILED_INCOMING_MSG_DIR,
+        msg,
+        str(datetime.now()),
+        msg["Message-ID"],
+    )
+    ld = LocalDelivery.objects.get(email_account=ea)
+    redis_key = f"delivery_retry:{fname.stem}"
+    # first_failure is 8 days ago; default DELIVERY_RETRY_DAYS is 7.
+    #
+    stale = datetime.now(UTC) - timedelta(days=8)
+    r.hset(
+        redis_key,
+        mapping={
+            "first_failure": stale.isoformat(),
+            "attempt_count": "5",
+            "failed_method_pks": json.dumps([ld.pk]),
+            "next_retry_at": (
+                datetime.now(UTC) - timedelta(seconds=1)
+            ).isoformat(),
+        },
+    )
+
+    res = retry_failed_incoming_email()
+    res()
+
+    # Method must be auto-disabled.
+    #
+    ld.refresh_from_db()
+    assert not ld.enabled
+
+    # File and Redis record must be cleaned up.
+    #
+    assert not fname.exists()
+    assert not r.exists(redis_key)
 
 
 ####################################################################

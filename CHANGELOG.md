@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-04
+
+### Added
+
+- GH-1: IMAP delivery method — forward incoming email to any remote IMAP server with SSL; IMAP credentials are encrypted at rest using `SALT_KEY` (supports key rotation)
+- GH-1: Per-delivery-method failure tracking — failed methods are recorded in Redis and retried independently with exponential backoff (10 min to 4 h); after `DELIVERY_RETRY_DAYS` days the method is auto-disabled and the account owner notified by email
+- GH-1: Authentication failures disable the delivery method immediately rather than retrying; the owner is notified once per 24-hour window
+- GH-1: Fixing a delivery method (PATCH) clears its retry record so the failed message is retried on the next run without waiting for backoff
+- GH-1: IMAP credential validation on create, update, and re-enable — the API tests the live connection before saving; re-enabling a disabled method with stale credentials is rejected
+- Documentation page now uses the logged-in user's actual email account addresses in configuration examples (SMTP/IMAP username, alias delivery) rather than a generic `SITE_NAME`-based placeholder
+- Documentation page shows the user's login email address where it describes failure notification emails
+- Navbar brand now shows the logged-in user's username instead of "AS Email"
+
+### Changed
+
+- GH-1: `dispatch_incoming_email` now iterates each delivery method individually so a failure on one does not block the others
+
+### Fixed
+
+- Spam score header references corrected from `X-Spam-Score` to `X-Spam-Status` in all UI help text and model field descriptions
+- Spam score parsing consolidated into a single `get_spam_score()` utility used by both local delivery and IMAP delivery
+
 ## [0.4.1] - 2026-03-02
 
 ### Added

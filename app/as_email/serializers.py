@@ -18,10 +18,12 @@ from .models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,
+    ImapDelivery,
     InactiveEmail,
     LocalDelivery,
     MessageFilterRule,
 )
+from .utils import clear_delivery_retry_for_method
 
 
 ########################################################################
@@ -232,6 +234,24 @@ class DeliveryMethodSerializer(NestedHyperlinkedModelSerializer):
             "modified_at",
         ]
 
+    ####################################################################
+    #
+    def update(
+        self, instance: DeliveryMethod, validated_data: dict
+    ) -> DeliveryMethod:
+        """
+        After saving, clear any Redis ``delivery_retry:*`` entries that
+        reference this method's PK.
+
+        When a delivery method is corrected (e.g. new IMAP credentials or
+        hostname), the outstanding retry record is stale — it would hold back
+        re-delivery until the backoff timer expires.  Deleting the record
+        here lets the retry task pick up the file on its very next run.
+        """
+        updated = super().update(instance, validated_data)
+        clear_delivery_retry_for_method(instance.pk)
+        return updated
+
 
 ########################################################################
 ########################################################################
@@ -265,3 +285,113 @@ class AliasToDeliverySerializer(DeliveryMethodSerializer):
         fields = DeliveryMethodSerializer.Meta.fields + [
             "target_account",
         ]
+
+
+########################################################################
+########################################################################
+#
+class ImapDeliverySerializer(DeliveryMethodSerializer):
+    """
+    Serializer for ImapDelivery. The `password` field is write-only — it is
+    accepted on create and update but never returned in GET responses. On
+    PATCH, omitting `password` leaves the stored value unchanged.
+    """
+
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        style={"input_type": "password"},
+        help_text=ImapDelivery.password.field.help_text,
+    )
+
+    class Meta(DeliveryMethodSerializer.Meta):
+        model = ImapDelivery
+        fields = DeliveryMethodSerializer.Meta.fields + [
+            "imap_host",
+            "imap_port",
+            "username",
+            "password",
+            "autofile_spam",
+            "spam_score_threshold",
+        ]
+
+    ####################################################################
+    #
+    def validate(self, attrs: dict) -> dict:
+        """
+        Test the IMAP connection when credentials change or the method is
+        re-enabled.
+
+        Two cases trigger a live connection test:
+
+        1. A ``password`` is included in the request — always test, whether
+           creating or updating.  Falls back to instance values for any
+           fields not present in ``attrs``.
+
+        2. The request sets ``enabled=True`` on an existing instance that is
+           currently disabled (re-enable), and no new password was supplied.
+           The stored credentials are used.  This ensures a user cannot
+           re-enable a delivery method whose credentials are known-bad.
+
+        For PATCH requests, absent fields fall back to the current instance
+        values so partial updates still receive a complete set of parameters.
+        """
+        instance = self.instance  # None on create
+
+        # Determine whether a live connection test is needed.
+        #
+        being_reenabled = (
+            instance is not None
+            and not instance.enabled
+            and attrs.get("enabled") is True
+            and "password" not in attrs
+        )
+
+        if "password" in attrs or being_reenabled:
+            host = attrs.get("imap_host", getattr(instance, "imap_host", ""))
+            port = attrs.get("imap_port", getattr(instance, "imap_port", 993))
+            username = attrs.get("username", getattr(instance, "username", ""))
+            password = attrs.get("password", getattr(instance, "password", ""))
+            ok, message = ImapDelivery.test_connection(
+                host=host,
+                port=port,
+                username=username,
+                password=password,
+            )
+            if not ok:
+                field = "password" if "password" in attrs else "enabled"
+                raise serializers.ValidationError({field: message})
+        return attrs
+
+    ####################################################################
+    #
+    def update(
+        self, instance: ImapDelivery, validated_data: dict
+    ) -> ImapDelivery:
+        """
+        Remove `password` from validated_data when it is absent so a PATCH
+        without a password field does not overwrite the stored credential.
+        """
+        if "password" not in self.initial_data:
+            validated_data.pop("password", None)
+        return super().update(instance, validated_data)
+
+
+########################################################################
+########################################################################
+#
+class TestImapConnectionSerializer(serializers.Serializer):
+    """
+    Input for the ``test_imap`` action on DeliveryMethodViewSet.
+
+    Validates connection parameters without touching the database.
+    """
+
+    imap_host = serializers.CharField(required=True)
+    imap_port = serializers.IntegerField(
+        required=True, min_value=1, max_value=65535
+    )
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(
+        required=True, style={"input_type": "password"}
+    )

@@ -21,6 +21,14 @@ import environ
 import redis
 import sentry_sdk
 from django.utils.crypto import get_random_string
+from dotenv import load_dotenv
+
+# Load environment variables from .env if present. In production the container
+# already has these set via docker-compose env_file, so this is a no-op there.
+# Locally (uv run, tests) this populates env vars from .env without overriding
+# any that are already set in the shell.
+#
+load_dotenv()
 
 # This is be "/app" inside the docker container.
 #
@@ -89,6 +97,22 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 #
 SPAMD_HOST, SPAMD_PORT = env("SPAMD_HOST").split(":")
 SPAMD_PORT = int(SPAMD_PORT)
+# NOTE: SALT_KEY is used by django-fernet-encrypted-fields to derive the
+# encryption key for IMAP credentials stored at rest. The key is derived from
+# SECRET_KEY + SALT_KEY using PBKDF2-SHA256.
+#
+# Key rotation: set SALT_KEY to a comma-separated list of salt strings. The
+# first value encrypts all new data; remaining values are tried in order when
+# decrypting existing values. To rotate, prepend the new salt:
+#
+#   .env:         SALT_KEY=new_salt,old_salt
+#   settings.py:  SALT_KEY = ["new_salt", "old_salt"]
+#
+# Once all existing credentials have been re-saved with the new salt, remove
+# the old value from the list.
+SALT_KEY = env.list("SALT_KEY")
+DELIVERY_RETRY_DAYS = env.int("DELIVERY_RETRY_DAYS", default=7)
+DELIVERY_RETRY_BACKOFF = env("DELIVERY_RETRY_BACKOFF", default="exponential")
 VERSION = env("VERSION")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 SITE_NAME = env("SITE_NAME")
@@ -414,6 +438,7 @@ BULMA_SETTINGS = {
 SETTINGS_EXPORT = [
     "ADMINISTRATIVE_EMAIL_ADDRESS",
     "DEBUG",
+    "DELIVERY_RETRY_DAYS",
     "GITHUB_URL",
     "SITE_NAME",
     "VERSION",

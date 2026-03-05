@@ -59,6 +59,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 
+# Provided at build time so collectstatic can load settings.
+# Never written to ENV so it is not present at runtime.
+ARG SALT_KEY
+
 # Install runtime dependencies + build tools + development tools
 RUN apt-get update && \
     apt-get install --assume-yes --no-install-recommends \
@@ -120,6 +124,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
+
+# Provided at build time so collectstatic/compile_pyc can load settings.
+# Never written to ENV so it is not present at runtime.
+ARG SALT_KEY
 
 # Install ONLY runtime dependencies needed by your Python packages
 # These are the shared libraries that compiled extensions link against

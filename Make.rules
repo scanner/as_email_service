@@ -36,10 +36,10 @@ $(ROOT_DIR)/.venv: pyproject.toml uv.lock $(ROOT_DIR)/.python-version
 # need done for the pre-commit hook to pass. Squeegee runs the various
 # linting and formatting commands directly. It also runs mypy.
 #
-squeegee: .venv isort black mypy	## Manually run isort, black, mypy, and ruff over all project files
+squeegee: .venv isort black mypy	## Run isort, black, mypy, and ruff over all files
 	@$(UV_RUN) ruff check $(ROOT_DIR)/app/
 
-lint: .venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only runs over files in the git repo (and staged files)
+lint: .venv .git/hooks/pre-commit	## Run pre-commit hooks over tracked and staged files
 	@$(UV_RUN) pre-commit run -a
 
 PY_FILES=$(shell find $(ROOT_DIR)/app/ -type f -name '*.py' 2>/dev/null)

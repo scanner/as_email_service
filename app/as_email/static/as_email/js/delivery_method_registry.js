@@ -19,7 +19,7 @@ import ImapDeliveryForm from "./imap_delivery_form.js";
 export const DELIVERY_TYPE_COMPONENTS = {
   LocalDelivery: LocalDeliveryForm,
   AliasToDelivery: AliasToDeliveryForm,
-  // ImapDelivery: ImapDeliveryForm,  ← uncomment when backend support lands
+  ImapDelivery: ImapDeliveryForm,
 };
 
 ////////////////////////////////////////////////////////////////////////////
@@ -48,6 +48,23 @@ export const DELIVERY_TYPE_ICONS = {
 // type. The `delivery_type` field must be included so the backend knows which
 // serialiser to use.
 //
+// These defaults also serve as the fallback for frontend-only fields that the
+// API does not (yet) store or return. DeliveryMethodList.applyFrontendDefaults
+// merges these over the API response so edit forms always have a complete
+// starting state. Once the backend starts persisting and returning a field,
+// the API value will automatically take precedence — no changes needed here.
+//
+// Fields currently frontend-only (not persisted by the backend):
+//   ImapDelivery.auth_type — always "password" for now; when OAuth2 support
+//     is added the backend will store and return the auth type, and this
+//     default will be overridden automatically.
+//
+// Note: ImapDelivery.password is NOT listed here. The password is
+//   intentionally never returned by the API (it is write-only, stored
+//   encrypted). Its absence from the API response is by design, not a
+//   gap to be filled with a default. See imap_delivery_form.js for how
+//   the UI handles the always-empty password field.
+//
 export const DELIVERY_TYPE_DEFAULTS = {
   LocalDelivery: {
     delivery_type: "LocalDelivery",
@@ -61,13 +78,16 @@ export const DELIVERY_TYPE_DEFAULTS = {
     enabled: true,
     target_account: "",
   },
-  // ImapDelivery: {
-  //   delivery_type: "ImapDelivery",
-  //   enabled: true,
-  //   imap_host: "",
-  //   imap_port: 993,
-  //   auth_type: "password",  // "password" | "oauth2"
-  //   username: "",
-  //   password: "",
-  // },
+  ImapDelivery: {
+    delivery_type: "ImapDelivery",
+    enabled: true,
+    imap_host: "",
+    imap_port: 993,
+    // auth_type is frontend-only until OAuth2 is implemented. See note above.
+    auth_type: "password",
+    username: "",
+    password: "",
+    autofile_spam: true,
+    spam_score_threshold: 5,
+  },
 };
