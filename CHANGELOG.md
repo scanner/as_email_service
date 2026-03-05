@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation page now uses the logged-in user's actual email account addresses in configuration examples (SMTP/IMAP username, alias delivery) rather than a generic `SITE_NAME`-based placeholder
 - Documentation page shows the user's login email address where it describes failure notification emails
 - Navbar brand now shows the logged-in user's username instead of "AS Email"
+- Delivery method cards are now collapsible — existing methods start collapsed showing a one-line summary, keeping the UI compact when managing multiple delivery methods
 
 ### Changed
 
