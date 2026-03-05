@@ -155,6 +155,7 @@ dev = [
     { name = "pytest-coverage" },
     { name = "pytest-django" },
     { name = "pytest-factoryboy" },
+    { name = "pytest-faker" },
     { name = "pytest-mock" },
     { name = "pytest-sugar" },
     { name = "pytest-timeout" },
@@ -244,6 +245,7 @@ dev = [
     { name = "pytest-coverage" },
     { name = "pytest-django" },
     { name = "pytest-factoryboy" },
+    { name = "pytest-faker" },
     { name = "pytest-mock" },
     { name = "pytest-sugar" },
     { name = "pytest-timeout" },
@@ -1808,6 +1810,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/91/8a/a0f9c58bf176b0d39
 wheels = [
     { url = "https://files.pythonhosted.org/packages/06/2f/4f73a79196b4acb0f902520a805caa22f8ba0adbecdfb028a371404c2537/pytest_factoryboy-2.8.1-py3-none-any.whl", hash = "sha256:91c762cb236bf34b11efdf2e54bafae33114488235621e8b2c4bd9fd77838784", size = 16413, upload-time = "2025-07-01T04:05:37.344Z" },
 ]
+
+[[package]]
+name = "pytest-faker"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "faker" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/76/1ccba9a1d11a0dd614b31f7160709fe05530ff2823a0ce441063430ad56f/pytest-faker-2.0.0.tar.gz", hash = "sha256:6b37bb89d94f96552bfa51f8e8b89d32addded8ddb58a331488299ef0137d9b6", size = 2784, upload-time = "2016-12-19T10:22:19.188Z" }
 
 [[package]]
 name = "pytest-mock"

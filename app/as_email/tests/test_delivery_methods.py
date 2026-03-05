@@ -18,6 +18,7 @@ from typing import Callable
 # 3rd party imports
 #
 import pytest
+from faker import Faker
 from pytest_mock import MockerFixture
 
 # Project imports
@@ -414,6 +415,7 @@ class TestMultipleDeliveryMethods:
 @pytest.fixture
 def imap_delivery_factory(
     email_account_factory: Callable[..., EmailAccount],
+    faker: Faker,
 ) -> Callable[..., ImapDelivery]:
     """Return a factory that creates an ImapDelivery attached to a fresh account."""
 
@@ -424,7 +426,7 @@ def imap_delivery_factory(
             imap_host="imap.example.com",
             imap_port=993,
             username="user@example.com",
-            password="s3cr3t",
+            password=faker.password(),
             **kwargs,
         )
 
@@ -470,7 +472,9 @@ class TestImapDeliveryModel:
         mock_cls.assert_called_once_with(
             host="imap.example.com", port=993, ssl=True
         )
-        mock_client.login.assert_called_once_with("user@example.com", "s3cr3t")
+        mock_client.login.assert_called_once_with(
+            "user@example.com", imap_d.password
+        )
         mock_client.append.assert_called_once()
         folder_used = mock_client.append.call_args[0][0]
         assert folder_used == "INBOX"

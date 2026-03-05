@@ -4,12 +4,16 @@ include $(ROOT_DIR)/Make.rules
 
 DOCKER_BUILDKIT := 1
 LATEST_TAG := $(shell git describe --abbrev=0)
+# Random hex string generated once per `make build` run. Used only to satisfy
+# Django settings during collectstatic/compile_pyc — never baked into the image
+# at runtime, so it does not need to be a stable or secret value.
+BUILD_SALT_KEY := $(shell openssl rand -hex 32)
 
 .PHONY: clean test logs migrate makemigrations createadmin manage_shell shell restart delete down up build dirs sync lock add add-dev upgrade help api-schema api-docs
 
 build: version	## Build prod and dev Docker images
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY=build-placeholder --target prod --tag as_email_service:$(VERSION) --tag as_email_service:latest .
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY=build-placeholder --target dev --tag as_email_service:$(VERSION)-dev --tag as_email_service:dev .
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY="$(BUILD_SALT_KEY)" --target prod --tag as_email_service:$(VERSION) --tag as_email_service:latest .
+	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --build-arg SALT_KEY="$(BUILD_SALT_KEY)" --target dev --tag as_email_service:$(VERSION)-dev --tag as_email_service:dev .
 
 uv-sync: .venv	## Sync .venv with uv.lock after dependency changes
 	@uv sync

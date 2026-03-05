@@ -65,6 +65,7 @@ dev = [
     "pytest-coverage",
     "pytest-django",
     "pytest-factoryboy",
+    "pytest-faker",
     "pytest-mock",
     "pytest-sugar",
     "pytest-timeout",

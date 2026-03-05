@@ -14,6 +14,7 @@ import pytest
 from dirty_equals import IsPartialDict
 from django.http import JsonResponse
 from django.urls import resolve, reverse
+from faker import Faker
 
 # Project imports
 #
@@ -1544,7 +1545,7 @@ class TestDeliveryMethodEndpoints:
         ],
     )
     def test_test_imap_action(
-        self, setup, mocker, test_result, expected_status
+        self, setup, mocker, faker: Faker, test_result, expected_status
     ) -> None:
         """
         GIVEN valid input posted to the test_imap action
@@ -1563,7 +1564,7 @@ class TestDeliveryMethodEndpoints:
                 "imap_host": "imap.example.com",
                 "imap_port": 993,
                 "username": "user@example.com",
-                "password": "s3cr3t",
+                "password": faker.password(),
             },
             format="json",
         )
@@ -1610,7 +1611,7 @@ class TestDeliveryMethodEndpoints:
         ],
     )
     def test_create_imap_delivery_validates_credentials(
-        self, setup, mocker, test_result, expected_status
+        self, setup, mocker, faker: Faker, test_result, expected_status
     ) -> None:
         """
         GIVEN a POST to create an ImapDelivery with a password
@@ -1630,7 +1631,7 @@ class TestDeliveryMethodEndpoints:
                 "imap_host": "imap.example.com",
                 "imap_port": 993,
                 "username": "user@example.com",
-                "password": "s3cr3t",
+                "password": faker.password(),
             },
             format="json",
         )
@@ -1639,7 +1640,7 @@ class TestDeliveryMethodEndpoints:
     ####################################################################
     #
     def test_patch_imap_delivery_with_new_password_triggers_validation(
-        self, setup, mocker
+        self, setup, mocker, faker: Faker
     ) -> None:
         """
         GIVEN an existing ImapDelivery PATCHed with a new password
@@ -1648,12 +1649,13 @@ class TestDeliveryMethodEndpoints:
         """
         ea = setup["email_account"]
         client = setup["client"]
+        original_password = faker.password()
         imap_d = ImapDelivery.objects.create(
             email_account=ea,
             imap_host="imap.example.com",
             imap_port=993,
             username="user@example.com",
-            password="original_password",
+            password=original_password,
         )
         mocker.patch(
             "as_email.models.ImapDelivery.test_connection",
@@ -1661,17 +1663,17 @@ class TestDeliveryMethodEndpoints:
         )
         resp = client.patch(
             self._detail_url(ea, imap_d),
-            {"password": "new_bad_password"},
+            {"password": faker.password()},
             format="json",
         )
         assert resp.status_code == 400
         imap_d.refresh_from_db()
-        assert imap_d.password == "original_password"
+        assert imap_d.password == original_password
 
     ####################################################################
     #
     def test_patch_imap_delivery_without_password_skips_validation(
-        self, setup, mocker
+        self, setup, mocker, faker: Faker
     ) -> None:
         """
         GIVEN an existing ImapDelivery PATCHed without a password field
@@ -1680,12 +1682,13 @@ class TestDeliveryMethodEndpoints:
         """
         ea = setup["email_account"]
         client = setup["client"]
+        stored_password = faker.password()
         imap_d = ImapDelivery.objects.create(
             email_account=ea,
             imap_host="imap.example.com",
             imap_port=993,
             username="user@example.com",
-            password="stored_password",
+            password=stored_password,
         )
         mock_test = mocker.patch("as_email.models.ImapDelivery.test_connection")
         resp = client.patch(
@@ -1697,11 +1700,13 @@ class TestDeliveryMethodEndpoints:
         mock_test.assert_not_called()
         imap_d.refresh_from_db()
         assert imap_d.imap_host == "imap2.example.com"
-        assert imap_d.password == "stored_password"
+        assert imap_d.password == stored_password
 
     ####################################################################
     #
-    def test_imap_delivery_password_not_in_response(self, setup) -> None:
+    def test_imap_delivery_password_not_in_response(
+        self, setup, faker: Faker
+    ) -> None:
         """
         GIVEN an ImapDelivery with a stored password
         WHEN  the detail or list endpoint is fetched
@@ -1714,7 +1719,7 @@ class TestDeliveryMethodEndpoints:
             imap_host="imap.example.com",
             imap_port=993,
             username="user@example.com",
-            password="super_secret",
+            password=faker.password(),
         )
         resp = client.get(self._detail_url(ea, imap_d))
         assert resp.status_code == 200
@@ -1722,7 +1727,9 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_patch_delivery_method_clears_retry_record(self, setup) -> None:
+    def test_patch_delivery_method_clears_retry_record(
+        self, setup, faker: Faker
+    ) -> None:
         """
         GIVEN an ImapDelivery with a delivery_retry Redis record listing its PK
         WHEN  the delivery method is PATCHed (e.g. corrected imap_host)
@@ -1735,7 +1742,7 @@ class TestDeliveryMethodEndpoints:
             imap_host="old.imap.example.com",
             imap_port=993,
             username="user@example.com",
-            password="secret",
+            password=faker.password(),
         )
 
         # Simulate a delivery_retry record that was written when this method
@@ -1782,6 +1789,7 @@ class TestDeliveryMethodEndpoints:
         self,
         setup,
         mocker,
+        faker: Faker,
         test_result: tuple[bool, str],
         expected_status: int,
         expect_enabled: bool,
@@ -1800,7 +1808,7 @@ class TestDeliveryMethodEndpoints:
             imap_host="imap.example.com",
             imap_port=993,
             username="user@example.com",
-            password="some_password",
+            password=faker.password(),
             enabled=False,
         )
 
