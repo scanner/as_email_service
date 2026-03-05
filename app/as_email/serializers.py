@@ -23,6 +23,7 @@ from .models import (
     LocalDelivery,
     MessageFilterRule,
 )
+from .utils import clear_delivery_retry_for_method
 
 
 ########################################################################
@@ -233,6 +234,24 @@ class DeliveryMethodSerializer(NestedHyperlinkedModelSerializer):
             "modified_at",
         ]
 
+    ####################################################################
+    #
+    def update(
+        self, instance: DeliveryMethod, validated_data: dict
+    ) -> DeliveryMethod:
+        """
+        After saving, clear any Redis ``delivery_retry:*`` entries that
+        reference this method's PK.
+
+        When a delivery method is corrected (e.g. new IMAP credentials or
+        hostname), the outstanding retry record is stale — it would hold back
+        re-delivery until the backoff timer expires.  Deleting the record
+        here lets the retry task pick up the file on its very next run.
+        """
+        updated = super().update(instance, validated_data)
+        clear_delivery_retry_for_method(instance.pk)
+        return updated
+
 
 ########################################################################
 ########################################################################
@@ -300,36 +319,48 @@ class ImapDeliverySerializer(DeliveryMethodSerializer):
     #
     def validate(self, attrs: dict) -> dict:
         """
-        When a password is supplied, test the IMAP connection before saving.
+        Test the IMAP connection when credentials change or the method is
+        re-enabled.
 
-        This runs for both create and PATCH so that the REST API rejects bad
-        credentials even when callers bypass the UI's pre-save check. For
-        PATCH requests some fields may be absent from attrs (only the fields
-        being changed are included); those fall back to the current instance
-        values.
+        Two cases trigger a live connection test:
+
+        1. A ``password`` is included in the request — always test, whether
+           creating or updating.  Falls back to instance values for any
+           fields not present in ``attrs``.
+
+        2. The request sets ``enabled=True`` on an existing instance that is
+           currently disabled (re-enable), and no new password was supplied.
+           The stored credentials are used.  This ensures a user cannot
+           re-enable a delivery method whose credentials are known-bad.
+
+        For PATCH requests, absent fields fall back to the current instance
+        values so partial updates still receive a complete set of parameters.
         """
-        if "password" in attrs:
-            instance = self.instance  # None on create
-            host = attrs.get(
-                "imap_host",
-                getattr(instance, "imap_host", ""),
-            )
-            port = attrs.get(
-                "imap_port",
-                getattr(instance, "imap_port", 993),
-            )
-            username = attrs.get(
-                "username",
-                getattr(instance, "username", ""),
-            )
+        instance = self.instance  # None on create
+
+        # Determine whether a live connection test is needed.
+        #
+        being_reenabled = (
+            instance is not None
+            and not instance.enabled
+            and attrs.get("enabled") is True
+            and "password" not in attrs
+        )
+
+        if "password" in attrs or being_reenabled:
+            host = attrs.get("imap_host", getattr(instance, "imap_host", ""))
+            port = attrs.get("imap_port", getattr(instance, "imap_port", 993))
+            username = attrs.get("username", getattr(instance, "username", ""))
+            password = attrs.get("password", getattr(instance, "password", ""))
             ok, message = ImapDelivery.test_connection(
                 host=host,
                 port=port,
                 username=username,
-                password=attrs["password"],
+                password=password,
             )
             if not ok:
-                raise serializers.ValidationError({"password": message})
+                field = "password" if "password" in attrs else "enabled"
+                raise serializers.ValidationError({field: message})
         return attrs
 
     ####################################################################

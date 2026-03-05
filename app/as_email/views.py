@@ -119,8 +119,27 @@ def contact(request):
 #
 @login_required
 def documentation(request):
-    """User-facing documentation page."""
-    return render(request, "as_email/documentation.html", {})
+    """
+    Render the user-facing documentation page.
+
+    Passes the current user's email account addresses to the template so that
+    configuration examples (SMTP username, alias examples, etc.) can show the
+    user's actual addresses rather than a generic placeholder. The template
+    falls back to a placeholder when the list is empty.
+
+    Linked from the main page (``as_email:index``) and referenced in
+    ``urls.py`` as ``as_email:documentation``.
+    """
+    email_accounts = list(
+        EmailAccount.objects.filter(owner=request.user).values_list(
+            "email_address", flat=True
+        )
+    )
+    return render(
+        request,
+        "as_email/documentation.html",
+        {"email_accounts": email_accounts},
+    )
 
 
 ####################################################################

@@ -3,8 +3,21 @@
 """
 Utils for actually delivering email.
 
-The primary entry point for callers is `email_account.deliver(msg)` on the
-EmailAccount model, which dispatches to each enabled DeliveryMethod in order.
+Delivery entry points
+---------------------
+For *incoming* user email, the entry point is
+``dispatch_incoming_email`` (tasks.py), which iterates each enabled
+DeliveryMethod individually so that per-method failures can be tracked in
+Redis and retried selectively.
+
+``EmailAccount.deliver(msg)`` still exists and is used in two narrower
+contexts where per-method failure tracking is not needed:
+
+- **Alias chains** — ``AliasToDelivery.deliver()`` calls
+  ``target_account.deliver()`` to recurse through forwarding chains.
+- **DSN / notification messages** — ``report_failed_message()`` calls
+  ``ea.deliver(dsn)`` to deliver delivery-status notifications back to the
+  account via whatever methods are still active.
 
 This module provides the lower-level helpers called by those delivery methods:
 
@@ -18,7 +31,6 @@ This module provides the lower-level helpers called by those delivery methods:
 #
 import email.utils
 import logging
-import re
 import time
 from contextlib import contextmanager
 from email.message import EmailMessage
@@ -29,6 +41,7 @@ from typing import List, Union, cast
 # Project imports
 #
 from .models import EmailAccount, LocalDelivery, MessageFilterRule
+from .utils import get_spam_score
 
 ENCODINGS = ("ascii", "iso-8859-1", "utf-8")
 
@@ -180,22 +193,9 @@ def deliver_message_locally(
     #     delivered to?
     #
     if not delivered_to:
-        # SpamAssassin adds an `X-Spam-Status` header.
-        # in X-Spam-Status as "score=<value>".  Example:
-        #   X-Spam-Status: No, score=-102.0 required=5.0 tests=...
-        spam_score = 0
-        status_header = msg.get("X-Spam-Status", "")
-        if status_header:
-            m = re.search(r"score=([-\d.]+)", status_header)
-            if m:
-                try:
-                    spam_score = int(float(m.group(1)))
-                except ValueError:
-                    spam_score = 0
-
         if (
             local_delivery.autofile_spam
-            and spam_score >= local_delivery.spam_score_threshold
+            and get_spam_score(msg) >= local_delivery.spam_score_threshold
         ):
             junk = local_delivery.spam_delivery_folder
             try:
@@ -321,24 +321,30 @@ def report_failed_message(
     diagnostic: str,
 ):
     """
-    `email_address` is the address we are sending this report to.
-                    It must be one that is associated with an EmailAccount.
-    `failed_message` is the email that we failed to send. It may either be
-                    a message as a string, bytes, or an EmailMessage.
-                    Internally is converted to an EmailMessage if it is bytes
-                    or str.
-    `report_text` is the readable human content for why the message failed
-    `subject` will be the subject of the DSN we send
-    `action` will be a short string, typically `failed`
-    `status` three digit code (like 5.1.1, 5.1.2, etc)
-    `diagnostic` typically something like 'smtp; ### <blah blah blah>'
+    Construct a Delivery Status Notification (DSN) and deliver it to the
+    given EmailAccount via ``EmailAccount.deliver()``.
 
-    Utility function that will construct a DSN and deliver it to the given
-    address. The address may be an EmailAccount or an email address as a string
-    (from which the EmailAccount will be looked up.)
+    This is one of the two internal callers of ``EmailAccount.deliver()``
+    that intentionally bypass the per-method retry tracking used by
+    ``dispatch_incoming_email``.  DSNs are best-effort: if a delivery method
+    is down the notification is silently lost rather than queued for retry,
+    which avoids recursive failure loops (a DSN failing to deliver should
+    not itself generate another DSN).
 
-    We ONLY report these messages to email addresses that belong to
-    EmailAccount's.
+    Only delivers to addresses that belong to an EmailAccount; if
+    ``email_address`` is a string that does not match any account, the call
+    is a no-op and an error is logged.
+
+    Args:
+        email_address: The account to deliver the DSN to.  May be an
+            EmailAccount instance or an email address string.
+        failed_message: The original message that failed.  Accepted as a
+            string, bytes, or EmailMessage; converted internally as needed.
+        report_text: Human-readable explanation included in the DSN body.
+        subject: Subject line of the DSN.
+        action: Short action word, typically ``"failed"``.
+        status: RFC 3463 three-part status code (e.g. ``"5.1.1"``).
+        diagnostic: Diagnostic string, e.g. ``"smtp; 550 No such user"``.
     """
     if isinstance(email_address, str):
         try:

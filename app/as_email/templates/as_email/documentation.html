@@ -30,7 +30,7 @@
     <tbody>
       <tr><th>Server</th><td>{{ settings.SITE_NAME }}</td></tr>
       <tr><th>Port</th><td>587 (STARTTLS)</td></tr>
-      <tr><th>Username</th><td>The email account address (e.g. <em>you@{{ settings.SITE_NAME }}</em>)</td></tr>
+      <tr><th>Username</th><td>The email address shown in your email account card{% if email_accounts %} (e.g. <em>{{ email_accounts.0 }}</em>){% endif %}</td></tr>
       <tr><th>Password</th><td>The email account password (set on the main page)</td></tr>
       <tr><th>Authentication</th><td>Required</td></tr>
     </tbody>
@@ -50,33 +50,65 @@
     <tbody>
       <tr><th>Server</th><td>{{ settings.SITE_NAME }}</td></tr>
       <tr><th>Port</th><td>993 (SSL)</td></tr>
-      <tr><th>Username</th><td>The email account address</td></tr>
+      <tr><th>Username</th><td>The email address shown in your email account card{% if email_accounts %} (e.g. <em>{{ email_accounts.0 }}</em>){% endif %}</td></tr>
       <tr><th>Password</th><td>The email account password (set on the main page)</td></tr>
     </tbody>
   </table>
 
   <h2 class="subtitle">IMAP Delivery</h2>
   <p>
-    IMAP delivery forwards incoming mail received by this service to a third-party
-    IMAP server of your choice (e.g. Gmail, Fastmail, or your own hosted server).
-    Each message is deposited via the IMAP protocol into the inbox of that remote
-    server. If spam auto-filing is enabled, spam is filed into the junk folder as
-    designated by the remote IMAP service. Configure IMAP delivery per email account
-    on the main page.
+    IMAP delivery forwards incoming mail received by this service to a remote IMAP
+    server of your choice — Gmail, Fastmail, or any hosted or self-hosted server.
+    Each message is deposited via the IMAP protocol directly into that remote account.
+    Configure IMAP delivery per email account on the main page.
   </p>
   <ul>
-    <li>Set the remote IMAP server, port, username, and password</li>
-    <li>Normal mail is delivered to the inbox</li>
-    <li>Spam (when auto-filing is enabled) is delivered to the remote junk folder</li>
+    <li>Set the remote IMAP server hostname, port, username, and password.</li>
+    <li>Normal mail goes to the inbox.</li>
+    <li>When spam auto-filing is enabled, spam goes to the remote junk folder (the
+      server's designated junk folder is used automatically; if none exists,
+      a folder named <em>Junk</em> is used; otherwise mail falls back to the inbox).</li>
   </ul>
+  <h3>Credentials and re-enabling</h3>
+  <p>
+    When you save an IMAP delivery method with a password, the service immediately
+    tests the connection. The save is rejected if the credentials are invalid, so
+    you always know your settings are correct before they take effect.
+  </p>
+  <p>
+    The same test runs when you re-enable a previously-disabled IMAP delivery method.
+    If your credentials have changed since the method was disabled, update the
+    password at the same time as you re-enable it.
+  </p>
+  <h3>Automatic retries and failure handling</h3>
+  <p>
+    If delivery to your remote server fails (e.g. the server is temporarily
+    unreachable), the service retries automatically. Retries are spaced out with
+    an exponential backoff — starting at 10 minutes, doubling each time, up to a
+    maximum of 4 hours between attempts.
+  </p>
+  <p>
+    If delivery cannot be restored within {{ settings.DELIVERY_RETRY_DAYS }} days,
+    the delivery method is automatically disabled and you are notified by email
+    at <em>{{ request.user.email }}</em>.
+    You can re-enable it from the main page once the problem is fixed.
+  </p>
+  <p>
+    If delivery fails because of an authentication error (wrong password or
+    username), the method is disabled immediately rather than retrying, since
+    retrying will not fix a credential problem. You will receive an email
+    notification explaining which method was disabled and why.
+  </p>
 
   <h2 class="subtitle">Alias Delivery</h2>
   <p>
     Alias delivery lets you receive email sent to multiple addresses and have it all
     delivered to a single email account. For example, if you have a primary account
-    <em>alice@{{ settings.SITE_NAME }}</em> and a second account
-    <em>info@{{ settings.SITE_NAME }}</em>, you can set the second account to alias
-    to the first — so mail sent to either address arrives in Alice's inbox.
+    <em>{% if email_accounts %}{{ email_accounts.0 }}{% else %}alice@example.net{% endif %}</em>
+    and a second account
+    <em>{% if email_accounts|length > 1 %}{{ email_accounts.1 }}{% else %}info@example.net{% endif %}</em>,
+    you can set the second account to alias to the first — so mail sent to either
+    address arrives in the primary inbox.
   </p>
   <p>
     This is the recommended way to consolidate several email addresses without

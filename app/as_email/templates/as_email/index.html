@@ -436,7 +436,7 @@
           Auto-file spam emails
         </label>
         <p class="help">
-          Files messages whose <code>X-Spam-Score</code> meets or exceeds the
+          Files messages whose spam score (from <code>X-Spam-Status</code>) meets or exceeds the
           threshold into the spam folder. The score may come from your email
           provider or, when <em>incoming spam scanning</em> is enabled on the
           account, from our system.
@@ -469,7 +469,7 @@
           <p v-if="errors.spam_score_threshold" class="help is-danger">
             [[ errors.spam_score_threshold ]]
           </p>
-          <p class="help">Messages with an X-Spam-Score at or above this value are filed as spam. 5 is a reasonable default.</p>
+          <p class="help">Messages with a spam score (from <code>X-Spam-Status</code>) at or above this value are filed as spam. 5 is a reasonable default.</p>
         </div>
       </div>
     </div>
@@ -627,7 +627,7 @@
           Auto-file spam emails
         </label>
         <p class="help">
-          Files messages whose <code>X-Spam-Score</code> meets or exceeds the
+          Files messages whose spam score (from <code>X-Spam-Status</code>) meets or exceeds the
           threshold into the server's Junk folder instead of INBOX.
         </p>
         <p v-if="errors.autofile_spam" class="help is-danger">[[ errors.autofile_spam ]]</p>
@@ -641,7 +641,7 @@
                  :value="formData.spam_score_threshold"
                  @input="update('spam_score_threshold', Number($event.target.value))">
         </div>
-        <p class="help">Messages with an X-Spam-Score at or above this value are filed as spam. 5 is a reasonable default.</p>
+        <p class="help">Messages with a spam score (from <code>X-Spam-Status</code>) at or above this value are filed as spam. 5 is a reasonable default.</p>
         <p v-if="errors.spam_score_threshold" class="help is-danger">[[ errors.spam_score_threshold ]]</p>
       </div>
     </div>

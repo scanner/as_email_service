@@ -11,7 +11,6 @@ import email
 import email.message
 import logging
 import mailbox
-import re
 import shlex
 import socket
 import ssl
@@ -39,6 +38,7 @@ from postmarker.core import PostmarkClient
 # project imports
 #
 from .providers import get_backend
+from .utils import get_spam_score
 
 # Various models that belong to a specific user need the User object.
 #
@@ -630,12 +630,25 @@ class EmailAccount(models.Model):
         visited_accounts: set[int] | None = None,
     ) -> None:
         """
-        Deliver the given message to this account using all enabled delivery
-        methods in order. The `visited_accounts` set is threaded through alias
-        chains to detect loops and enforce the hop limit.
+        Deliver ``msg`` to every enabled DeliveryMethod on this account in
+        order.
+
+        This method is **not** the entry point for dispatching ordinary
+        incoming user email.  For that, use ``dispatch_incoming_email``
+        (tasks.py), which iterates methods individually so that per-method
+        failures are tracked in Redis and retried selectively with backoff.
+
+        This method is appropriate in two narrower contexts where that
+        per-method tracking is not needed:
+
+        - **Alias chains** — ``AliasToDelivery.deliver()`` calls this on the
+          target account to recurse through forwarding hops.
+        - **DSN / notification messages** — ``report_failed_message()``
+          (deliver.py) calls this to deliver delivery-status notifications
+          back to the account via whatever methods remain active.
 
         Args:
-            msg: The email message to deliver
+            msg: The email message to deliver.
             visited_accounts: PKs of EmailAccounts already visited in this
                 delivery chain; initialised to an empty set on first call.
         """
@@ -1144,7 +1157,7 @@ class LocalDelivery(DeliveryMethod):
     spam_score_threshold = models.IntegerField(
         default=5,
         help_text=_(
-            "Messages with an X-Spam-Score at or above this value are "
+            "Messages with a spam score (from X-Spam-Status) at or above this value are "
             "considered spam. 5 is a reasonable default."
         ),
     )
@@ -1246,10 +1259,17 @@ class AliasToDelivery(DeliveryMethod):
         visited_accounts: set[int],
     ) -> None:
         """
-        Deliver the message to the target account, with loop detection.
+        Forward ``msg`` to the target account by calling
+        ``target_account.deliver()``, with alias-loop detection and a hop
+        limit.
+
+        This is one of the two internal callers of ``EmailAccount.deliver()``
+        that do not need per-method failure tracking (the other is
+        ``report_failed_message``).  Ordinary incoming email is dispatched
+        via ``dispatch_incoming_email`` (tasks.py) instead.
 
         Args:
-            msg: The email message to deliver
+            msg: The email message to forward.
             visited_accounts: PKs of accounts already in this chain; prevents
                 loops and enforces the MAX_HOPS limit.
         """
@@ -1306,14 +1326,14 @@ class ImapDelivery(DeliveryMethod):
     autofile_spam = models.BooleanField(
         default=True,
         help_text=_(
-            "When enabled, messages whose X-Spam-Score meets or exceeds the "
+            "When enabled, messages whose spam score (from X-Spam-Status) meets or exceeds the "
             "threshold are filed in the server's Junk folder instead of INBOX."
         ),
     )
     spam_score_threshold = models.IntegerField(
         default=5,
         help_text=_(
-            "Messages with an X-Spam-Score at or above this value are "
+            "Messages with a spam score (from X-Spam-Status) at or above this value are "
             "considered spam. 5 is a reasonable default."
         ),
     )
@@ -1328,26 +1348,6 @@ class ImapDelivery(DeliveryMethod):
         return (
             f"ImapDelivery({self.username}@{self.imap_host}:{self.imap_port})"
         )
-
-    ####################################################################
-    #
-    @staticmethod
-    def _get_spam_score(msg: email.message.EmailMessage) -> int:
-        """
-        Parse the X-Spam-Score value from the X-Spam-Status header.
-
-        Returns the integer score, or 0 if the header is absent or unparseable.
-        The header format is: ``Yes, score=6.7 required=5.0 tests=...``
-        """
-        status_header = msg.get("X-Spam-Status", "")
-        if status_header:
-            m = re.search(r"score=([-\d.]+)", status_header)
-            if m:
-                try:
-                    return int(float(m.group(1)))
-                except ValueError:
-                    pass
-        return 0
 
     ####################################################################
     #
@@ -1471,7 +1471,7 @@ class ImapDelivery(DeliveryMethod):
 
             if (
                 self.autofile_spam
-                and self._get_spam_score(msg) >= self.spam_score_threshold
+                and get_spam_score(msg) >= self.spam_score_threshold
             ):
                 folder = self._resolve_junk_folder(client)
             else:

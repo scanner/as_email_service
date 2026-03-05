@@ -38,7 +38,7 @@
           <a class="navbar-item has-tooltip-right" href="/" data-tooltip="Home — Email Service Manager">
             <span class="icon-text">
               <span class="icon"><ion-icon name="home-outline"></ion-icon></span>
-              <span>AS Email</span>
+              <span>{% if user.is_authenticated %}{{ user.username }}{% else %}AS Email{% endif %}</span>
             </span>
           </a>
 

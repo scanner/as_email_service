@@ -25,6 +25,7 @@ from ..models import (
     LocalDelivery,
     MessageFilterRule,
 )
+from ..utils import redis_client
 
 pytestmark = pytest.mark.django_db
 
@@ -1718,3 +1719,103 @@ class TestDeliveryMethodEndpoints:
         resp = client.get(self._detail_url(ea, imap_d))
         assert resp.status_code == 200
         assert "password" not in resp.data
+
+    ####################################################################
+    #
+    def test_patch_delivery_method_clears_retry_record(self, setup) -> None:
+        """
+        GIVEN an ImapDelivery with a delivery_retry Redis record listing its PK
+        WHEN  the delivery method is PATCHed (e.g. corrected imap_host)
+        THEN  the Redis key is deleted so the next retry run picks it up immediately
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        imap_d = ImapDelivery.objects.create(
+            email_account=ea,
+            imap_host="old.imap.example.com",
+            imap_port=993,
+            username="user@example.com",
+            password="secret",
+        )
+
+        # Simulate a delivery_retry record that was written when this method
+        # previously failed.
+        #
+        r = redis_client()
+        redis_key = "delivery_retry:some-failed-message-stem"
+        r.hset(
+            redis_key,
+            mapping={
+                "first_failure": "2026-03-04T10:00:00+00:00",
+                "attempt_count": "2",
+                "failed_method_pks": json.dumps([imap_d.pk]),
+                "next_retry_at": "2026-03-04T10:20:00+00:00",
+            },
+        )
+        assert r.exists(redis_key)
+
+        # PATCH without a password so test_connection is not triggered.
+        #
+        resp = client.patch(
+            self._detail_url(ea, imap_d),
+            {"imap_host": "new.imap.example.com"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["imap_host"] == "new.imap.example.com"
+
+        # Retry record must be gone so the file is retried without backoff.
+        #
+        assert not r.exists(redis_key)
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "test_result, expected_status, expect_enabled",
+        [
+            ((True, "Connection successful."), 200, True),
+            ((False, "Authentication failed."), 400, False),
+        ],
+        ids=["valid-credentials", "bad-credentials"],
+    )
+    def test_reenable_imap_delivery_checks_credentials(
+        self,
+        setup,
+        mocker,
+        test_result: tuple[bool, str],
+        expected_status: int,
+        expect_enabled: bool,
+    ) -> None:
+        """
+        GIVEN a disabled ImapDelivery
+        WHEN  it is re-enabled via PATCH
+        THEN  test_connection is called with the stored credentials;
+              valid credentials allow the enable (200), bad credentials
+              are rejected (400) and the method stays disabled
+        """
+        ea = setup["email_account"]
+        client = setup["client"]
+        imap_d = ImapDelivery.objects.create(
+            email_account=ea,
+            imap_host="imap.example.com",
+            imap_port=993,
+            username="user@example.com",
+            password="some_password",
+            enabled=False,
+        )
+
+        mock_test = mocker.patch(
+            "as_email.models.ImapDelivery.test_connection",
+            return_value=test_result,
+        )
+
+        resp = client.patch(
+            self._detail_url(ea, imap_d),
+            {"enabled": True},
+            format="json",
+        )
+        assert resp.status_code == expected_status
+        mock_test.assert_called_once()
+
+        imap_d.refresh_from_db()
+        assert imap_d.enabled is expect_enabled
