@@ -69,6 +69,39 @@ export default {
     //
     const isEditing = ref(props.isNew);
 
+    // Expand/collapse state: existing methods start collapsed; new methods
+    // start expanded (they go straight into edit mode).
+    //
+    const isExpanded = ref(props.isNew);
+
+    const toggleExpanded = () => {
+      // Prevent collapsing while an edit is in progress.
+      if (!isEditing.value) {
+        isExpanded.value = !isExpanded.value;
+      }
+    };
+
+    // One-line summary shown in the card header when the card is collapsed.
+    //
+    const deliverySummary = computed(() => {
+      const d = formData.value;
+      if (d.delivery_type === "LocalDelivery") {
+        return d.autofile_spam
+          ? `Spam → ${d.spam_delivery_folder}`
+          : "No spam filing";
+      }
+      if (d.delivery_type === "AliasToDelivery") {
+        return d.target_account || "(no target set)";
+      }
+      if (d.delivery_type === "ImapDelivery") {
+        const host = d.imap_host || "?";
+        const port = d.imap_port || 993;
+        const user = d.username || "?";
+        return `${host}:${port} (${user})`;
+      }
+      return "";
+    });
+
     ////////////////////////////////////////////////////////////////////////
     //
     // Pick the right sub-form component and display info from the registry.
@@ -196,6 +229,7 @@ export default {
     // Enter / exit edit mode for existing methods.
     //
     const startEdit = () => {
+      isExpanded.value = true;
       isEditing.value = true;
     };
 
@@ -287,12 +321,15 @@ export default {
       deleting,
       errors,
       isEditing,
+      isExpanded,
       subFormComponent,
       deliveryTypeLabel,
       deliveryTypeIcon,
+      deliverySummary,
       save,
       startEdit,
       cancelEdit,
+      toggleExpanded,
       toggleEnabled,
       destroy,
       onFieldUpdate,

@@ -314,17 +314,46 @@
   <template id="template-delivery-method-form">
     <div class="card mb-4">
 
-      {# Card header: icon + label + Enabled/Disabled toggle #}
-      <header class="card-header">
-        <p class="card-header-title">
+      <header class="card-header"
+              :style="!isNew && !isEditing ? 'cursor: pointer;' : ''"
+              @click="!isNew && !isEditing ? toggleExpanded() : null">
+        <p class="card-header-title is-align-items-center">
+          {# Collapse/expand chevron — existing methods only #}
+          <span v-if="!isNew" class="mr-1">[[ isExpanded ? '▼' : '▶' ]]</span>
           <span class="mr-2">[[ deliveryTypeIcon ]]</span>
           [[ deliveryTypeLabel ]]
+          {# One-line summary shown only when card is collapsed #}
+          <span v-if="!isNew && !isExpanded"
+                class="ml-3 has-text-weight-normal is-size-7 has-text-grey">
+            [[ deliverySummary ]]
+          </span>
         </p>
+
+        {# Edit button — collapsed existing methods only #}
+        <div v-if="!isNew && !isExpanded" class="card-header-icon">
+          <button class="button is-info is-small has-tooltip-arrow has-tooltip-left"
+                  data-tooltip="Edit the settings for this delivery method"
+                  @click.stop="startEdit"
+                  :disabled="saving || deleting">
+            Edit
+          </button>
+        </div>
+
+        {# Delete button — collapsed existing methods only #}
+        <div v-if="!isNew && !isExpanded" class="card-header-icon">
+          <button class="button is-danger is-light is-small has-tooltip-arrow has-tooltip-left"
+                  data-tooltip="Permanently remove this delivery method"
+                  @click.stop="destroy"
+                  :disabled="deleting">
+            [[ deleting ? 'Deleting...' : 'Delete' ]]
+          </button>
+        </div>
+
         {# Clickable Enabled/Disabled tag — only shown for saved methods #}
         <button v-if="!isNew"
                 class="card-header-icon has-tooltip-arrow has-tooltip-left"
                 :data-tooltip="formData.enabled ? 'Click to disable this delivery method' : 'Click to enable this delivery method'"
-                @click="toggleEnabled"
+                @click.stop="toggleEnabled"
                 :disabled="saving || deleting"
                 aria-label="toggle enabled"
                 style="border: none; background: none; cursor: pointer;">
@@ -334,9 +363,11 @@
         </button>
       </header>
 
-      {# Card content #}
-      <div class="card-content">
-        <p v-if="errors.detail" class="help is-danger mb-3">[[ errors.detail ]]</p>
+      {# Error messages are outside card-content so they remain visible when collapsed #}
+      <p v-if="errors.detail" class="help is-danger mx-4 my-2">[[ errors.detail ]]</p>
+
+      {# Card content: visible when new (always expanded) or expanded #}
+      <div v-if="isNew || isExpanded" class="card-content">
 
         {# ---- View mode: summary + Edit button (existing methods only) ---- #}
         <div v-if="!isNew && !isEditing">
@@ -358,7 +389,8 @@
           {# ImapDelivery summary #}
           <div v-if="formData.delivery_type === 'ImapDelivery'" class="content is-small mb-3">
             <p><strong>Server:</strong> [[ formData.imap_host ]]:[[ formData.imap_port ]]</p>
-            <p><strong>Auth:</strong> [[ formData.auth_type === 'oauth2' ? 'OAuth' : 'Username / Password' ]]</p>
+            <p><strong>Username:</strong> [[ formData.username ]]</p>
+            <p><strong>Auth:</strong> [[ formData.auth_type === 'oauth2' ? 'OAuth2' : 'Password' ]]</p>
           </div>
 
           <button class="button is-info is-small has-tooltip-arrow has-tooltip-top"
@@ -410,8 +442,8 @@
         </div>
       </div>
 
-      {# Card footer: Delete (only for saved methods) #}
-      <footer class="card-footer" v-if="!isNew">
+      {# Card footer: Delete (existing methods, expanded state only) #}
+      <footer class="card-footer" v-if="!isNew && isExpanded">
         <button class="card-footer-item button is-danger is-light has-tooltip-arrow has-tooltip-top"
                 data-tooltip="Permanently remove this delivery method (will ask for confirmation)"
                 style="border: none;"
