@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-06
+
+### Fixed
+
+- ForwardEmail domain/alias creation now sends requests as JSON instead of form-encoded data, fixing a 400 error caused by Python booleans being serialised as `"True"`/`"False"` strings instead of JSON `true`/`false`
+
 ## [0.5.0] - 2026-03-04
 
 ### Added

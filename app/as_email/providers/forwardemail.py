@@ -304,7 +304,7 @@ class APIClient:
 
         # Make the request
         start_time = time.time()
-        r = requests.request(str(method), u, auth=(token, ""), data=data)
+        r = requests.request(str(method), u, auth=(token, ""), json=data)
         request_time = time.time() - start_time
 
         # Update rate limit state from response headers
