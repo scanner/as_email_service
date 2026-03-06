@@ -1652,6 +1652,48 @@ class TestProviderSyncServerAliases:
         mock_backend.create_email_account.assert_not_called()
         mock_backend.enable_email_account.assert_not_called()
 
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "enabled",
+        [
+            pytest.param(True, id="enabled-true"),
+            pytest.param(False, id="enabled-false"),
+        ],
+    )
+    def test_list_email_accounts_key_error_logs_error_and_returns(
+        self,
+        mocker: MockerFixture,
+        server_factory,
+        provider_factory,
+        caplog,
+        enabled: bool,
+    ) -> None:
+        """
+        GIVEN: list_email_accounts raises KeyError (domain does not exist on provider)
+        WHEN:  provider_sync_server_aliases is called with either enabled value
+        THEN:  an error is logged (no traceback), the task returns quietly, and
+               Huey does not retry (no exception is raised)
+        """
+        provider = provider_factory(backend_name="dummy")
+        server = server_factory()
+
+        mock_backend = mocker.Mock()
+        mock_backend.list_email_accounts.side_effect = KeyError(
+            f"Domain '{server.domain_name}' does not exist on provider"
+        )
+        mocker.patch("as_email.tasks.get_backend", return_value=mock_backend)
+
+        res = provider_sync_server_aliases(
+            server.pk, provider.backend_name, enabled=enabled
+        )
+        res()  # must not raise
+
+        assert "domain does not exist on provider" in caplog.text
+        assert server.domain_name in caplog.text
+        mock_backend.create_email_account.assert_not_called()
+        mock_backend.delete_email_account_by_address.assert_not_called()
+
 
 ########################################################################
 ########################################################################

@@ -1257,6 +1257,17 @@ def provider_sync_server_aliases(
     #
     try:
         remote_email_accounts = backend.list_email_accounts(server)
+    except KeyError as e:
+        # Domain does not exist on the provider — nothing to sync or clean up.
+        # Log at error level (no traceback) and return so Huey does not retry.
+        logger.error(
+            "Failed to list email accounts for server '%s' on provider '%s'"
+            " (domain does not exist on provider): %r",
+            server.domain_name,
+            provider_name,
+            e,
+        )
+        return
     except Exception as e:
         logger.exception(
             "Failed to list email accounts for server '%s' on provider '%s': %r",
