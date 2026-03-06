@@ -2079,3 +2079,53 @@ class TestPaginatedRequest:
 
         expected_calls = 2 if expect_second_call else 1
         assert mock_req.call_count == expected_calls
+
+
+########################################################################
+########################################################################
+#
+class TestAPIClientReq:
+    """Tests for APIClient.req() HTTP dispatch."""
+
+    ####################################################################
+    #
+    @pytest.fixture
+    def client(self) -> APIClient:
+        return APIClient("test_provider")
+
+    ####################################################################
+    #
+    def test_req_sends_json_not_form_encoded(self, client, mocker) -> None:
+        """
+        GIVEN: an APIClient and a data dict containing Python booleans
+        WHEN:  req() is called with that data
+        THEN:  requests.request is called with json=data (not data=data) so
+               that Python booleans are serialised as JSON true/false rather
+               than the strings "True"/"False" which the ForwardEmail API
+               rejects with a 400
+        """
+        mock_response = mocker.MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_requests = mocker.patch(
+            "as_email.providers.forwardemail.requests.request",
+            return_value=mock_response,
+        )
+        mocker.patch(
+            "as_email.providers.forwardemail.get_provider_token",
+            return_value="test-token",
+        )
+
+        payload = {
+            "catchall": False,
+            "has_virus_protection": True,
+            "name": "example.org",
+        }
+        client.req(HTTPMethod.POST, "v1/domains", data=payload)
+
+        _, kwargs = mock_requests.call_args
+        assert "json" in kwargs, "req() must use json= not data="
+        assert (
+            "data" not in kwargs
+        ), "req() must not use data= (causes bool serialisation as 'True'/'False')"
+        assert kwargs["json"] == payload
