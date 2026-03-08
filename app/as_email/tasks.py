@@ -1228,29 +1228,30 @@ def provider_delete_email_account(
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_sync_server_aliases(
+def provider_sync_server_email_accounts(
     server_pk: int, provider_name: str, enabled: bool
 ) -> None:
     """
-    Bidirectional alias sync between local EmailAccounts and a provider.
+    Bidirectional email account sync between local EmailAccounts and a provider.
 
     When enabled=True (normal sync, e.g. hourly or on provider add):
-      - Creates aliases on the provider for any local EmailAccount that is missing
-      - Deletes aliases on the provider that have no corresponding local EmailAccount
-        (catches catch-all aliases, manually-created strays, leftovers from
-        deleted EmailAccounts, etc.)
-      - Calls create_update_email_account for each alias present on both sides,
-        which verifies all provider-specific settings (enabled state, webhook
-        recipients, etc.) and updates only what has drifted
+      - Creates email accounts on the provider for any local EmailAccount that
+        is missing
+      - Deletes email accounts on the provider that have no corresponding local
+        EmailAccount (catches catch-alls, manually-created strays, leftovers
+        from deleted EmailAccounts, etc.)
+      - Calls create_update_email_account for each account present on both
+        sides, which verifies all provider-specific settings and updates only
+        what has drifted
 
     When enabled=False (provider removed from server's receive_providers):
-      - Deletes ALL aliases for this server from the provider (clean slate)
+      - Deletes ALL email accounts for this server from the provider
 
     Args:
         server_pk: Primary key of the Server instance
         provider_name: Name of the provider backend (e.g., 'forwardemail',
                        'postmark')
-        enabled: True for normal sync; False to delete all remote aliases
+        enabled: True for normal sync; False to delete all remote email accounts
     """
     server = Server.objects.get(pk=server_pk)
     backend = get_backend(provider_name)
@@ -1397,14 +1398,14 @@ def provider_sync_server_aliases(
 ####################################################################
 #
 @db_periodic_task(crontab(minute="0"))
-def provider_sync_email_accounts() -> None:
+def provider_sync_all_email_accounts() -> None:
     """
-    Hourly task to sync email account enabled state across all configured
+    Hourly task to sync email accounts across all servers and configured
     providers.
 
-    This ensures that the enabled flag for all email accounts on each provider
-    matches the expected state based on whether that provider is configured
-    as a receive provider for each server.
+    Enqueues provider_sync_server_email_accounts for every server/provider
+    combination, passing enabled=True when the provider is configured as a
+    receive provider for that server and enabled=False when it is not.
     """
     # Process each provider that supports email account management
     for provider in Provider.objects.all():
@@ -1424,7 +1425,7 @@ def provider_sync_email_accounts() -> None:
 
         for server in servers_with_provider:
             try:
-                provider_sync_server_aliases(
+                provider_sync_server_email_accounts(
                     server.pk, provider.backend_name, enabled=True
                 )
             except Exception as e:

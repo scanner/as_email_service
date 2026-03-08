@@ -228,13 +228,13 @@ class TestProviderSignals:
         """
         GIVEN: a server with one receive provider
         WHEN:  that provider is removed from server.receive_providers
-        THEN:  provider_sync_server_aliases is called with enabled=False
+        THEN:  provider_sync_server_email_accounts is called with enabled=False
         """
         server = server_factory()
         provider = server.receive_providers.first()
 
         mock_sync = mocker.patch(
-            "as_email.signals.provider_sync_server_aliases"
+            "as_email.signals.provider_sync_server_email_accounts"
         )
 
         server.receive_providers.remove(provider)
@@ -254,14 +254,14 @@ class TestProviderSignals:
         """
         GIVEN: a server with two receive providers
         WHEN:  both providers are removed from server.receive_providers in one call
-        THEN:  provider_sync_server_aliases is called once per provider with enabled=False
+        THEN:  provider_sync_server_email_accounts is called once per provider with enabled=False
         """
         server = server_factory()
         second_provider = provider_factory()
         server.receive_providers.add(second_provider)
 
         mock_sync = mocker.patch(
-            "as_email.signals.provider_sync_server_aliases"
+            "as_email.signals.provider_sync_server_email_accounts"
         )
 
         providers = list(server.receive_providers.all())

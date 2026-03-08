@@ -1050,11 +1050,16 @@ class TestForwardEmailAPIMethods:
         assert get_call[0][0] == HTTPMethod.GET
         assert f"v1/domains/{domain_id}/aliases/{alias_id}" in get_call[0][1]
 
-        # Second call: PUT with only the drifted field (recipients)
+        # Second call: PUT with the full wanted dict (ForwardEmail replaces all
+        # fields on PUT, so we must send the complete desired state)
         put_call = mock_api_req.call_args_list[1]
         assert put_call[0][0] == HTTPMethod.PUT
         assert f"v1/domains/{domain_id}/aliases/{alias_id}" in put_call[0][1]
-        assert put_call[1]["data"] == {"recipients": [webhook_url]}
+        assert put_call[1]["data"] == {
+            **backend.DEFAULT_ALIAS_SETTINGS,
+            "recipients": [webhook_url],
+            "description": f"Email account for {email_account.owner.username}",
+        }
 
         # set_alias called once (for the GET); after PUT the cache is
         # invalidated so the next call fetches fresh state.
