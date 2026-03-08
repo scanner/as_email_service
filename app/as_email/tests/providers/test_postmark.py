@@ -358,21 +358,53 @@ def test_postmark_backend_handle_incoming_webhook_success(
 
 ########################################################################
 #
-def test_postmark_backend_handle_incoming_webhook_no_account(
-    rf, server_factory, email_spool_dir, mocker
+@pytest.mark.parametrize(
+    "account_exists, account_enabled, expected_log",
+    [
+        pytest.param(
+            False,
+            True,
+            "Received email for EmailAccount that does not exist",
+            id="nonexistent-account",
+        ),
+        pytest.param(
+            True,
+            False,
+            "Received email for disabled EmailAccount",
+            id="disabled-account",
+        ),
+    ],
+)
+def test_postmark_backend_handle_incoming_webhook_no_delivery(
+    rf,
+    server_factory,
+    email_account_factory,
+    email_spool_dir,
+    mocker,
+    caplog,
+    account_exists,
+    account_enabled,
+    expected_log,
 ):
     """
-    Test incoming webhook with non-existent email account.
+    Test incoming webhook when delivery should not occur.
 
-    Given: An incoming email for non-existent EmailAccount
-    When: handle_incoming_webhook() is called
-    Then: A success response is returned
-    And: No email is spooled
-    And: The dispatch task is not called
+    GIVEN: An incoming email for an account that does not exist OR is disabled
+    WHEN:  handle_incoming_webhook() is called
+    THEN:  A "no such email account" success response is returned
+    AND:   No email is spooled
+    AND:   The dispatch task is not called
+    AND:   An appropriate log message is emitted
     """
     server = server_factory()
+    if account_exists:
+        email_account = email_account_factory(
+            server=server, enabled=account_enabled
+        )
+        recipient = email_account.email_address
+    else:
+        recipient = f"nonexistent@{server.domain_name}"
 
-    # Mock the dispatch task
     mock_dispatch = mocker.patch(
         "as_email.providers.postmark.dispatch_incoming_email"
     )
@@ -382,7 +414,7 @@ def test_postmark_backend_handle_incoming_webhook_no_account(
     webhook_payload = {
         "MessageID": "test-message-id",
         "From": "sender@example.com",
-        "OriginalRecipient": f"nonexistent@{server.domain_name}",
+        "OriginalRecipient": recipient,
         "RawEmail": "From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nBody",
         "Date": "2025-10-23T12:00:00Z",
     }
@@ -399,12 +431,11 @@ def test_postmark_backend_handle_incoming_webhook_no_account(
     data = json.loads(response.content)
     assert "no such email account" in data["message"]
 
-    # Verify no email was spooled
     spool_files = list(Path(server.incoming_spool_dir).glob("*"))
     assert len(spool_files) == 0
 
-    # Verify dispatch task was not called
     mock_dispatch.assert_not_called()
+    assert expected_log in caplog.text
 
 
 ########################################################################

@@ -25,7 +25,7 @@ from pytest_mock import MockerFixture
 # Project imports
 #
 from ..models import EmailAccount, InactiveEmail, LocalDelivery
-from ..providers.base import EmailAccountInfo
+from ..providers.base import Capability, EmailAccountInfo
 from ..tasks import (
     check_update_pwfile_for_emailaccount,
     decrement_num_bounces_counter,
@@ -33,7 +33,7 @@ from ..tasks import (
     dispatch_spooled_outgoing_email,
     process_email_bounce,
     process_email_spam,
-    provider_create_email_account,
+    provider_create_or_update_email_account,
     provider_create_server,
     provider_delete_email_account,
     provider_report_unused_servers,
@@ -1179,7 +1179,7 @@ class TestProviderCreateDomain:
 ########################################################################
 #
 class TestProviderCreateAlias:
-    """Tests for provider_create_email_account task."""
+    """Tests for provider_create_or_update_email_account task."""
 
     ####################################################################
     #
@@ -1192,13 +1192,13 @@ class TestProviderCreateAlias:
     ) -> None:
         """
         Given an email account and the dummy provider
-        When provider_create_email_account is called
+        When provider_create_or_update_email_account is called
         Then the backend's create_update_email_account method should be called
         """
         server = server_factory(send_provider=None, receive_providers=[])
         email_account = email_account_factory(server=server)
 
-        res = provider_create_email_account(
+        res = provider_create_or_update_email_account(
             email_account.pk, dummy_provider.PROVIDER_NAME
         )
         res()
@@ -1220,7 +1220,7 @@ class TestProviderCreateAlias:
     ) -> None:
         """
         Given a backend that raises an exception
-        When provider_create_email_account is called
+        When provider_create_or_update_email_account is called
         Then the exception should be logged and re-raised
         """
         server = server_factory(send_provider=None, receive_providers=[])
@@ -1236,7 +1236,7 @@ class TestProviderCreateAlias:
             side_effect=Exception("API error"),
         )
 
-        res = provider_create_email_account(
+        res = provider_create_or_update_email_account(
             email_account.pk, dummy_provider.PROVIDER_NAME
         )
         with pytest.raises(Exception, match="API error"):
@@ -1409,7 +1409,7 @@ class TestProviderSyncServerEmailAccounts:
             email_account_factory(server=server) for _ in range(3)
         ]
         for ea in email_accounts:
-            dummy_provider.enable_email_account(ea, enabled=False)
+            dummy_provider.email_accounts[ea.email_address]["enabled"] = False
 
         for ea in dummy_provider.list_email_accounts(server):
             assert ea.enabled is False
@@ -1626,6 +1626,9 @@ class TestProviderSyncServerEmailAccounts:
         mailbox2 = ea2.email_address.split("@")[0]
 
         mock_backend = mocker.Mock()
+        mock_backend.CAPABILITIES = frozenset(
+            {Capability.MANAGES_EMAIL_ACCOUNTS}
+        )
         mock_backend.list_email_accounts.return_value = [
             EmailAccountInfo(
                 id=f"dummy-{mailbox1}",
@@ -1658,6 +1661,52 @@ class TestProviderSyncServerEmailAccounts:
             for call in mock_backend.delete_email_account_by_address.call_args_list
         }
         assert deleted_addresses == {ea1.email_address, ea2.email_address}
+        mock_backend.create_email_account.assert_not_called()
+        mock_backend.create_update_email_account.assert_not_called()
+
+    ####################################################################
+    #
+    def test_enabled_false_noop_for_provider_without_capabilities(
+        self,
+        mocker: MockerFixture,
+        server_factory,
+        email_account_factory,
+        provider_factory,
+    ) -> None:
+        """
+        GIVEN: a server with email accounts on a provider that lacks MANAGES_EMAIL_ACCOUNTS
+        WHEN:  provider_sync_server_email_accounts is called with enabled=False
+        THEN:  no accounts are deleted (provider has no per-account entities)
+        """
+        provider = provider_factory(backend_name="dummy")
+        server = server_factory()
+        server.receive_providers.add(provider)
+
+        ea1 = email_account_factory(server=server)
+        mailbox1 = ea1.email_address.split("@")[0]
+
+        mock_backend = mocker.Mock()
+        mock_backend.CAPABILITIES = frozenset()  # no MANAGES_EMAIL_ACCOUNTS
+        mock_backend.list_email_accounts.return_value = [
+            EmailAccountInfo(
+                id=f"dummy-{mailbox1}",
+                email=ea1.email_address,
+                domain=server.domain_name,
+                enabled=True,
+                name=mailbox1,
+            ),
+        ]
+        mocker.patch(
+            "as_email.tasks.get_backend",
+            return_value=mock_backend,
+        )
+
+        res = provider_sync_server_email_accounts(
+            server.pk, provider.backend_name, enabled=False
+        )
+        res()
+
+        mock_backend.delete_email_account_by_address.assert_not_called()
         mock_backend.create_email_account.assert_not_called()
         mock_backend.create_update_email_account.assert_not_called()
 

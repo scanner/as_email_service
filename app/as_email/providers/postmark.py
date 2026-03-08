@@ -43,7 +43,7 @@ from ..utils import (
     spool_message,
     write_spooled_email,
 )
-from .base import EmailAccountInfo, ProviderBackend
+from .base import Capability, EmailAccountInfo, ProviderBackend
 
 # Avoid circular imports
 #
@@ -65,6 +65,7 @@ class PostmarkBackend(ProviderBackend):
     """
 
     PROVIDER_NAME = "postmark"
+    CAPABILITIES: frozenset[Capability] = frozenset()
 
     ####################################################################
     #
@@ -289,6 +290,19 @@ class PostmarkBackend(ProviderBackend):
                     "status": "all good",
                     "message": f"no such email account '{addr}'",
                 },
+            )
+
+        if not email_account.enabled:
+            logger.info(
+                "Received email for disabled EmailAccount: %s, from: %s",
+                addr,
+                from_addr,
+            )
+            return JsonResponse(
+                {
+                    "status": "all good",
+                    "message": f"no such email account '{addr}'",
+                }
             )
 
         spooled_msg_path = write_spooled_email(
@@ -660,26 +674,6 @@ class PostmarkBackend(ProviderBackend):
         logger.debug(
             "Postmark does not require alias deletion for %s",
             email_address,
-        )
-
-    ####################################################################
-    #
-    def enable_email_account(
-        self, email_account: "EmailAccount", enabled: bool = True
-    ) -> None:
-        """
-        Enable or disable an alias on Postmark - NOT YET IMPLEMENTED.
-
-        This is a stub for future implementation. Postmark doesn't have a
-        concept of enabling/disabling individual aliases.
-
-        Args:
-            email_account: The EmailAccount to enable/disable
-            enabled: True to enable, False to disable
-        """
-        logger.debug(
-            "Postmark does not support enable/disable for %s",
-            email_account.email_address,
         )
 
     ####################################################################

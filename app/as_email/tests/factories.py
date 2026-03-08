@@ -38,7 +38,7 @@ from ..models import (
     Server,
 )
 from ..provider_tokens import get_provider_token
-from ..providers.base import EmailAccountInfo, ProviderBackend
+from ..providers.base import Capability, EmailAccountInfo, ProviderBackend
 from ..utils import (
     get_smtp_client,
     sendmail,
@@ -82,6 +82,9 @@ class DummyProviderBackend(ProviderBackend):
     """
 
     PROVIDER_NAME = "dummy"
+    CAPABILITIES: frozenset[Capability] = frozenset(
+        {Capability.MANAGES_EMAIL_ACCOUNTS}
+    )
 
     ####################################################################
     #
@@ -280,9 +283,8 @@ class DummyProviderBackend(ProviderBackend):
         """
         Create or update an email account in the dummy provider state.
 
-        Mirrors the real provider behaviour: the desired state always has
-        enabled=True, so a disabled account is re-enabled and counts as
-        updated.
+        Mirrors the real provider behaviour: the desired state reflects
+        email_account.enabled, so accounts are enabled or disabled to match.
 
         Returns:
             True if the account was created or updated, False if it already
@@ -290,8 +292,8 @@ class DummyProviderBackend(ProviderBackend):
         """
         if email_account.email_address in self.email_accounts:
             account = self.email_accounts[email_account.email_address]
-            if not account["enabled"]:
-                account["enabled"] = True
+            if account["enabled"] != email_account.enabled:
+                account["enabled"] = email_account.enabled
                 return True
             return False
         else:
@@ -311,17 +313,6 @@ class DummyProviderBackend(ProviderBackend):
     ) -> None:
         """Delete an email account by address from the dummy provider state."""
         self.email_accounts.pop(email_address, None)
-
-    ####################################################################
-    #
-    def enable_email_account(
-        self, email_account: "EmailAccount", enabled: bool = True
-    ) -> None:
-        """Enable or disable an email account in the dummy provider state."""
-        if email_account.email_address in self.email_accounts:
-            self.email_accounts[email_account.email_address][
-                "enabled"
-            ] = enabled
 
     ####################################################################
     #

@@ -9,13 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.4] - 2026-03-08
 
+### Added
+
+- Provider capability system (`Capability` enum + `CAPABILITIES` class attribute on `ProviderBackend`) makes provider-specific dispatch explicit and extensible
+
 ### Changed
 
 - Renamed `provider_sync_server_aliases` to `provider_sync_server_email_accounts` and `provider_sync_email_accounts` to `provider_sync_all_email_accounts` to better reflect their purpose
+- `provider_create_email_account` renamed to `provider_create_or_update_email_account`; it now also fires when `EmailAccount.enabled` changes, immediately propagating enable/disable to the provider
+- ForwardEmail alias sync now enforces `is_enabled` to match `EmailAccount.enabled` on every sync cycle
+- `provider_sync_server_email_accounts(enabled=False)` is a no-op for providers that do not manage per-account entities (e.g. Postmark); for ForwardEmail, all remote accounts are deleted when a provider is removed from a server
 
 ### Fixed
 
 - ForwardEmail alias updates now send the complete desired state in the PUT request, preventing fields omitted from the diff from being silently cleared by the API
+- Incoming webhooks now reject mail for disabled `EmailAccount`s, preventing delivery to accounts that have been disabled in the system
 
 ## [0.5.3] - 2026-03-08
 

@@ -465,7 +465,7 @@ class EmailAccount(models.Model):
     # We want to track when certain fields change so we can do additional
     # operations that only need to happen when those fields change.
     #
-    tracker = FieldTracker(fields=["password"])
+    tracker = FieldTracker(fields=["password", "enabled"])
 
     class Meta:
         indexes = [

@@ -86,9 +86,11 @@ from as_email.utils import (
     write_spooled_email,
 )
 
-from .base import EmailAccountInfo, ProviderBackend
+from .base import Capability, EmailAccountInfo, ProviderBackend
 
 if TYPE_CHECKING:
+    from django.contrib.auth.base_user import AbstractBaseUser
+
     from as_email.models import Server
 
 logger = logging.getLogger("as_email.providers.forwardemail")
@@ -343,6 +345,30 @@ class APIClient:
                 "is_expired": self._rate_limit.is_expired,
                 "is_throttling": self._should_throttle(),
             }
+
+
+########################################################################
+#
+def _owner_display_name(owner: "AbstractBaseUser") -> str:
+    """
+    Return a human-readable display string for an email account owner.
+
+    Uses full name when available: "Jane Smith (jsmith)".
+    Falls back to username alone if get_full_name() is empty or raises.
+
+    Args:
+        owner: A Django User instance.
+
+    Returns:
+        A display string for use in provider-side descriptions.
+    """
+    try:
+        full_name = owner.get_full_name()
+    except Exception:
+        full_name = ""
+    if full_name:
+        return f"{full_name} ({owner.username})"
+    return owner.username
 
 
 ########################################################################
@@ -608,6 +634,9 @@ class ForwardEmailBackend(ProviderBackend):
     """
 
     PROVIDER_NAME = "forwardemail"
+    CAPABILITIES: frozenset[Capability] = frozenset(
+        {Capability.MANAGES_EMAIL_ACCOUNTS}
+    )
 
     # Desired settings applied to every domain we manage.  These are
     # compared against the live domain on every create_update_domain call
@@ -649,15 +678,14 @@ class ForwardEmailBackend(ProviderBackend):
     # Field notes:
     #   has_recipient_verification -- False; we never want delivery held
     #                                pending a click-through verification
-    #   is_enabled               -- True; aliases are active by default;
-    #                                enable_email_account() overrides this
-    #                                independently
     #   has_imap                 -- False; mail arrives via webhook, not IMAP
     #   has_pgp                  -- False; no PGP encryption at the provider
     #
+    # NOTE: `is_enabled` is not here — it is per-account and set from
+    #       EmailAccount.enabled in create_update_email_account.
+    #
     DEFAULT_ALIAS_SETTINGS: dict[str, Any] = {
         "has_recipient_verification": False,
-        "is_enabled": True,
         "has_imap": False,
         "has_pgp": False,
     }
@@ -805,6 +833,15 @@ class ForwardEmailBackend(ProviderBackend):
                 )
                 failed_recipients.append(addr)
                 # XXX: Track metrics for email to non-existent accounts
+                continue
+
+            if not email_account.enabled:
+                logger.info(
+                    "Received email for disabled EmailAccount: %s, from: %s",
+                    addr,
+                    from_addr_str,
+                )
+                failed_recipients.append(addr)
                 continue
 
             # Write the email to the spool directory
@@ -1236,8 +1273,9 @@ class ForwardEmailBackend(ProviderBackend):
         #
         wanted = {
             **self.DEFAULT_ALIAS_SETTINGS,
+            "is_enabled": email_account.enabled,
             "recipients": [webhook_url],
-            "description": f"Email account for {email_account.owner.username}",
+            "description": f"Email account for {_owner_display_name(email_account.owner)}",
         }
 
         try:
@@ -1341,48 +1379,6 @@ class ForwardEmailBackend(ProviderBackend):
 
         logger.info(
             "Deleted forwardemail.net alias for %s (ID: %s)",
-            email_account.email_address,
-            alias_id,
-        )
-
-    ####################################################################
-    #
-    def enable_email_account(
-        self,
-        email_account: "EmailAccount",
-        enabled: bool = True,
-    ) -> None:
-        """
-        Enable or disable a domain alias on forwardemail.net.
-
-        Args:
-            email_account: The EmailAccount whose alias to enable/disable
-            enabled: True to enable, False to disable
-            redis: Optional Redis client to reuse
-        """
-        # Get domain and alias IDs; both raise KeyError if not found
-        #
-        domain_id = self.cache.get_domain_id(email_account.server.domain_name)
-        alias_id = self.cache.get_alias_id(
-            domain_id, email_account.email_address
-        )
-
-        # Update the alias enabled field
-        #
-        update_data = {"is_enabled": enabled}
-        self.api.req(
-            HTTPMethod.PUT,
-            f"v1/domains/{domain_id}/aliases/{alias_id}",
-            data=update_data,
-        )
-
-        # Invalidate the cache because the remote data has likely now changed.
-        #
-        self.cache.delete_alias_data(email_account.email_address)
-
-        logger.info(
-            "%s forwardemail.net alias for %s (ID: %s)",
-            "Enabled" if enabled else "Disabled",
             email_account.email_address,
             alias_id,
         )

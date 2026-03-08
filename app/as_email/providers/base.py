@@ -11,6 +11,7 @@ emails, handling webhooks, and managing provider resources.
 import email.message
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, List
 
 # 3rd party imports
@@ -21,6 +22,22 @@ from django.http import HttpRequest, HttpResponse
 #
 if TYPE_CHECKING:
     from ..models import EmailAccount, Server
+
+
+########################################################################
+########################################################################
+#
+class Capability(StrEnum):
+    """
+    Capabilities of a provider backend implementation.
+
+    MANAGES_EMAIL_ACCOUNTS: provider maintains per-EmailAccount entities on the
+        provider side (e.g. ForwardEmail aliases). create/delete account methods
+        are meaningful. Providers without this capability are no-ops for account
+        management operations.
+    """
+
+    MANAGES_EMAIL_ACCOUNTS = "manages_email_accounts"
 
 
 ########################################################################
@@ -68,6 +85,10 @@ class ProviderBackend(ABC):
     # Provider name constant - must be set by subclasses
     # This is used to look up credentials in EMAIL_SERVER_TOKENS
     PROVIDER_NAME: str | None = None
+
+    # Capabilities of this provider backend implementation.
+    # Subclasses should override this to declare what they support.
+    CAPABILITIES: frozenset[Capability] = frozenset()
 
     ####################################################################
     #
@@ -282,21 +303,6 @@ class ProviderBackend(ABC):
         Args:
             email_address: The full email address to delete
             domain_name: The domain name the email belongs to
-        """
-        ...
-
-    ####################################################################
-    #
-    @abstractmethod
-    def enable_email_account(
-        self, email_account: "EmailAccount", enabled: bool = True
-    ) -> None:
-        """
-        Enable or disable an email account (alias) on the provider's service.
-
-        Args:
-            email_account: The EmailAccount instance to enable/disable
-            enabled: True to enable, False to disable
         """
         ...
 

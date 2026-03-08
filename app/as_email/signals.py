@@ -35,7 +35,7 @@ from .models import (
 from .tasks import (
     check_update_pwfile_for_emailaccount,
     delete_emailaccount_from_pwfile,
-    provider_create_email_account,
+    provider_create_or_update_email_account,
     provider_create_server,
     provider_delete_email_account,
     provider_sync_server_email_accounts,
@@ -101,19 +101,22 @@ def fire_off_async_task_update_emailaccount_pwfile(
 ####################################################################
 #
 @receiver(post_save, sender=EmailAccount)
-def create_provider_email_accounts(
+def create_or_update_provider_email_accounts(
     sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
 ):
     """
-    When an EmailAccount is created, create corresponding email accounts on all
-    receive providers configured for the account's server.
+    When an EmailAccount is created or its enabled state changes, update
+    corresponding email accounts on all receive providers configured for the
+    account's server.
     """
-    if not created:
+    if not created and not instance.tracker.has_changed("enabled"):
         return
 
     server = instance.server
     for provider in server.receive_providers.all():
-        provider_create_email_account(instance.pk, provider.backend_name)
+        provider_create_or_update_email_account(
+            instance.pk, provider.backend_name
+        )
 
 
 ####################################################################
@@ -274,8 +277,8 @@ def handle_receive_providers_changed(
 ):
     """
     When receive_providers are added or removed from a Server:
-    - post_add: Create domain on provider, then enable all aliases
-    - post_remove: Disable all aliases (but don't delete domain)
+    - post_add: Create domain on provider, then sync all email accounts
+    - post_remove: Delete all email accounts on the provider for this server
 
     Args:
         sender: The through model class
@@ -285,10 +288,10 @@ def handle_receive_providers_changed(
     """
     match action:
         case "post_add":
-            # Provider(s) added to server - register server then sync aliases
+            # Provider(s) added to server - register server then sync email accounts
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
-                # Chain tasks: register server first, then sync aliases
+                # Chain tasks: register server first, then sync email accounts
                 pipeline = provider_create_server.s(
                     instance.pk, provider.backend_name
                 ).then(
@@ -300,7 +303,7 @@ def handle_receive_providers_changed(
                 HUEY.enqueue(pipeline)
 
         case "post_remove":
-            # Provider(s) removed from server - delete all aliases on the provider
+            # Provider(s) removed from server - delete all email accounts on the provider
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
                 provider_sync_server_email_accounts(
