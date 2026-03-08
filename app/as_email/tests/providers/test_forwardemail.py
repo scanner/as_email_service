@@ -1058,7 +1058,9 @@ class TestForwardEmailAPIMethods:
         assert f"v1/domains/{domain_id}/aliases/{alias_id}" in put_call[0][1]
         assert put_call[1]["data"] == {"recipients": [webhook_url]}
 
-        mock_set_alias.assert_called_once()
+        # set_alias is called twice: once to cache the GET result, once to
+        # update the cache with the PUT result.
+        assert mock_set_alias.call_count == 2
         assert "settings updated" in caplog.text
         assert email_account.email_address in caplog.text
 
