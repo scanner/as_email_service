@@ -1025,21 +1025,19 @@ class TestForwardEmailAPIMethods:
             "name": email_account.email_address.split("@")[0],
             "recipients": ["https://old-internal-host.example.com/hook"],
             "description": f"Email account for {email_account.owner.username}",
-            "labels": "",
             "has_recipient_verification": False,
             "is_enabled": True,
             "has_imap": False,
             "has_pgp": False,
         }
         put_response = mocker.MagicMock()
-        put_response.json.return_value = {
-            "id": alias_id,
-            "name": email_account.email_address.split("@")[0],
-        }
         mock_api_req = mocker.patch.object(
             backend.api, "req", side_effect=[get_response, put_response]
         )
         mock_set_alias = mocker.patch.object(backend.cache, "set_alias")
+        mock_delete_alias_data = mocker.patch.object(
+            backend.cache, "delete_alias_data"
+        )
 
         backend.create_update_email_account(email_account)
 
@@ -1058,9 +1056,12 @@ class TestForwardEmailAPIMethods:
         assert f"v1/domains/{domain_id}/aliases/{alias_id}" in put_call[0][1]
         assert put_call[1]["data"] == {"recipients": [webhook_url]}
 
-        # set_alias is called twice: once to cache the GET result, once to
-        # update the cache with the PUT result.
-        assert mock_set_alias.call_count == 2
+        # set_alias called once (for the GET); after PUT the cache is
+        # invalidated so the next call fetches fresh state.
+        mock_set_alias.assert_called_once()
+        mock_delete_alias_data.assert_called_once_with(
+            email_account.email_address
+        )
         assert "settings updated" in caplog.text
         assert email_account.email_address in caplog.text
 
@@ -1214,7 +1215,6 @@ class TestForwardEmailAPIMethods:
             alias_data["description"]
             == f"Email account for {email_account.owner.username}"
         )
-        assert alias_data["labels"] == ""
         assert alias_data["has_recipient_verification"] is False
         assert alias_data["is_enabled"] is True
         assert alias_data["has_imap"] is False
