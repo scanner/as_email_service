@@ -647,7 +647,6 @@ class ForwardEmailBackend(ProviderBackend):
     #       handled separately and are not listed here.
     #
     # Field notes:
-    #   labels                   -- no labels; we don't use them
     #   has_recipient_verification -- False; we never want delivery held
     #                                pending a click-through verification
     #   is_enabled               -- True; aliases are active by default;
@@ -657,7 +656,6 @@ class ForwardEmailBackend(ProviderBackend):
     #   has_pgp                  -- False; no PGP encryption at the provider
     #
     DEFAULT_ALIAS_SETTINGS: dict[str, Any] = {
-        "labels": "",
         "has_recipient_verification": False,
         "is_enabled": True,
         "has_imap": False,
@@ -1271,15 +1269,15 @@ class ForwardEmailBackend(ProviderBackend):
                     email_account.email_address,
                     to_update,
                 )
-                r = self.api.req(
+                self.api.req(
                     HTTPMethod.PUT,
                     f"v1/domains/{domain_id}/aliases/{alias_id}",
                     data=to_update,
                 )
-                alias_info = r.json()
-                self.cache.set_alias(
-                    alias_info, email_account.server.domain_name
-                )
+                # Invalidate the cache so the next call fetches fresh state
+                # from the provider rather than using stale pre-PUT data.
+                #
+                self.cache.delete_alias_data(email_account.email_address)
                 return True
             else:
                 logger.debug(
