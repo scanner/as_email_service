@@ -606,7 +606,7 @@ class PostmarkBackend(ProviderBackend):
     #
     def create_update_email_account(
         self, email_account: "EmailAccount"
-    ) -> None:
+    ) -> bool:
         """
         Create or update an alias for an EmailAccount on Postmark - NOT YET IMPLEMENTED.
 
@@ -615,11 +615,15 @@ class PostmarkBackend(ProviderBackend):
 
         Args:
             email_account: The EmailAccount to create or update an alias for
+
+        Returns:
+            Always False — Postmark has no per-address alias state to manage.
         """
         logger.debug(
             "Postmark does not require alias creation/update for %s",
             email_account.email_address,
         )
+        return False
 
     ####################################################################
     #

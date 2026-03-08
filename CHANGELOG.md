@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-08
+
+### Fixed
+
+- ForwardEmail aliases that have drifted from the expected configuration (e.g. stale webhook URL in `recipients`) are now detected and corrected during the periodic alias sync
+
+### Changed
+
+- Alias sync (`provider_sync_server_aliases`) now delegates full alias verification and repair to `create_update_email_account` rather than only checking enabled state
+- `create_update_email_account` on ForwardEmail now caches the full alias data in Redis (warmed by `list_email_accounts`), skipping the GET request when data is already available; issues a PUT only when settings differ
+- Redis cache keys for alias data expire automatically (alias data: 2 h, alias/domain IDs: 24 h) to prevent unbounded stale entries
+
 ## [0.5.1] - 2026-03-06
 
 ### Fixed

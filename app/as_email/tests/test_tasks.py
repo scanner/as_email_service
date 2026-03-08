@@ -1432,9 +1432,10 @@ class TestProviderSyncServerAliases:
         provider_factory,
     ) -> None:
         """
-        Given aliases already enabled on the provider
+        Given aliases already correct on the provider
         When provider_sync_server_aliases is called with enabled=True
-        Then no create, enable, or delete calls should be made
+        Then create_update_email_account is called (returns False = no change),
+             no create or delete calls are made
         """
         provider = provider_factory(backend_name="dummy")
         server = server_factory()
@@ -1444,6 +1445,7 @@ class TestProviderSyncServerAliases:
         mailbox_name = ea1.email_address.split("@")[0]
 
         mock_backend = mocker.Mock()
+        mock_backend.create_update_email_account.return_value = False
         mock_backend.list_email_accounts.return_value = [
             EmailAccountInfo(
                 id=f"dummy-{mailbox_name}",
@@ -1464,8 +1466,8 @@ class TestProviderSyncServerAliases:
         res()
 
         mock_backend.create_email_account.assert_not_called()
-        mock_backend.enable_email_account.assert_not_called()
         mock_backend.delete_email_account_by_address.assert_not_called()
+        mock_backend.create_update_email_account.assert_called_once_with(ea1)
 
     ####################################################################
     #
@@ -1492,6 +1494,7 @@ class TestProviderSyncServerAliases:
         # Provider has ea1 plus a stray catch-all with no local counterpart
         catchall_email = f"*@{server.domain_name}"
         mock_backend = mocker.Mock()
+        mock_backend.create_update_email_account.return_value = False
         mock_backend.list_email_accounts.return_value = [
             EmailAccountInfo(
                 id=f"dummy-{mailbox1}",
@@ -1522,7 +1525,6 @@ class TestProviderSyncServerAliases:
             catchall_email, server
         )
         mock_backend.create_email_account.assert_not_called()
-        mock_backend.enable_email_account.assert_not_called()
 
     ####################################################################
     #
@@ -1534,9 +1536,9 @@ class TestProviderSyncServerAliases:
         provider_factory,
     ) -> None:
         """
-        Given a mix of missing, disabled, correct, and orphaned aliases
+        Given a mix of missing, needing-update, correct, and orphaned aliases
         When provider_sync_server_aliases is called with enabled=True
-        Then: missing are created, disabled are enabled, orphans are deleted,
+        Then: missing are created, drifted are updated, orphans are deleted,
               correct are skipped
         """
         provider = provider_factory(backend_name="dummy")
@@ -1544,14 +1546,18 @@ class TestProviderSyncServerAliases:
         server.receive_providers.add(provider)
 
         ea1 = email_account_factory(server=server)  # missing from provider
-        ea2 = email_account_factory(server=server)  # disabled on provider
-        ea3 = email_account_factory(server=server)  # already enabled
+        ea2 = email_account_factory(server=server)  # needs update (disabled)
+        ea3 = email_account_factory(server=server)  # already correct
 
         mailbox2 = ea2.email_address.split("@")[0]
         mailbox3 = ea3.email_address.split("@")[0]
         catchall_email = f"*@{server.domain_name}"
 
         mock_backend = mocker.Mock()
+        # ea2 needs update (returns True), ea3 is correct (returns False)
+        mock_backend.create_update_email_account.side_effect = (
+            lambda ea: ea == ea2
+        )
         mock_backend.list_email_accounts.return_value = [
             EmailAccountInfo(
                 id=f"dummy-{mailbox2}",
@@ -1586,12 +1592,15 @@ class TestProviderSyncServerAliases:
         res()
 
         mock_backend.create_email_account.assert_called_once_with(ea1)
-        mock_backend.enable_email_account.assert_called_once_with(
-            ea2, enabled=True
-        )
         mock_backend.delete_email_account_by_address.assert_called_once_with(
             catchall_email, server
         )
+        assert mock_backend.create_update_email_account.call_count == 2
+        called_with = {
+            call.args[0]
+            for call in mock_backend.create_update_email_account.call_args_list
+        }
+        assert called_with == {ea2, ea3}
 
     ####################################################################
     #
@@ -1650,7 +1659,7 @@ class TestProviderSyncServerAliases:
         }
         assert deleted_addresses == {ea1.email_address, ea2.email_address}
         mock_backend.create_email_account.assert_not_called()
-        mock_backend.enable_email_account.assert_not_called()
+        mock_backend.create_update_email_account.assert_not_called()
 
     ####################################################################
     #

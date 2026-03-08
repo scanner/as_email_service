@@ -1239,7 +1239,9 @@ def provider_sync_server_aliases(
       - Deletes aliases on the provider that have no corresponding local EmailAccount
         (catches catch-all aliases, manually-created strays, leftovers from
         deleted EmailAccounts, etc.)
-      - Enables any alias that is currently disabled on the provider
+      - Calls create_update_email_account for each alias present on both sides,
+        which verifies all provider-specific settings (enabled state, webhook
+        recipients, etc.) and updates only what has drifted
 
     When enabled=False (provider removed from server's receive_providers):
       - Deletes ALL aliases for this server from the provider (clean slate)
@@ -1366,22 +1368,14 @@ def provider_sync_server_aliases(
 
     for email_addr in to_check:
         try:
-            if not remote_map[email_addr].enabled:
-                backend.enable_email_account(
-                    local_map[email_addr], enabled=True
-                )
+            if backend.create_update_email_account(local_map[email_addr]):
                 updated_count += 1
-                logger.debug(
-                    "Enabled email account '%s' on provider '%s'",
-                    email_addr,
-                    provider_name,
-                )
             else:
                 skipped_count += 1
         except Exception as e:
             error_count += 1
             logger.exception(
-                "Failed to enable email account '%s' on provider '%s': %r",
+                "Failed to sync email account '%s' on provider '%s': %r",
                 email_addr,
                 provider_name,
                 e,
@@ -1389,7 +1383,7 @@ def provider_sync_server_aliases(
 
     logger.info(
         "Alias sync for server '%s' on provider '%s': "
-        "%d created, %d deleted, %d enabled, %d skipped, %d errors",
+        "%d created, %d deleted, %d updated, %d skipped, %d errors",
         server.domain_name,
         provider_name,
         created_count,

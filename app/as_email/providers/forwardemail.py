@@ -119,6 +119,7 @@ class ObjType(StrEnum):
 
     DOMAIN = "domain"
     ALIAS = "alias"
+    ALIAS_DATA = "alias_data"
 
 
 ########################################################################
@@ -369,15 +370,23 @@ class ForwardEmailCache:
     All keys are prefixed ``forwardemail:`` (KEY_PREFIX) followed by an
     ObjType namespace token and the identifying name, separated by colons:
 
-    +-------------------------------------------------+---------------+
-    | Key                                             | Value         |
-    +=================================================+===============+
-    | ``forwardemail:domain:<domain_name>``           | domain ID str |
-    +-------------------------------------------------+---------------+
-    | ``forwardemail:alias:<email_address>``          | alias ID str  |
-    +-------------------------------------------------+---------------+
-    | ``forwardemail:domain:all_domains``             | UTC timestamp |
-    +-------------------------------------------------+---------------+
+    +--------------------------------------------------------+------------------+
+    | Key                                                    | Value            |
+    +========================================================+==================+
+    | ``forwardemail:domain:<domain_name>``                  | domain ID str    |
+    +--------------------------------------------------------+------------------+
+    | ``forwardemail:alias:<email_address>``                 | alias ID str     |
+    +--------------------------------------------------------+------------------+
+    | ``forwardemail:alias_data:<email_address>``            | alias JSON str   |
+    +--------------------------------------------------------+------------------+
+    | ``forwardemail:domain:all_domains``                    | UTC timestamp    |
+    +--------------------------------------------------------+------------------+
+
+    ``alias_data`` entries store the full raw API alias dict (JSON-encoded).
+    They are populated by ``set_alias`` whenever a full alias dict is
+    available (list, get, create, update) and consumed by
+    ``create_update_email_account`` to avoid a redundant GET when the data
+    was already fetched during ``list_email_accounts``.
 
     All values are plain UTF-8 strings stored with no TTL (they are
     invalidated explicitly when the corresponding object is deleted or the
@@ -394,6 +403,16 @@ class ForwardEmailCache:
     """
 
     KEY_PREFIX = "forwardemail"
+
+    # TTLs (seconds).  All cache entries expire naturally as a safety net
+    # against stale data from manual API changes or missed invalidations.
+    # The hourly sync task refreshes alias and domain data well within these
+    # windows, so normal operation never hits a cold cache mid-cycle.
+    #
+    DOMAIN_ID_TTL: int = 24 * 3600  # 24 h — domain IDs change very rarely
+    ALIAS_ID_TTL: int = 24 * 3600  # 24 h — alias IDs are stable
+    ALIAS_DATA_TTL: int = 2 * 3600  # 2 h  — refreshed each hourly sync cycle
+    ALL_DOMAINS_TTL: int = 2 * 3600  # 2 h  — mirrors the 1-hour stale check
 
     ####################################################################
     #
@@ -412,16 +431,47 @@ class ForwardEmailCache:
         """Cache the domain ID from a domain info response dict."""
         domain_name = domain_info["name"]
         domain_id = domain_info["id"]
-        self.r.set(self._key(ObjType.DOMAIN, domain_name), domain_id)
+        self.r.set(
+            self._key(ObjType.DOMAIN, domain_name),
+            domain_id,
+            ex=self.DOMAIN_ID_TTL,
+        )
 
     ####################################################################
     #
     def set_alias(self, alias_info: dict, domain_name: str) -> None:
-        """Cache the alias ID from an alias info response dict."""
+        """Cache the alias ID and full alias data from an alias info response dict."""
         alias_name = alias_info["name"]
         alias_id = alias_info["id"]
         email_address = f"{alias_name}@{domain_name}"
-        self.r.set(self._key(ObjType.ALIAS, email_address), alias_id)
+        self.r.set(
+            self._key(ObjType.ALIAS, email_address),
+            alias_id,
+            ex=self.ALIAS_ID_TTL,
+        )
+        self.r.set(
+            self._key(ObjType.ALIAS_DATA, email_address),
+            json.dumps(alias_info),
+            ex=self.ALIAS_DATA_TTL,
+        )
+
+    ####################################################################
+    #
+    def get_alias_data(self, email_address: str) -> Optional[dict]:
+        """
+        Return the cached full alias dict for email_address, or None on miss.
+
+        Populated by set_alias() (called from list_email_accounts,
+        get_alias_id fallback, and create_update_email_account).
+        """
+        val = self.r.get(self._key(ObjType.ALIAS_DATA, email_address))
+        return json.loads(val.decode("utf-8")) if val is not None else None
+
+    ####################################################################
+    #
+    def delete_alias_data(self, email_address: str) -> None:
+        """Remove only the cached alias data, leaving the alias ID intact."""
+        self.r.delete(self._key(ObjType.ALIAS_DATA, email_address))
 
     ####################################################################
     #
@@ -432,14 +482,19 @@ class ForwardEmailCache:
     ####################################################################
     #
     def delete_alias(self, email_address: str) -> None:
-        """Remove an alias's cached ID."""
+        """Remove an alias's cached ID and alias data (full cleanup on delete)."""
         self.r.delete(self._key(ObjType.ALIAS, email_address))
+        self.r.delete(self._key(ObjType.ALIAS_DATA, email_address))
 
     ####################################################################
     #
     def set_all_domains_fetched(self) -> None:
         """Record the current time as the last full domain-list refresh."""
-        self.r.set(self._key(ObjType.DOMAIN, "all_domains"), utc_now_str())
+        self.r.set(
+            self._key(ObjType.DOMAIN, "all_domains"),
+            utc_now_str(),
+            ex=self.ALL_DOMAINS_TTL,
+        )
 
     ####################################################################
     #
@@ -1116,13 +1171,15 @@ class ForwardEmailBackend(ProviderBackend):
             alias_id = alias_info["id"]
             email_address = f"{alias_name}@{server.domain_name}"
 
-            # Create EmailAccountInfo object
+            # Create EmailAccountInfo object. Store the full raw API dict in
+            # extra_data so sync_email_account() can compare without a GET.
             account_info = EmailAccountInfo(
                 id=alias_id,
                 email=email_address,
                 domain=server.domain_name,
                 enabled=alias_info.get("is_enabled", False),
                 name=alias_name,
+                extra_data=alias_info,
             )
             result.append(account_info)
             self.cache.set_alias(alias_info, server.domain_name)
@@ -1148,7 +1205,7 @@ class ForwardEmailBackend(ProviderBackend):
     def create_update_email_account(
         self,
         email_account: "EmailAccount",
-    ) -> None:
+    ) -> bool:
         """
         On forwardemail.net the email addresses within a domain are called
         'domain aliases.'
@@ -1156,13 +1213,18 @@ class ForwardEmailBackend(ProviderBackend):
         Create a domain alias on forwardemail.net for an EmailAccount, or
         update it with our settings if it already exists.
 
-        If the alias already exists its live settings are fetched and compared
-        against DEFAULT_ALIAS_SETTINGS plus the per-account dynamic fields
-        (recipients, description); a PUT is issued only when something has
-        drifted.
+        When the alias exists, the current settings are taken from the Redis
+        alias-data cache if available (populated by list_email_accounts or a
+        prior call), avoiding a redundant GET.  On a cache miss the settings
+        are fetched from the API.  A PUT is issued only when something differs
+        from the desired state.
 
         Args:
             email_account: The EmailAccount to create or update an alias for
+
+        Returns:
+            True if the alias was created or if existing settings were updated,
+            False if the alias already existed with all correct settings.
         """
         # This will raise KeyError if the domain does not exist
         #
@@ -1185,13 +1247,19 @@ class ForwardEmailBackend(ProviderBackend):
                 domain_id, email_account.email_address
             )
 
-            # Alias exists -- fetch current settings and apply any updates.
+            # Alias exists -- use cached settings when available to avoid a
+            # redundant GET (cache is warmed by list_email_accounts).
             #
-            r = self.api.req(
-                HTTPMethod.GET,
-                f"v1/domains/{domain_id}/aliases/{alias_id}",
-            )
-            alias_info = r.json()
+            alias_info = self.cache.get_alias_data(email_account.email_address)
+            if alias_info is None:
+                r = self.api.req(
+                    HTTPMethod.GET,
+                    f"v1/domains/{domain_id}/aliases/{alias_id}",
+                )
+                alias_info = r.json()
+                self.cache.set_alias(
+                    alias_info, email_account.server.domain_name
+                )
 
             to_update = {
                 k: v for k, v in wanted.items() if alias_info.get(k) != v
@@ -1209,14 +1277,17 @@ class ForwardEmailBackend(ProviderBackend):
                     data=to_update,
                 )
                 alias_info = r.json()
+                self.cache.set_alias(
+                    alias_info, email_account.server.domain_name
+                )
+                return True
             else:
                 logger.debug(
                     "Alias '%s' already exists with correct settings (ID: %s)",
                     email_account.email_address,
                     alias_id,
                 )
-
-            self.cache.set_alias(alias_info, email_account.server.domain_name)
+                return False
 
         except KeyError:
             # Alias doesn't exist - create it.
@@ -1235,6 +1306,7 @@ class ForwardEmailBackend(ProviderBackend):
                 alias_info["id"],
                 webhook_url,
             )
+            return True
 
     ####################################################################
     #
@@ -1301,6 +1373,10 @@ class ForwardEmailBackend(ProviderBackend):
             f"v1/domains/{domain_id}/aliases/{alias_id}",
             data=update_data,
         )
+
+        # Invalidate the cache because the remote data has likely now changed.
+        #
+        self.cache.delete_alias_data(email_account.email_address)
 
         logger.info(
             "%s forwardemail.net alias for %s (ID: %s)",

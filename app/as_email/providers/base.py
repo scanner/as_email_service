@@ -10,7 +10,7 @@ emails, handling webhooks, and managing provider resources.
 #
 import email.message
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, List
 
 # 3rd party imports
@@ -40,6 +40,9 @@ class EmailAccountInfo:
         domain: The domain name
         enabled: Whether the account is enabled
         name: The mailbox name (local part of email address)
+        extra_data: Full raw API response dict from the provider, populated by
+            list_email_accounts(). Used by sync_email_account() to compare current
+            remote state without issuing an extra GET request.
     """
 
     id: str
@@ -47,6 +50,7 @@ class EmailAccountInfo:
     domain: str
     enabled: bool
     name: str
+    extra_data: dict[str, Any] = field(default_factory=dict)
 
 
 ########################################################################
@@ -237,7 +241,7 @@ class ProviderBackend(ABC):
     @abstractmethod
     def create_update_email_account(
         self, email_account: "EmailAccount"
-    ) -> None:
+    ) -> bool:
         """
         Create or update an email account (alias) on the provider's service.
 
@@ -247,6 +251,10 @@ class ProviderBackend(ABC):
 
         Args:
             email_account: The EmailAccount instance to create or update
+
+        Returns:
+            True if the alias was created or if existing settings were updated,
+            False if the alias already existed with all correct settings.
         """
         ...
 

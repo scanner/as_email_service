@@ -276,19 +276,27 @@ class DummyProviderBackend(ProviderBackend):
     #
     def create_update_email_account(
         self, email_account: "EmailAccount"
-    ) -> None:
-        """Create or update an email account in the dummy provider state."""
+    ) -> bool:
+        """
+        Create or update an email account in the dummy provider state.
+
+        Mirrors the real provider behaviour: the desired state always has
+        enabled=True, so a disabled account is re-enabled and counts as
+        updated.
+
+        Returns:
+            True if the account was created or updated, False if it already
+            existed with all correct settings.
+        """
         if email_account.email_address in self.email_accounts:
-            # Update existing account
-            self.email_accounts[email_account.email_address].update(
-                {
-                    "email": email_account.email_address,
-                    "domain": email_account.server.domain_name,
-                }
-            )
+            account = self.email_accounts[email_account.email_address]
+            if not account["enabled"]:
+                account["enabled"] = True
+                return True
+            return False
         else:
-            # Create new account
             self.create_email_account(email_account)
+            return True
 
     ####################################################################
     #
@@ -326,6 +334,7 @@ class DummyProviderBackend(ProviderBackend):
                 domain=account["domain"],
                 enabled=account["enabled"],
                 name=account["email"].split("@")[0],
+                extra_data=account,
             )
             for account in self.email_accounts.values()
             if account["domain"] == server.domain_name
