@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-03-08
+
+### Changed
+
+- Renamed `provider_sync_server_aliases` to `provider_sync_server_email_accounts` and `provider_sync_email_accounts` to `provider_sync_all_email_accounts` to better reflect their purpose
+
+### Fixed
+
+- ForwardEmail alias updates now send the complete desired state in the PUT request, preventing fields omitted from the diff from being silently cleared by the API
+
 ## [0.5.3] - 2026-03-08
 
 ### Fixed
@@ -21,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Alias sync (`provider_sync_server_aliases`) now delegates full alias verification and repair to `create_update_email_account` rather than only checking enabled state
+- Email account sync (`provider_sync_server_email_accounts`, formerly `provider_sync_server_aliases`) now delegates full verification and repair to `create_update_email_account` rather than only checking enabled state
 - `create_update_email_account` on ForwardEmail now caches the full alias data in Redis (warmed by `list_email_accounts`), skipping the GET request when data is already available; issues a PUT only when settings differ
 - Redis cache keys for alias data expire automatically (alias data: 2 h, alias/domain IDs: 24 h) to prevent unbounded stale entries
 

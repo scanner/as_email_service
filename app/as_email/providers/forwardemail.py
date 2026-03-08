@@ -1269,10 +1269,14 @@ class ForwardEmailBackend(ProviderBackend):
                     email_account.email_address,
                     to_update,
                 )
+                # Send the full `wanted` dict, not just the diff: ForwardEmail
+                # treats PUT as a full replacement and clears any field omitted
+                # from the payload.
+                #
                 self.api.req(
                     HTTPMethod.PUT,
                     f"v1/domains/{domain_id}/aliases/{alias_id}",
-                    data=to_update,
+                    data=wanted,
                 )
                 # Invalidate the cache so the next call fetches fresh state
                 # from the provider rather than using stale pre-PUT data.

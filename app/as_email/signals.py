@@ -38,7 +38,7 @@ from .tasks import (
     provider_create_email_account,
     provider_create_server,
     provider_delete_email_account,
-    provider_sync_server_aliases,
+    provider_sync_server_email_accounts,
 )
 
 User = get_user_model()
@@ -52,8 +52,7 @@ def email_account_pre_save(
     sender: Type[EmailAccount], instance: EmailAccount, **kwargs
 ) -> None:
     """
-    Conduct pre-save EmailAccount actions, like creating the various
-    folders associated with this EmailAccount
+    Conduct pre-save EmailAccount actions.
     """
     pass
 
@@ -293,7 +292,7 @@ def handle_receive_providers_changed(
                 pipeline = provider_create_server.s(
                     instance.pk, provider.backend_name
                 ).then(
-                    provider_sync_server_aliases,
+                    provider_sync_server_email_accounts,
                     instance.pk,
                     provider.backend_name,
                     True,
@@ -304,6 +303,6 @@ def handle_receive_providers_changed(
             # Provider(s) removed from server - delete all aliases on the provider
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
-                provider_sync_server_aliases(
+                provider_sync_server_email_accounts(
                     instance.pk, provider.backend_name, enabled=False
                 )
