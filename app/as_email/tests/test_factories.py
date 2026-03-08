@@ -348,29 +348,6 @@ class TestDummyProviderBackend:
 
     ####################################################################
     #
-    def test_enable_email_account(
-        self, dummy_provider, mock_email_account
-    ) -> None:
-        """
-        Given an email account that exists
-        When enable_email_account is called with enable=False
-        Then the account's enabled flag should be False
-        """
-        account = mock_email_account()
-        dummy_provider.create_email_account(account)
-        assert (
-            dummy_provider.email_accounts[account.email_address]["enabled"]
-            is True
-        )
-
-        dummy_provider.enable_email_account(account, enabled=False)
-        assert (
-            dummy_provider.email_accounts[account.email_address]["enabled"]
-            is False
-        )
-
-    ####################################################################
-    #
     def test_list_email_accounts_empty(
         self, dummy_provider, mocker, faker
     ) -> None:

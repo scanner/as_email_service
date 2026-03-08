@@ -25,6 +25,7 @@ from as_email.providers.forwardemail import (
     ForwardEmailCache,
     HTTPMethod,
     RateLimitInfo,
+    _owner_display_name,
 )
 
 pytestmark = pytest.mark.django_db
@@ -249,28 +250,63 @@ class TestForwardEmailBackend:
 
     ####################################################################
     #
-    def test_handle_incoming_webhook_nonexistent_account(
-        self, server_factory, email_factory, faker, mocker, caplog
+    @pytest.mark.parametrize(
+        "account_exists, account_enabled, expected_log",
+        [
+            pytest.param(
+                False,
+                True,
+                "Received email for EmailAccount that does not exist",
+                id="nonexistent-account",
+            ),
+            pytest.param(
+                True,
+                False,
+                "Received email for disabled EmailAccount",
+                id="disabled-account",
+            ),
+        ],
+    )
+    def test_handle_incoming_webhook_no_delivery(
+        self,
+        server_factory,
+        email_account_factory,
+        email_factory,
+        faker,
+        mocker,
+        caplog,
+        account_exists,
+        account_enabled,
+        expected_log,
     ) -> None:
         """
-        Given an incoming webhook for a non-existent EmailAccount
-        When the webhook is processed
-        Then it should log info message and include failed recipient in response
+        GIVEN: an incoming webhook for an account that does not exist OR is disabled
+        WHEN:  the webhook is processed
+        THEN:  the address is in failed_recipients and dispatch is not called
         """
         backend = ForwardEmailBackend()
         server = server_factory()
         msg = email_factory()
         raw_email = msg.as_string(policy=email.policy.default)
-
-        nonexistent_email = faker.email()
         from_email = faker.email()
 
-        # Create webhook payload
+        if account_exists:
+            email_account = email_account_factory(
+                server=server, enabled=account_enabled
+            )
+            recipient = email_account.email_address
+        else:
+            recipient = faker.email()
+
+        mock_dispatch = mocker.patch(
+            "as_email.providers.forwardemail.dispatch_incoming_email"
+        )
+
         payload = {
             "messageId": faker.uuid4(),
             "from": {"text": from_email},
             "raw": raw_email,
-            "recipients": [nonexistent_email],
+            "recipients": [recipient],
         }
 
         request = mocker.Mock(spec=HttpRequest)
@@ -278,18 +314,13 @@ class TestForwardEmailBackend:
 
         response = backend.handle_incoming_webhook(request, server)
 
-        # Verify response
         response_data = json.loads(response.content)
         assert response_data["status"] == "all good"
         assert "no valid recipients" in response_data["message"]
-        assert nonexistent_email in response_data["failed_recipients"]
+        assert recipient in response_data["failed_recipients"]
 
-        # Verify logging
-        assert (
-            "Received email for EmailAccount that does not exist" in caplog.text
-        )
-        assert nonexistent_email in caplog.text
-        assert from_email in caplog.text
+        mock_dispatch.assert_not_called()
+        assert expected_log in caplog.text
 
     ####################################################################
     #
@@ -830,46 +861,6 @@ class TestForwardEmailAPIMethods:
 
     ####################################################################
     #
-    def test_enable_email_account(
-        self, email_account_factory, use_fakeredis, mocker, faker
-    ) -> None:
-        """
-        Given an EmailAccount
-        When enable_email_account is called with is_enabled=True
-        Then it should update the alias via API
-        """
-        backend = ForwardEmailBackend()
-        email_account = email_account_factory()
-        domain_id = faker.uuid4()
-        alias_id = faker.uuid4()
-
-        # Use the fakeredis client from autouse fixture and populate with alias ID
-        mock_redis = use_fakeredis
-        redis_key = f"forwardemail:alias:{email_account.email_address}"
-        mock_redis.set(redis_key, alias_id)
-
-        # Mock update_domains to avoid API calls
-        mocker.patch.object(backend, "update_domains")
-
-        # Mock get_domain_id on the cache
-        mocker.patch.object(
-            backend.cache, "get_domain_id", return_value=domain_id
-        )
-
-        # Mock API request
-        mock_req = mocker.patch.object(backend.api, "req")
-
-        # Call enable_email_account
-        backend.enable_email_account(email_account, enabled=True)
-
-        # Verify API was called with correct data
-        mock_req.assert_called_once()
-        call_args = mock_req.call_args
-        assert f"v1/domains/{domain_id}/aliases/{alias_id}" in call_args[0][1]
-        assert call_args[1]["data"] == IsPartialDict(is_enabled=True)
-
-    ####################################################################
-    #
     def test_list_email_accounts(self, server_factory, mocker, faker) -> None:
         """
         Given a server
@@ -978,7 +969,7 @@ class TestForwardEmailAPIMethods:
             name=email_account.email_address.split("@")[0],
             recipients=[webhook_url],
             is_enabled=True,
-            description=f"Email account for {email_account.owner.username}",
+            description=f"Email account for {_owner_display_name(email_account.owner)}",
         )
 
         # Verify cache.set_alias was called
@@ -1024,7 +1015,7 @@ class TestForwardEmailAPIMethods:
             "id": alias_id,
             "name": email_account.email_address.split("@")[0],
             "recipients": ["https://old-internal-host.example.com/hook"],
-            "description": f"Email account for {email_account.owner.username}",
+            "description": f"Email account for {_owner_display_name(email_account.owner)}",
             "has_recipient_verification": False,
             "is_enabled": True,
             "has_imap": False,
@@ -1057,8 +1048,9 @@ class TestForwardEmailAPIMethods:
         assert f"v1/domains/{domain_id}/aliases/{alias_id}" in put_call[0][1]
         assert put_call[1]["data"] == {
             **backend.DEFAULT_ALIAS_SETTINGS,
+            "is_enabled": email_account.enabled,
             "recipients": [webhook_url],
-            "description": f"Email account for {email_account.owner.username}",
+            "description": f"Email account for {_owner_display_name(email_account.owner)}",
         }
 
         # set_alias called once (for the GET); after PUT the cache is
@@ -1105,7 +1097,8 @@ class TestForwardEmailAPIMethods:
             "id": alias_id,
             "name": email_account.email_address.split("@")[0],
             "recipients": [webhook_url],
-            "description": f"Email account for {email_account.owner.username}",
+            "description": f"Email account for {_owner_display_name(email_account.owner)}",
+            "is_enabled": email_account.enabled,
             **backend.DEFAULT_ALIAS_SETTINGS,
         }
         mock_api_req = mocker.patch.object(
@@ -1218,10 +1211,10 @@ class TestForwardEmailAPIMethods:
         assert alias_data["recipients"] == [webhook_url]
         assert (
             alias_data["description"]
-            == f"Email account for {email_account.owner.username}"
+            == f"Email account for {_owner_display_name(email_account.owner)}"
         )
         assert alias_data["has_recipient_verification"] is False
-        assert alias_data["is_enabled"] is True
+        assert alias_data["is_enabled"] == email_account.enabled
         assert alias_data["has_imap"] is False
         assert alias_data["has_pgp"] is False
 

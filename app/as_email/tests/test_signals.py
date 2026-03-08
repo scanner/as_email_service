@@ -44,7 +44,7 @@ class TestProviderSignals:
 
     ####################################################################
     #
-    def test_create_provider_email_accounts_fires_for_each_receive_provider(
+    def test_create_or_update_provider_email_accounts_fires_for_each_receive_provider(
         self,
         server_factory: Callable[..., Server],
         user_factory: Callable,
@@ -53,12 +53,12 @@ class TestProviderSignals:
         """
         GIVEN: a server with one receive provider
         WHEN:  an EmailAccount is created on that server
-        THEN:  provider_create_email_account is called once per receive provider
+        THEN:  provider_create_or_update_email_account is called once per receive provider
                with the email account pk and provider backend name
         """
         server = server_factory()
         mock_create = mocker.patch(
-            "as_email.signals.provider_create_email_account"
+            "as_email.signals.provider_create_or_update_email_account"
         )
 
         user = user_factory()
@@ -74,7 +74,7 @@ class TestProviderSignals:
 
     ####################################################################
     #
-    def test_create_provider_email_accounts_not_fired_on_update(
+    def test_create_or_update_provider_email_accounts_not_fired_on_unrelated_update(
         self,
         server_factory: Callable[..., Server],
         user_factory: Callable,
@@ -82,8 +82,8 @@ class TestProviderSignals:
     ) -> None:
         """
         GIVEN: an existing EmailAccount
-        WHEN:  it is saved again (update, not create)
-        THEN:  provider_create_email_account is not called
+        WHEN:  it is saved again without changing the enabled field
+        THEN:  provider_create_or_update_email_account is not called
         """
         server = server_factory()
         user = user_factory()
@@ -94,11 +94,42 @@ class TestProviderSignals:
         )
 
         mock_create = mocker.patch(
-            "as_email.signals.provider_create_email_account"
+            "as_email.signals.provider_create_or_update_email_account"
         )
         ea.save()
 
         mock_create.assert_not_called()
+
+    ####################################################################
+    #
+    def test_create_or_update_provider_email_accounts_fires_on_enabled_change(
+        self,
+        server_factory: Callable[..., Server],
+        user_factory: Callable,
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN: an existing EmailAccount with enabled=True
+        WHEN:  it is saved with enabled=False
+        THEN:  provider_create_or_update_email_account is called once per receive provider
+        """
+        server = server_factory()
+        user = user_factory()
+        ea = EmailAccount.objects.create(
+            owner=user,
+            server=server,
+            email_address=f"newuser@{server.domain_name}",
+        )
+
+        mock_create = mocker.patch(
+            "as_email.signals.provider_create_or_update_email_account"
+        )
+        ea.enabled = False
+        ea.save()
+
+        assert mock_create.call_count == server.receive_providers.count()
+        for provider in server.receive_providers.all():
+            mock_create.assert_any_call(ea.pk, provider.backend_name)
 
     ####################################################################
     #

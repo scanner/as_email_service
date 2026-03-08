@@ -38,6 +38,7 @@ from .models import (
     Server,
 )
 from .providers import get_backend
+from .providers.base import Capability
 from .utils import (
     BOUNCE_TYPES_BY_TYPE_CODE,
     PWUser,
@@ -1146,14 +1147,15 @@ def provider_create_server(server_pk: int, provider_name: str) -> None:
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_create_email_account(
+def provider_create_or_update_email_account(
     email_account_pk: int, provider_name: str
 ) -> None:
     """
     Create or update an email account on the specified provider.
 
-    This task is triggered when an EmailAccount is created and its server has
-    the specified provider configured as a receive provider.
+    This task is triggered when an EmailAccount is created or its enabled state
+    changes, and its server has the specified provider configured as a receive
+    provider.
 
     Args:
         email_account_pk: Primary key of the EmailAccount instance
@@ -1283,7 +1285,17 @@ def provider_sync_server_email_accounts(
     remote_map = {ea.email: ea for ea in remote_email_accounts}
 
     if not enabled:
-        # Provider removed from server: delete every remote alias (clean slate).
+        # Provider removed from server.
+        #
+        if Capability.MANAGES_EMAIL_ACCOUNTS not in backend.CAPABILITIES:
+            logger.info(
+                "Provider '%s' does not manage email accounts for server '%s'; "
+                "no-op on provider removal",
+                provider_name,
+                server.domain_name,
+            )
+            return
+        # Provider manages accounts — delete all of them (clean slate).
         #
         deleted_count = 0
         error_count = 0
