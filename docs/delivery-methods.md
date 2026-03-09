@@ -34,7 +34,79 @@ further aliases, and so on.
 ## ImapDelivery
 
 Delivers incoming mail to a remote IMAP server via SSL. Suitable for
-forwarding to Gmail, Fastmail, or any hosted or self-hosted IMAP server.
+forwarding to Gmail, Fastmail, iCloud Mail, or any hosted or self-hosted IMAP server.
+
+### Provider-specific setup
+
+#### Gmail
+
+Gmail does not allow regular account passwords for IMAP access. You must use
+an **app password** — a 16-character password generated specifically for this
+purpose.
+
+**Requirements:**
+
+- Your Google Account must have [2-Step Verification](https://myaccount.google.com/signinoptions/two-step-verification) enabled.
+- IMAP must be enabled in Gmail settings: **Settings → See all settings → Forwarding and POP/IMAP → IMAP access → Enable IMAP**.
+
+**Generating an app password:**
+
+1. Go to your [Google Account security page](https://myaccount.google.com/security).
+2. Under "How you sign in to Google", select **2-Step Verification**.
+3. Scroll to the bottom and select **App passwords**.
+4. Under "Select app", choose **Mail**. Under "Select device", choose **Other (Custom name)** and enter something like `as_email_service`.
+5. Click **Generate**. Copy the 16-character password shown (spaces are optional).
+
+Full instructions: <https://support.google.com/mail/answer/185833?hl=en>
+
+**IMAP settings to use:**
+
+| Field     | Value                                          |
+| --------- | ---------------------------------------------- |
+| IMAP host | `imap.gmail.com`                               |
+| IMAP port | `993`                                          |
+| Username  | your full Gmail address (e.g. `you@gmail.com`) |
+| Password  | the 16-character app password                  |
+
+> **Note:** App passwords are tied to your Google Account. If you disable
+> 2-Step Verification or revoke the app password in your Google Account
+> settings, IMAP delivery will fail and the method will be auto-disabled after
+> the retry window.
+
+---
+
+#### iCloud Mail
+
+iCloud Mail requires an **app-specific password** for third-party IMAP access.
+Your regular Apple ID password will not work.
+
+**Requirements:**
+
+- Your Apple ID must have [two-factor authentication](https://support.apple.com/en-us/104232) enabled.
+- IMAP access must be enabled: in iCloud.com, go to **Mail → Settings (gear icon) → Preferences → Account** and confirm IMAP access is on. On a Mac: **System Settings → Apple ID → iCloud → iCloud Mail** must be turned on.
+
+**Generating an app-specific password:**
+
+1. Go to [appleid.apple.com](https://appleid.apple.com) and sign in.
+2. In the **Sign-In and Security** section, select **App-Specific Passwords**.
+3. Click the **+** button and enter a label (e.g. `as_email_service`).
+4. Click **Create**. Copy the password shown (format: `xxxx-xxxx-xxxx-xxxx`).
+
+Full instructions: <https://support.apple.com/en-us/102525>
+
+**IMAP settings to use:**
+
+| Field     | Value                                                                             |
+| --------- | --------------------------------------------------------------------------------- |
+| IMAP host | `imap.mail.me.com`                                                                |
+| IMAP port | `993`                                                                             |
+| Username  | your iCloud email address (e.g. `you@icloud.com`, `you@me.com`, or `you@mac.com`) |
+| Password  | the app-specific password                                                         |
+
+> **Note:** App-specific passwords are tied to your Apple ID. Revoking the
+> password in your Apple ID account settings will cause IMAP delivery to fail.
+
+---
 
 ### Credential storage
 

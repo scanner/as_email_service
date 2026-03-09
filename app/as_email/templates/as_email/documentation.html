@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Documentation — {{ settings.SITE_NAME }}{% endblock title %}
 
 {% block content_title %}
@@ -14,12 +15,28 @@
     address. All of your email accounts are listed on the
     <a href="{% url 'as_email:index' %}">main page</a> after you log in.
   </p>
-  <p>
-    Each email account has its own password used to authenticate for both sending
-    (SMTP) and receiving (IMAP) on this server. This password is separate from your
-    login password for this web interface. Set or change an email account's password
-    from its card on the main page.
-  </p>
+  <div class="notification is-info is-light">
+    <p><strong>Two separate passwords — do not mix them up:</strong></p>
+    <ul>
+      <li>Your <strong>web login password</strong> is for signing in to this website only.</li>
+      <li>Each email account has its own <strong>email account password</strong> used by
+        your email client for sending (SMTP) and receiving (IMAP). This is set separately
+        from the email account card on the <a href="{% url 'as_email:index' %}">main page</a>.</li>
+    </ul>
+    <p>
+      If your email client says authentication failed, make sure you are using the
+      <strong>email account password</strong>, not your web login password.
+    </p>
+  </div>
+
+  <figure class="image" style="max-width:680px; margin: 1.5rem 0;">
+    <img src="{% static 'as_email/img/email-account-card-annotated.png' %}"
+         alt="An email account card showing: (1) the account name at the top is the SMTP/IMAP username; (2) the Account Password section and Edit Account Settings button are where you set the email account password."
+         style="border: 1px solid #dbdbdb; border-radius: 4px;">
+    <figcaption style="font-size: 0.85rem; color: #666; margin-top: 0.4rem;">
+      Example only — the email address shown is not yours. Use the address from your own email account card.
+    </figcaption>
+  </figure>
 
   <h2 class="subtitle">Sending Email</h2>
   <p>
@@ -30,7 +47,7 @@
     <tbody>
       <tr><th>Server</th><td>{{ settings.SITE_NAME }}</td></tr>
       <tr><th>Port</th><td>587 (STARTTLS)</td></tr>
-      <tr><th>Username</th><td>The email address shown in your email account card{% if email_accounts %} (e.g. <em>{{ email_accounts.0 }}</em>){% endif %}</td></tr>
+      <tr><th>Username</th><td>The email address shown in your email account card{% if email_accounts %} (e.g. <strong>{{ email_accounts.0 }}</strong>){% endif %}</td></tr>
       <tr><th>Password</th><td>The email account password (set on the main page)</td></tr>
       <tr><th>Authentication</th><td>Required</td></tr>
     </tbody>
@@ -50,7 +67,7 @@
     <tbody>
       <tr><th>Server</th><td>{{ settings.SITE_NAME }}</td></tr>
       <tr><th>Port</th><td>993 (SSL)</td></tr>
-      <tr><th>Username</th><td>The email address shown in your email account card{% if email_accounts %} (e.g. <em>{{ email_accounts.0 }}</em>){% endif %}</td></tr>
+      <tr><th>Username</th><td>The email address shown in your email account card{% if email_accounts %} (e.g. <strong>{{ email_accounts.0 }}</strong>){% endif %}</td></tr>
       <tr><th>Password</th><td>The email account password (set on the main page)</td></tr>
     </tbody>
   </table>
@@ -69,6 +86,96 @@
       server's designated junk folder is used automatically; if none exists,
       a folder named <em>Junk</em> is used; otherwise mail falls back to the inbox).</li>
   </ul>
+  <h3>Provider-specific setup</h3>
+
+  <h4>Gmail</h4>
+  <p>
+    Gmail does not allow regular account passwords for third-party IMAP access.
+    You must use an <strong>app password</strong> — a 16-character password generated
+    specifically for this purpose.
+  </p>
+  <p><strong>Requirements:</strong></p>
+  <ul>
+    <li>Your Google Account must have
+      <a href="https://myaccount.google.com/signinoptions/two-step-verification"
+         target="_blank" rel="noopener noreferrer">2-Step Verification</a> enabled.</li>
+    <li>IMAP must be enabled in Gmail settings:
+      <strong>Settings → See all settings → Forwarding and POP/IMAP → IMAP access → Enable IMAP</strong>.</li>
+  </ul>
+  <p><strong>To generate an app password:</strong></p>
+  <ol>
+    <li>Go to your
+      <a href="https://myaccount.google.com/security"
+         target="_blank" rel="noopener noreferrer">Google Account security page</a>.</li>
+    <li>Under <em>How you sign in to Google</em>, select <strong>2-Step Verification</strong>.</li>
+    <li>Scroll to the bottom and select <strong>App passwords</strong>.</li>
+    <li>Under <em>Select app</em>, choose <strong>Mail</strong>. Under <em>Select device</em>,
+      choose <strong>Other (Custom name)</strong> and enter a label like
+      <code>{{ settings.SITE_NAME }}</code>.</li>
+    <li>Click <strong>Generate</strong>. Copy the 16-character password shown (spaces are optional).</li>
+  </ol>
+  <p>Full instructions:
+    <a href="https://support.google.com/mail/answer/185833?hl=en"
+       target="_blank" rel="noopener noreferrer">support.google.com/mail/answer/185833</a>
+  </p>
+  <table class="table">
+    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><th>IMAP host</th><td><code>imap.gmail.com</code></td></tr>
+      <tr><th>IMAP port</th><td><code>993</code></td></tr>
+      <tr><th>Username</th><td>Your full Gmail address (e.g. <code>you@gmail.com</code>)</td></tr>
+      <tr><th>Password</th><td>The 16-character app password</td></tr>
+    </tbody>
+  </table>
+  <div class="notification is-warning is-light">
+    <strong>Note:</strong> App passwords are tied to your Google Account. If you disable
+    2-Step Verification or revoke the app password in your Google Account settings,
+    IMAP delivery will fail and the method will be auto-disabled after the retry window.
+  </div>
+
+  <h4>iCloud Mail</h4>
+  <p>
+    iCloud Mail requires an <strong>app-specific password</strong> for third-party IMAP
+    access. Your regular Apple ID password will not work.
+  </p>
+  <p><strong>Requirements:</strong></p>
+  <ul>
+    <li>Your Apple ID must have
+      <a href="https://support.apple.com/en-us/104232"
+         target="_blank" rel="noopener noreferrer">two-factor authentication</a> enabled.</li>
+    <li>IMAP access must be enabled: in iCloud.com, go to
+      <strong>Mail → Settings (gear icon) → Preferences → Account</strong> and confirm IMAP
+      access is on. On a Mac: <strong>System Settings → Apple ID → iCloud → iCloud Mail</strong>
+      must be turned on.</li>
+  </ul>
+  <p><strong>To generate an app-specific password:</strong></p>
+  <ol>
+    <li>Go to
+      <a href="https://appleid.apple.com"
+         target="_blank" rel="noopener noreferrer">appleid.apple.com</a> and sign in.</li>
+    <li>In the <em>Sign-In and Security</em> section, select <strong>App-Specific Passwords</strong>.</li>
+    <li>Click the <strong>+</strong> button and enter a label (e.g. <code>{{ settings.SITE_NAME }}</code>).</li>
+    <li>Click <strong>Create</strong>. Copy the password shown (format: <code>xxxx-xxxx-xxxx-xxxx</code>).</li>
+  </ol>
+  <p>Full instructions:
+    <a href="https://support.apple.com/en-us/102525"
+       target="_blank" rel="noopener noreferrer">support.apple.com/en-us/102525</a>
+  </p>
+  <table class="table">
+    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><th>IMAP host</th><td><code>imap.mail.me.com</code></td></tr>
+      <tr><th>IMAP port</th><td><code>993</code></td></tr>
+      <tr><th>Username</th><td>Your iCloud email address (e.g. <code>you@icloud.com</code>,
+        <code>you@me.com</code>, or <code>you@mac.com</code>)</td></tr>
+      <tr><th>Password</th><td>The app-specific password</td></tr>
+    </tbody>
+  </table>
+  <div class="notification is-warning is-light">
+    <strong>Note:</strong> App-specific passwords are tied to your Apple ID. Revoking
+    the password in your Apple ID account settings will cause IMAP delivery to fail.
+  </div>
+
   <h3>Credentials and re-enabling</h3>
   <p>
     When you save an IMAP delivery method with a password, the service immediately
@@ -90,7 +197,8 @@
   <p>
     If delivery cannot be restored within {{ settings.DELIVERY_RETRY_DAYS }} days,
     the delivery method is automatically disabled and you are notified by email
-    at <em>{{ request.user.email }}</em>.
+    at <strong>{{ request.user.email }}</strong> — your web login address
+    (which may or may not be one of the email accounts on this server).
     You can re-enable it from the main page once the problem is fixed.
   </p>
   <p>
@@ -104,9 +212,9 @@
   <p>
     Alias delivery lets you receive email sent to multiple addresses and have it all
     delivered to a single email account. For example, if you have a primary account
-    <em>{% if email_accounts %}{{ email_accounts.0 }}{% else %}alice@example.net{% endif %}</em>
+    <strong>{% if email_accounts %}{{ email_accounts.0 }}{% else %}alice@example.net{% endif %}</strong>
     and a second account
-    <em>{% if email_accounts|length > 1 %}{{ email_accounts.1 }}{% else %}info@example.net{% endif %}</em>,
+    <strong>{% if email_accounts|length > 1 %}{{ email_accounts.1 }}{% else %}info@example.net{% endif %}</strong>,
     you can set the second account to alias to the first — so mail sent to either
     address arrives in the primary inbox.
   </p>
