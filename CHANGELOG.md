@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-03-09
+
+### Added
+
+- Documentation page now includes step-by-step instructions for obtaining app passwords for Gmail and iCloud Mail for use with IMAP delivery
+- Documentation page now shows an annotated screenshot of the email account card to clarify where the SMTP/IMAP username and password are set
+
+### Changed
+
+- Documentation page makes the two-password distinction (web login vs. email account) explicit with a prominent callout and troubleshooting tip
+- Failure notification emails are sent to the web login address, which is now identified as such in the documentation (it may differ from any email account on the server)
+
 ## [0.5.4] - 2026-03-08
 
 ### Added
