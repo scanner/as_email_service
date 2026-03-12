@@ -7,21 +7,39 @@ like django-simple-bulma so we can wrap those in django_compressor's compress
 tag.
 """
 
-# 3rd party iimports
+# 3rd party imports
 #
 from django import template
+from django.contrib.auth.models import AnonymousUser, User
 from django.templatetags.static import static
 from django.utils.safestring import SafeString, mark_safe
+from django_simple_bulma.utils import get_js_files, logger, themes
 
 register = template.Library()
 
 
 ####################################################################
 #
+@register.filter
+def is_in_group(user: User | AnonymousUser, group_name: str) -> bool:
+    """Return True if the user is a member of the named group.
+
+    Args:
+        user: The user to check.
+        group_name: The name of the group to check membership in.
+
+    Returns:
+        True if the user is in the group, False otherwise.
+    """
+    if not user.is_authenticated:
+        return False
+    return user.groups.filter(name=group_name).exists()
+
+
+####################################################################
+#
 @register.simple_tag
 def project_third_party_js() -> SafeString:
-    from django_simple_bulma.utils import get_js_files
-
     html = []
     for js_file in map(static, get_js_files()):
         html.append(
@@ -42,8 +60,6 @@ def project_bulma_css(theme: str = "") -> SafeString:
             will be logged and the library will fall back to the default theme.
 
     """
-    from django_simple_bulma.utils import logger, themes
-
     if theme and theme not in themes:
         logger.warning(
             f"Theme '{theme}' does not match any of the detected themes: {', '.join(themes)}. "

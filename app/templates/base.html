@@ -69,7 +69,7 @@
 
           <div class="navbar-end">
             {% if user.is_authenticated %}
-              {% if user.is_superuser %}
+              {% if user.is_superuser or user|is_in_group:"admin" %}
 		<div class="navbar-item">
 		    <a class="navbar-item" href="/admin">
 		      <span class="tag is-link is-large">Admin Interface</span>
