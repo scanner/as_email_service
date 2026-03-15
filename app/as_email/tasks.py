@@ -592,12 +592,19 @@ def scan_message_for_spam(
         message when the scan fails.
     """
     try:
-        msg_bytes = msg.as_bytes(policy=email.policy.default)
+        # Use as_string() + encode() instead of as_bytes() to avoid
+        # UnicodeEncodeError on malformed messages with non-ASCII content
+        # but no charset declaration.
+        #
+        msg_bytes = msg.as_string(policy=email.policy.default).encode("utf-8")
+
         # NOTE: Use new_event_loop() + run_until_complete() instead of
         # asyncio.run() to avoid touching the global event loop policy.
+        #
         # asyncio.run() sets _set_called=True on the policy thread-local,
         # causing subsequent asyncio.get_event_loop() calls (e.g. in pydnsbl)
         # to raise RuntimeError rather than auto-creating a loop.
+        #
         loop = asyncio.new_event_loop()
         try:
             result = loop.run_until_complete(
@@ -613,7 +620,7 @@ def scan_message_for_spam(
             result.body, policy=email.policy.default
         )
     except Exception as e:
-        logger.warning("Spam scan failed for incoming email: %r", e)
+        logger.error("Spam scan failed for incoming email: %r", e)
         return msg
 
 
