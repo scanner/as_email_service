@@ -35,9 +35,16 @@ class Capability(StrEnum):
         provider side (e.g. ForwardEmail aliases). create/delete account methods
         are meaningful. Providers without this capability are no-ops for account
         management operations.
+
+    SMTP_RELAY: provider supports outbound relay via SMTP. When present,
+        aiosmtpd uses the SMTP path (send_email_smtp) for outbound relay so
+        that the original message bytes reach the provider without
+        re-serialisation. Providers without this capability (e.g. ForwardEmail)
+        use the API path (send_email_api) for outbound relay instead.
     """
 
     MANAGES_EMAIL_ACCOUNTS = "manages_email_accounts"
+    SMTP_RELAY = "smtp_relay"
 
 
 ########################################################################
@@ -73,6 +80,79 @@ class EmailAccountInfo:
 ########################################################################
 ########################################################################
 #
+class BounceType(StrEnum):
+    """
+    Category of a bounce or complaint event from a provider backend.
+
+    BOUNCE: A delivery failure — the message could not be delivered to
+        the recipient.  May be transient (soft) or permanent (hard),
+        indicated by BounceEvent.transient.
+    SPAM:   A spam complaint — the recipient reported the message as
+        spam.  Always non-transient.
+
+    New categories (e.g. UNSUBSCRIBE) should be added here as provider
+    backends are migrated to the unified BounceEvent path (GH-223).
+    """
+
+    BOUNCE = "bounce"
+    SPAM = "spam"
+
+
+########################################################################
+########################################################################
+#
+@dataclass
+class BounceEvent:
+    """
+    Normalized bounce or spam complaint event from any provider backend.
+
+    Both delivery bounces and spam complaints share the same processing
+    logic: increment the account's bounce counter (unless transient),
+    deactivate the account if the counter exceeds the limit, optionally
+    record an InactiveEmail when the provider has blacklisted the
+    recipient, and send a Delivery Status Notification to the sending
+    account.
+
+    ``bounce_type`` distinguishes spam complaints from delivery bounces
+    (and leaves room for future categories such as UNSUBSCRIBE).
+    ``transient`` is orthogonal: it captures permanence (should this
+    event count against the bounce limit?) independently of category.
+
+    NOTE: This dataclass is passed as an argument to Huey tasks and must
+    remain pickle-serializable.  All fields must be plain Python types
+    (str, bool, bytes, None, or StrEnum).  If this project ever migrates
+    to a task queue that requires JSON serialization (e.g. Celery with a
+    JSON backend), consider switching to a Pydantic model and using its
+    ``model_dump()`` / ``model_validate()`` round-trip instead.
+
+    Attributes:
+        email_from: The From address — our EmailAccount's email address.
+        email_to: The recipient address that bounced or complained.
+        subject: Subject of the original email (empty string if unavailable).
+        transient: True = temporary failure; do not count against bounce limit.
+        bounce_type: Category of the event (BOUNCE, SPAM, …).
+        inactive: Provider has blacklisted the recipient address.
+        can_activate: Whether the provider-blacklisted address can be reactivated.
+        description: Human-readable description of the bounce/complaint.
+        details: Additional diagnostic detail (e.g. RFC 3463 status code).
+        original_message: Original message body, if available from the provider.
+    """
+
+    email_from: str
+    email_to: str
+    subject: str
+    transient: bool
+    bounce_type: BounceType
+    description: str
+    details: str
+    inactive: bool = False
+    can_activate: bool = False
+    original_message: str | bytes | None = None
+
+
+########################################################################
+########################################################################
+#
 class ProviderBackend(ABC):
     """
     Abstract base class for email provider backends.
@@ -98,7 +178,7 @@ class ProviderBackend(ABC):
         server: "Server",
         email_from: str,
         rcpt_tos: List[str],
-        msg: email.message.EmailMessage,
+        message: email.message.EmailMessage,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -108,7 +188,7 @@ class ProviderBackend(ABC):
             server: The Server instance sending the email
             email_from: The email address sending from (must match server domain)
             rcpt_tos: List of recipient email addresses
-            msg: The email message to send
+            message: The email message to send
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -126,6 +206,8 @@ class ProviderBackend(ABC):
     def send_email_api(
         self,
         server: "Server",
+        email_from: str,
+        rcpt_tos: List[str],
         message: email.message.EmailMessage,
         spool_on_retryable: bool = True,
     ) -> bool:
@@ -134,6 +216,38 @@ class ProviderBackend(ABC):
 
         Args:
             server: The Server instance sending the email
+            email_from: The email address sending from
+            rcpt_tos: List of recipient email addresses
+            message: The email message to send
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the email was sent successfully, False otherwise
+        """
+        ...
+
+    ####################################################################
+    #
+    @abstractmethod
+    def send_email(
+        self,
+        server: "Server",
+        email_from: str,
+        rcpt_tos: List[str],
+        message: email.message.EmailMessage,
+        spool_on_retryable: bool = True,
+    ) -> bool:
+        """
+        Send an email using this provider's preferred transport.
+
+        Dispatches to the preferred send path for this provider:
+        Postmark → send_email_smtp(); ForwardEmail → send_email_api().
+        Use this method when you don't need to force a specific transport.
+
+        Args:
+            server: The Server instance sending the email
+            email_from: The email address sending from
+            rcpt_tos: List of recipient email addresses
             message: The email message to send
             spool_on_retryable: If True, spool message on retryable failures
 
@@ -295,14 +409,17 @@ class ProviderBackend(ABC):
     #
     @abstractmethod
     def delete_email_account_by_address(
-        self, email_address: str, domain_name: str
+        self, email_address: str, server: "Server"
     ) -> None:
         """
         Delete an email account (alias) by address from the provider's service.
 
+        This variant is used when the EmailAccount object no longer exists
+        (e.g. during post-delete cleanup) but the Server still does.
+
         Args:
             email_address: The full email address to delete
-            domain_name: The domain name the email belongs to
+            server: The Server instance the email address belongs to
         """
         ...
 

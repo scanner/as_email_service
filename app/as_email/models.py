@@ -322,7 +322,7 @@ class Server(models.Model):
                 f"Server '{self.domain_name}' has no send_provider configured"
             )
 
-        return self.send_provider.backend.send_email_api(
+        return self.send_provider.backend.send_email(
             self, message, spool_on_retryable
         )
 

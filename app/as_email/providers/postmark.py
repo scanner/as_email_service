@@ -12,6 +12,7 @@ import email.message
 import json
 import logging
 import smtplib
+from email.utils import getaddresses, parseaddr
 from typing import TYPE_CHECKING
 
 # 3rd party imports
@@ -65,7 +66,7 @@ class PostmarkBackend(ProviderBackend):
     """
 
     PROVIDER_NAME = "postmark"
-    CAPABILITIES: frozenset[Capability] = frozenset()
+    CAPABILITIES: frozenset[Capability] = frozenset({Capability.SMTP_RELAY})
 
     ####################################################################
     #
@@ -218,6 +219,41 @@ class PostmarkBackend(ProviderBackend):
                 logger.error("Failed to send email: %r", exc)
                 raise
         return True
+
+    ####################################################################
+    #
+    def send_email(
+        self,
+        server: "Server",
+        message: email.message.EmailMessage,
+        spool_on_retryable: bool = True,
+    ) -> bool:
+        """
+        Send email via our preferred transport for Postmark (SMTP).
+
+        Extracts the sender and recipients from the message headers and
+        delegates to send_email_smtp().
+
+        Args:
+            server: The Server instance sending the email
+            message: The email message to send
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the email was sent successfully, False otherwise
+        """
+        email_from = parseaddr(message["From"])[1]
+        rcpt_tos = [
+            addr
+            for _, addr in getaddresses(
+                message.get_all("To", [])
+                + message.get_all("Cc", [])
+                + message.get_all("Bcc", [])
+            )
+        ]
+        return self.send_email_smtp(
+            server, email_from, rcpt_tos, message, spool_on_retryable
+        )
 
     ####################################################################
     #

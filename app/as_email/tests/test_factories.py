@@ -342,7 +342,7 @@ class TestDummyProviderBackend:
         dummy_provider.create_email_account(account)
 
         dummy_provider.delete_email_account_by_address(
-            account.email_address, account.server.domain_name
+            account.email_address, account.server
         )
         assert account.email_address not in dummy_provider.email_accounts
 
