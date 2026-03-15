@@ -235,7 +235,9 @@ class AsyncioAuthSMTP(SMTP):
             status = await self.event_handler.handle_exception(error)
             return status
         else:
-            # Log an error instead of an exception if this was caused by ssl
+            # Log at WARNING — these are typically misbehaving or abruptly
+            # disconnecting SMTP clients, not application errors. Logging at
+            # ERROR would generate Sentry events for noise we cannot act on.
             #
             if (
                 isinstance(error, TLSSetupException)
@@ -245,13 +247,17 @@ class AsyncioAuthSMTP(SMTP):
                     or isinstance(error.__cause__, ConnectionResetError)
                 )
             ):
-                logger.error(
+                logger.warning(
                     "%r SMTP session exception: %s",
                     self.session.peer,
                     error.__cause__,
                 )
             else:
-                logger.exception("%r SMTP session exception", self.session.peer)
+                logger.warning(
+                    "%r SMTP session exception",
+                    self.session.peer,
+                    exc_info=True,
+                )
             status = f"500 Error: ({error.__class__.__name__}) {error!r}"
             return status
 
