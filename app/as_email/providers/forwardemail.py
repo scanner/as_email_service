@@ -77,7 +77,7 @@ from io import BytesIO
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Iterator, Optional
 from urllib.error import HTTPError
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 # 3rd party imports
 #
@@ -1404,7 +1404,8 @@ class ForwardEmailBackend(ProviderBackend):
             },
         )
         base_url = f"https://{settings.SITE_NAME}"
-        return urljoin(base_url, webhook_path)
+        webhook_url_base = urljoin(base_url, webhook_path)
+        return f"{webhook_url_base}?{urlencode({'api_key': server.api_key})}"
 
     ####################################################################
     #
@@ -1433,7 +1434,8 @@ class ForwardEmailBackend(ProviderBackend):
         base_url = f"https://{settings.SITE_NAME}"
         webhook_url_base = urljoin(base_url, webhook_path)
         webhook_url = (
-            f"{webhook_url_base}?api_key={email_account.server.api_key}"
+            f"{webhook_url_base}?"
+            f"{urlencode({'api_key': email_account.server.api_key})}"
         )
 
         return webhook_url

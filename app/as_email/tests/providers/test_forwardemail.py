@@ -10,6 +10,7 @@ import json
 import time
 from io import BytesIO
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 
 # 3rd party imports
 #
@@ -679,7 +680,10 @@ class TestForwardEmailAPIMethods:
                 "domain_name": server.domain_name,
             },
         )
-        expected_url = f"https://{settings.SITE_NAME}{expected_path}"
+        expected_url = (
+            f"https://{settings.SITE_NAME}{expected_path}"
+            f"?{urlencode({'api_key': server.api_key})}"
+        )
 
         assert backend.get_bounce_webhook_url(server) == expected_url
 

@@ -1563,6 +1563,42 @@ def provider_sync_server_email_accounts(
 
 ####################################################################
 #
+@db_periodic_task(crontab(day="*", hour="3"))
+def provider_sync_all_server_domains() -> None:
+    """
+    Daily task to ensure every server's domain configuration is up to date
+    on all of its configured provider backends.
+
+    Iterates through all servers and calls provider_create_update_server for
+    each provider that the server uses (as either send_provider or
+    receive_provider).  This catches configuration drift — for example a
+    webhook URL that was corrected in code but never pushed to the remote
+    service.
+    """
+    for server in Server.objects.prefetch_related("receive_providers").all():
+        # Collect unique providers for this server (send + receive).
+        #
+        provider_names: set[str] = {
+            p.backend_name for p in server.receive_providers.all()
+        }
+        if server.send_provider:
+            provider_names.add(server.send_provider.backend_name)
+
+        for provider_name in provider_names:
+            try:
+                provider_create_update_server(server.pk, provider_name)
+            except Exception as e:
+                logger.exception(
+                    "Failed to sync domain config for server '%s' on "
+                    "provider '%s': %r",
+                    server.domain_name,
+                    provider_name,
+                    e,
+                )
+
+
+####################################################################
+#
 @db_periodic_task(crontab(minute="0"))
 def provider_sync_all_email_accounts() -> None:
     """
