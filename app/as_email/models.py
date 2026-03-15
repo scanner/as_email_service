@@ -9,6 +9,7 @@ mostly custom for the service I use: postmark.
 #
 import email
 import email.message
+import email.policy
 import logging
 import mailbox
 import shlex
@@ -1468,7 +1469,13 @@ class ImapDelivery(DeliveryMethod):
             msg: The email message to deliver.
             visited_accounts: Unused for IMAP delivery; required by interface.
         """
-        msg_bytes = msg.as_bytes(policy=email.policy.default)
+        # Use as_string() + encode() instead of as_bytes() to avoid
+        # UnicodeEncodeError on malformed messages with non-ASCII content
+        # but no charset declaration.  as_string() returns a Python str
+        # (Unicode), sidestepping the ASCII-only serialization in
+        # as_bytes().
+        #
+        msg_bytes = msg.as_string(policy=email.policy.default).encode("utf-8")
 
         with imapclient.IMAPClient(
             host=self.imap_host, port=self.imap_port, ssl=True

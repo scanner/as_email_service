@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Transient bounces (temporary deferrals) no longer trigger account deactivation even when the permanent-bounce counter is already at its ceiling
 - `delete_email_account_by_address()` signature in `ProviderBackend` corrected to `server: Server` (was `domain_name: str`), consistent with all other provider methods
 
+## [0.5.8] - 2026-03-15
+
+### Fixed
+
+- Fix UnicodeEncodeError when scanning or delivering emails with non-ASCII content but no charset declaration (common in spam)
+- Spam scan failures now log at ERROR level so unexpected issues generate Sentry alerts
+
+## [0.5.7] - 2026-03-15
+
+### Fixed
+
+- SMTP session exceptions from misbehaving or abruptly disconnecting clients are now logged at WARNING instead of ERROR, preventing spurious Sentry alerts
+
 ## [0.5.6] - 2026-03-09
 
 ### Added

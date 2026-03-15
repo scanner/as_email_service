@@ -5,6 +5,7 @@ pytest fixtures for our tests
 """
 # system imports
 #
+import email
 import email.policy
 import json
 from collections.abc import Callable, Iterator
@@ -212,6 +213,27 @@ def email_factory(faker: Faker) -> Callable[..., EmailMessage]:
         return msg
 
     return make_email
+
+
+####################################################################
+#
+@pytest.fixture
+def malformed_non_ascii_email() -> EmailMessage:
+    """
+    A malformed email with non-ASCII characters in both the subject and
+    body but no charset or transfer-encoding declaration.  Mimics the
+    spam messages that cause UnicodeEncodeError when serialized with
+    as_bytes(policy=email.policy.default).
+    """
+    raw = (
+        "From: sender@example.com\n"
+        "To: recipient@example.com\n"
+        "Subject: \u00bfTIENES COSAS PARA VENDER?\n"
+        "Content-Type: text/plain\n"
+        "\n"
+        "You\u2019ve got \xa0special\xa0 characters: \u00bfHola!\n"
+    )
+    return email.message_from_string(raw, policy=email.policy.default)
 
 
 ####################################################################
