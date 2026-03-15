@@ -11,8 +11,9 @@ emails, handling webhooks, and managing provider resources.
 import email.message
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from email.utils import getaddresses, parseaddr
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any
 
 # 3rd party imports
 #
@@ -151,6 +152,39 @@ class BounceEvent:
 
 
 ########################################################################
+#
+def resolve_envelope(
+    message: email.message.EmailMessage,
+    email_from: str | None = None,
+    rcpt_tos: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    """
+    Return (email_from, rcpt_tos), extracting from message headers when None.
+
+    Args:
+        message: The email message to extract envelope from
+        email_from: Sender address, or None to extract from From header
+        rcpt_tos: Recipient list, or None to extract from To+Cc+Bcc headers
+
+    Returns:
+        Tuple of (email_from, rcpt_tos) with values resolved from headers
+        when not explicitly provided.
+    """
+    if email_from is None:
+        email_from = parseaddr(message["From"])[1]
+    if rcpt_tos is None:
+        rcpt_tos = [
+            addr
+            for _, addr in getaddresses(
+                message.get_all("To", [])
+                + message.get_all("Cc", [])
+                + message.get_all("Bcc", [])
+            )
+        ]
+    return email_from, rcpt_tos
+
+
+########################################################################
 ########################################################################
 #
 class ProviderBackend(ABC):
@@ -176,19 +210,24 @@ class ProviderBackend(ABC):
     def send_email_smtp(
         self,
         server: "Server",
-        email_from: str,
-        rcpt_tos: List[str],
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
         Send an email via SMTP using this provider.
 
+        When ``email_from`` or ``rcpt_tos`` are None, implementations must
+        call ``resolve_envelope()`` to extract them from message headers.
+
         Args:
             server: The Server instance sending the email
-            email_from: The email address sending from (must match server domain)
-            rcpt_tos: List of recipient email addresses
             message: The email message to send
+            email_from: The email address sending from, or None to extract
+                from the message From header
+            rcpt_tos: List of recipient email addresses, or None to extract
+                from To+Cc+Bcc headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -206,19 +245,24 @@ class ProviderBackend(ABC):
     def send_email_api(
         self,
         server: "Server",
-        email_from: str,
-        rcpt_tos: List[str],
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
         Send an email via the provider's web API.
 
+        When ``email_from`` or ``rcpt_tos`` are None, implementations must
+        call ``resolve_envelope()`` to extract them from message headers.
+
         Args:
             server: The Server instance sending the email
-            email_from: The email address sending from
-            rcpt_tos: List of recipient email addresses
             message: The email message to send
+            email_from: The email address sending from, or None to extract
+                from the message From header
+            rcpt_tos: List of recipient email addresses, or None to extract
+                from To+Cc+Bcc headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -232,9 +276,9 @@ class ProviderBackend(ABC):
     def send_email(
         self,
         server: "Server",
-        email_from: str,
-        rcpt_tos: List[str],
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -244,11 +288,17 @@ class ProviderBackend(ABC):
         Postmark → send_email_smtp(); ForwardEmail → send_email_api().
         Use this method when you don't need to force a specific transport.
 
+        When ``email_from`` or ``rcpt_tos`` are None, the underlying
+        transport method calls ``resolve_envelope()`` to extract them
+        from message headers.
+
         Args:
             server: The Server instance sending the email
-            email_from: The email address sending from
-            rcpt_tos: List of recipient email addresses
             message: The email message to send
+            email_from: The email address sending from, or None to extract
+                from the message From header
+            rcpt_tos: List of recipient email addresses, or None to extract
+                from To+Cc+Bcc headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:

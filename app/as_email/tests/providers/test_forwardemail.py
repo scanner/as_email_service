@@ -60,9 +60,9 @@ class TestForwardEmailBackend:
         self, server_factory, email_factory
     ) -> None:
         """
-        Given a ForwardEmail backend (receive-only provider)
-        When attempting to send email via SMTP
-        Then it should raise NotImplementedError
+        GIVEN: a ForwardEmail backend
+        WHEN:  attempting to send email via SMTP
+        THEN:  it should raise NotImplementedError
         """
         backend = ForwardEmailBackend()
         server = server_factory()
@@ -71,13 +71,12 @@ class TestForwardEmailBackend:
         with pytest.raises(NotImplementedError) as exc_info:
             backend.send_email_smtp(
                 server=server,
+                message=msg,
                 email_from="test@example.com",
                 rcpt_tos=["recipient@example.com"],
-                msg=msg,
             )
 
-        assert "receive-only provider" in str(exc_info.value)
-        assert "does not support sending email" in str(exc_info.value)
+        assert "does not support SMTP relay" in str(exc_info.value)
 
     ####################################################################
     #
@@ -2551,4 +2550,4 @@ class TestForwardEmailSendEmailAPI:
         )
 
         assert result is True
-        mock_send_api.assert_called_once_with(server, msg, False)
+        mock_send_api.assert_called_once_with(server, msg, None, None, False)

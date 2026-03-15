@@ -265,54 +265,25 @@ class Server(models.Model):
 
     ####################################################################
     #
-    def send_email_via_smtp(
+    def send_email(
         self,
-        email_from: str,
-        rcpt_tos: List[str],
-        msg: email.message.EmailMessage,
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
-        Send email via SMTP using the configured send provider.
+        Send email via the configured send provider's preferred transport.
 
-        This method delegates to the send provider's backend to handle the
-        actual SMTP transmission. It's used for relaying email (via the
-        aiosmptd daemon) and for retrying spooled messages.
-
-        Args:
-            email_from: Email address to send from (must match server domain)
-            rcpt_tos: List of recipient email addresses
-            msg: The email message to send
-            spool_on_retryable: If True, spool message on retryable failures
-
-        Returns:
-            True if the email was sent successfully, False otherwise
-
-        Raises:
-            ValueError: If send_provider is not configured
-            ValueError: If email_from domain doesn't match server domain
-        """
-        if not self.send_provider:
-            raise ValueError(
-                f"Server '{self.domain_name}' has no send_provider configured"
-            )
-
-        return self.send_provider.backend.send_email_smtp(
-            self, email_from, rcpt_tos, msg, spool_on_retryable
-        )
-
-    ####################################################################
-    #
-    def send_email(self, message, spool_on_retryable=True) -> bool:
-        """
-        Send email via the configured send provider's web API.
-
-        This method delegates to the send provider's backend to handle the
-        actual API transmission. It's used for administrative purposes like
-        mailer-daemon bounce notifications.
+        Delegates to the backend's ``send_email()`` which dispatches to the
+        correct transport (SMTP for Postmark, API for ForwardEmail).  When
+        ``email_from`` or ``rcpt_tos`` are None the backend extracts them
+        from message headers via ``resolve_envelope()``.
 
         Args:
             message: The email message to send
+            email_from: Sender address, or None to extract from headers
+            rcpt_tos: Recipient list, or None to extract from headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -320,9 +291,6 @@ class Server(models.Model):
 
         Raises:
             ValueError: If send_provider is not configured
-
-        Note:
-            In the future, this method may support batched emails and templates.
         """
         if not self.send_provider:
             raise ValueError(
@@ -330,24 +298,35 @@ class Server(models.Model):
             )
 
         return self.send_provider.backend.send_email(
-            self, message, spool_on_retryable
+            self, message, email_from, rcpt_tos, spool_on_retryable
         )
 
     ####################################################################
     #
-    async def asend_email(self, message, spool_on_retryable=True) -> bool:
+    async def asend_email(
+        self,
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
+        spool_on_retryable: bool = True,
+    ) -> bool:
         """
         Send the given email via this server's send provider (async version).
 
         Args:
             message: The email message to send
+            email_from: Sender address, or None to extract from headers
+            rcpt_tos: Recipient list, or None to extract from headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
             True if the email was sent successfully, False otherwise
         """
         result = await sync_to_async(self.send_email)(
-            message, spool_on_retryable=spool_on_retryable
+            message,
+            email_from=email_from,
+            rcpt_tos=rcpt_tos,
+            spool_on_retryable=spool_on_retryable,
         )
         return result
 
@@ -610,24 +589,6 @@ class EmailAccount(models.Model):
         self.password = make_password(raw_password)
         if save:
             self.save(update_fields=["password"])
-
-    ####################################################################
-    #
-    def send_email_via_smtp(
-        self,
-        rcpt_tos: List[str],
-        msg: email.message.EmailMessage,
-        spool_on_retryable: bool = True,
-    ):
-        """
-        Wrapper around self.server.send_email_via_smtp ....
-        """
-        self.server.send_email_via_smtp(
-            self.email_address,
-            rcpt_tos,
-            msg,
-            spool_on_retryable=spool_on_retryable,
-        )
 
     ####################################################################
     #

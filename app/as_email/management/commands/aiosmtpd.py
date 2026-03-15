@@ -926,29 +926,6 @@ class RelayHandler:
         return "250 OK"
 
 
-########################################################################
-#
-def send_email_via_smtp(
-    account: EmailAccount, rcpt_tos: List[str], msg: EmailMessage
-):
-    """
-    Use smtplib.SMTP to send the given email. Use the token to authenticate
-    to the smtp server.
-
-    This function is synchronous and meant to be called via
-    `asyncio.to_thread()`.
-
-    If we fail to send the message due to a network issue the message will be
-    written to the spool directory to be sent at a later time.
-    """
-    logger.info(
-        "send_email_via_smtp: account: %s, rcpt_tos: %s",
-        account,
-        rcpt_tos,
-    )
-    account.send_email_via_smtp(rcpt_tos, msg)
-
-
 ####################################################################
 #
 async def deliver_email_locally(
@@ -1047,7 +1024,9 @@ async def relay_email_to_provider(
     # If there any recipients left, send the email to them.
     #
     if rcpt_tos:
-        await sync_to_async(send_email_via_smtp)(account, rcpt_tos, msg)
+        await account.server.asend_email(
+            msg, email_from=account.email_address, rcpt_tos=rcpt_tos
+        )
 
     # If there were no inactive emails then we are done. If there were inactive
     # emails we need to generate a DSN and send it to the account saying that

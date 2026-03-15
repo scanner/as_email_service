@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Unified outbound email sending behind `Server.send_email()`, letting each provider backend pick the transport method (SMTP relay or REST API) it determines is most suitable
+- `email_from` and `rcpt_tos` are now optional across all provider send methods; a shared `resolve_envelope()` utility extracts them from message headers when not provided
 - Removed redundant `create_domain()` from the provider backend interface; `create_update_domain()` handles both creation and updates
 
 ### Fixed

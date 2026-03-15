@@ -498,10 +498,10 @@ def dispatch_spooled_outgoing_email():
                 # Try sending the message again but do not write it to the
                 # spool if it fails.
                 #
-                delete_message = server.send_email_via_smtp(
-                    message["From"],
-                    rcpt_tos,
+                delete_message = server.send_email(
                     message,
+                    email_from=message["From"],
+                    rcpt_tos=rcpt_tos,
                     spool_on_retryable=False,
                 )
             except Exception as exc:

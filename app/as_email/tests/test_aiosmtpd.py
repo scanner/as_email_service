@@ -1813,3 +1813,76 @@ class TestRelayToProvider:
         # Verify the spooled file exists
         spool_file = Path(call_args.args[1])
         assert spool_file.exists()
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_relay_with_smtp_backend(
+        self,
+        email_account_factory,
+        email_factory,
+        faker,
+        smtp,
+    ) -> None:
+        """
+        GIVEN: an EmailAccount whose server uses a provider with SMTP_RELAY
+               capability (DummyProviderBackend)
+        WHEN:  relay_email_to_provider is called
+        THEN:  the message is sent via the SMTP path
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        to = faker.email()
+        msg = email_factory(msg_from=ea.email_address, to=to)
+        await relay_email_to_provider(ea, [to], msg)
+
+        assert smtp.sendmail.call_count == 1
+        assert smtp.sendmail.call_args.args == Contains(
+            ea.email_address,
+            [to],
+        )
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_relay_with_api_only_backend(
+        self,
+        email_account_factory,
+        email_factory,
+        faker,
+        smtp,
+        mocker,
+    ) -> None:
+        """
+        GIVEN: an EmailAccount whose server uses a provider without
+               SMTP_RELAY capability (e.g. ForwardEmail)
+        WHEN:  relay_email_to_provider is called
+        THEN:  the message is sent via backend.send_email() (not
+               send_email_smtp) and SMTP is never touched
+        """
+        ea = await sync_to_async(email_account_factory)()
+        await ea.asave()
+
+        # Mock the backend's send_email to simulate an API-only provider
+        # that dispatches to send_email_api instead of send_email_smtp.
+        #
+        mock_send = mocker.patch.object(
+            ea.server.send_provider.backend,
+            "send_email",
+            return_value=True,
+        )
+
+        to = faker.email()
+        msg = email_factory(msg_from=ea.email_address, to=to)
+        await relay_email_to_provider(ea, [to], msg)
+
+        # The unified send_email() was called with correct envelope args
+        #
+        mock_send.assert_called_once_with(
+            ea.server, msg, ea.email_address, [to], True
+        )
+
+        # SMTP was never touched — the API path handled it
+        #
+        assert smtp.sendmail.call_count == 0

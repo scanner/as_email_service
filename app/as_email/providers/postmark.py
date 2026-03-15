@@ -12,7 +12,6 @@ import email.message
 import json
 import logging
 import smtplib
-from email.utils import getaddresses, parseaddr
 from typing import TYPE_CHECKING
 
 # 3rd party imports
@@ -44,7 +43,12 @@ from ..utils import (
     spool_message,
     write_spooled_email,
 )
-from .base import Capability, EmailAccountInfo, ProviderBackend
+from .base import (
+    Capability,
+    EmailAccountInfo,
+    ProviderBackend,
+    resolve_envelope,
+)
 
 # Avoid circular imports
 #
@@ -95,13 +99,10 @@ class PostmarkBackend(ProviderBackend):
     #
     def send_email_smtp(
         self,
-        # XXX we should remove the need the 'server' here and just pass in the
-        #     domain name.
-        #
         server: "Server",
-        email_from: str,
-        rcpt_tos: list[str],
-        msg: email.message.EmailMessage,
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -113,9 +114,11 @@ class PostmarkBackend(ProviderBackend):
 
         Args:
             server: The Server instance sending the email
-            email_from: The email address sending from (must match server domain)
-            rcpt_tos: List of recipient email addresses
-            msg: The email message to send
+            message: The email message to send
+            email_from: The email address sending from (must match server
+                domain), or None to extract from the message From header
+            rcpt_tos: List of recipient email addresses, or None to extract
+                from To+Cc+Bcc headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -125,6 +128,7 @@ class PostmarkBackend(ProviderBackend):
             ValueError: If email_from domain doesn't match server domain
             KeyError: If server token is not configured in settings
         """
+        email_from, rcpt_tos = resolve_envelope(message, email_from, rcpt_tos)
         if server.domain_name != email_from.split("@")[-1]:
             raise ValueError(
                 f"Domain name of {email_from} is not the same "
@@ -144,15 +148,17 @@ class PostmarkBackend(ProviderBackend):
         # NOTE: In the future we might want to support other streams besides
         #       "outbound" and this would likely be set on the Server object.
         #
-        del msg["X-PM-Message-Stream"]
-        msg["X-PM-Message-Stream"] = "outbound"
+        del message["X-PM-Message-Stream"]
+        message["X-PM-Message-Stream"] = "outbound"
 
         smtp_server, port = server.send_provider.smtp_server.split(":")
         smtp_client = get_smtp_client(smtp_server, int(port))
         try:
             smtp_client.starttls()
             smtp_client.login(token, token)
-            sendmail(smtp_client, msg, from_addr=email_from, to_addrs=rcpt_tos)
+            sendmail(
+                smtp_client, message, from_addr=email_from, to_addrs=rcpt_tos
+            )
         except smtplib.SMTPException as exc:
             logger.error(
                 "Mail from %s, to: %s, failed with exception: %r",
@@ -161,7 +167,7 @@ class PostmarkBackend(ProviderBackend):
                 exc,
             )
             if spool_on_retryable:
-                spool_message(server.outgoing_spool_dir, msg.as_bytes())
+                spool_message(server.outgoing_spool_dir, message.as_bytes())
             return False
         finally:
             smtp_client.quit()
@@ -173,6 +179,8 @@ class PostmarkBackend(ProviderBackend):
         self,
         server: "Server",
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -182,9 +190,15 @@ class PostmarkBackend(ProviderBackend):
         On retryable failures (network issues, rate limits, maintenance), the
         message is spooled for later retry if spool_on_retryable is True.
 
+        NOTE: ``email_from`` and ``rcpt_tos`` are accepted for interface
+        consistency but unused — the Postmark API extracts recipients from
+        the message headers.
+
         Args:
             server: The Server instance sending the email
             message: The email message to send
+            email_from: Unused (accepted for interface consistency)
+            rcpt_tos: Unused (accepted for interface consistency)
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -226,33 +240,28 @@ class PostmarkBackend(ProviderBackend):
         self,
         server: "Server",
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
         Send email via our preferred transport for Postmark (SMTP).
 
-        Extracts the sender and recipients from the message headers and
-        delegates to send_email_smtp().
+        Delegates to send_email_smtp(), which calls resolve_envelope()
+        to extract email_from/rcpt_tos from headers when not provided.
 
         Args:
             server: The Server instance sending the email
             message: The email message to send
+            email_from: The sender address, or None to extract from headers
+            rcpt_tos: Recipient list, or None to extract from headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
             True if the email was sent successfully, False otherwise
         """
-        email_from = parseaddr(message["From"])[1]
-        rcpt_tos = [
-            addr
-            for _, addr in getaddresses(
-                message.get_all("To", [])
-                + message.get_all("Cc", [])
-                + message.get_all("Bcc", [])
-            )
-        ]
         return self.send_email_smtp(
-            server, email_from, rcpt_tos, message, spool_on_retryable
+            server, message, email_from, rcpt_tos, spool_on_retryable
         )
 
     ####################################################################

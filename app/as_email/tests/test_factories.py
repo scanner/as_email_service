@@ -6,7 +6,6 @@ it returns the correct type of object.
 """
 # system imports
 #
-from email.mime.text import MIMEText
 
 # 3rd party imports
 #
@@ -56,25 +55,25 @@ def test_server_factory(server_factory):
 ####################################################################
 #
 def test_server_factory_client(
-    server_factory, settings, faker, postmark_client
+    server_factory, settings, faker, postmark_client, email_factory
 ):
     """
     Test that server factory creates servers that can send email.
 
-    Given: A server is created via server_factory
-    When: send_email() is called on the server
-    Then: The email is sent via the provider backend
+    GIVEN: a server is created via server_factory
+    WHEN:  send_email() is called on the server
+    THEN:  the email is sent via the provider backend
     """
     server = server_factory()
     # Set up EMAIL_SERVER_TOKENS for the provider backend
-    provider_name = "postmark"
+    provider_name = "dummy"
     if provider_name not in settings.EMAIL_SERVER_TOKENS:
         settings.EMAIL_SERVER_TOKENS[provider_name] = {}
     settings.EMAIL_SERVER_TOKENS[provider_name][
         server.domain_name
     ] = faker.uuid4()
 
-    message = MIMEText("Test message")
+    message = email_factory(msg_from=f"test@{server.domain_name}")
     server.send_email(message)
 
 
@@ -388,7 +387,10 @@ class TestDummyProviderBackend:
         }
 
         result = dummy_provider.send_email_smtp(
-            account.server, account.email_address, [faker.email()], msg
+            account.server,
+            msg,
+            email_from=account.email_address,
+            rcpt_tos=[faker.email()],
         )
         assert result is True
 

@@ -757,23 +757,23 @@ class ForwardEmailBackend(ProviderBackend):
     def send_email_smtp(
         self,
         server: "Server",
-        email_from: str,
-        rcpt_tos: list[str],
-        msg: email.message.EmailMessage,
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
-        Send email via SMTP - NOT SUPPORTED.
+        Send email via SMTP — not supported by ForwardEmail.
 
-        ForwardEmail is a receive-only provider and does not support
-        sending email.
+        ForwardEmail does not support SMTP relay; use ``send_email()``
+        instead, which routes to the REST API.
 
         Raises:
-            NotImplementedError: This provider does not support sending
+            NotImplementedError: Always — use send_email() instead
         """
         raise NotImplementedError(
-            f"{self.PROVIDER_NAME} is a receive-only provider and does not "
-            "support sending email"
+            f"{self.PROVIDER_NAME} does not support SMTP relay; "
+            "use send_email() instead"
         )
 
     ####################################################################
@@ -782,6 +782,8 @@ class ForwardEmailBackend(ProviderBackend):
         self,
         server: "Server",
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -792,9 +794,15 @@ class ForwardEmailBackend(ProviderBackend):
         message is spooled when ``spool_on_retryable`` is True.  All other
         provider errors are re-raised.
 
+        NOTE: ``email_from`` and ``rcpt_tos`` are accepted for interface
+        consistency but unused — the ForwardEmail API extracts recipients
+        from the raw message headers.
+
         Args:
             server: The Server instance sending the email
             message: The email message to send
+            email_from: Unused (accepted for interface consistency)
+            rcpt_tos: Unused (accepted for interface consistency)
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -837,6 +845,8 @@ class ForwardEmailBackend(ProviderBackend):
         self,
         server: "Server",
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -847,12 +857,16 @@ class ForwardEmailBackend(ProviderBackend):
         Args:
             server: The Server instance sending the email
             message: The email message to send
+            email_from: Passed through to send_email_api (unused by API)
+            rcpt_tos: Passed through to send_email_api (unused by API)
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
             True if the email was sent successfully, False otherwise
         """
-        return self.send_email_api(server, message, spool_on_retryable)
+        return self.send_email_api(
+            server, message, email_from, rcpt_tos, spool_on_retryable
+        )
 
     ####################################################################
     #
