@@ -677,3 +677,28 @@ class TestImapDeliveryModel:
         )
         assert ok is False
         assert expected_fragment in msg
+
+    ####################################################################
+    #
+    def test_deliver_non_ascii_message(
+        self,
+        imap_delivery_factory: Callable[..., ImapDelivery],
+        malformed_non_ascii_email: EmailMessage,
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN a malformed email with non-ASCII characters in the subject
+              and body but no charset declaration (common in spam)
+        WHEN  deliver() is called
+        THEN  the message is serialized and appended without raising
+              UnicodeEncodeError
+        """
+        mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
+        mock_client = mock_cls.return_value.__enter__.return_value
+
+        imap_d = imap_delivery_factory()
+        imap_d.deliver(malformed_non_ascii_email, set())
+
+        mock_client.append.assert_called_once()
+        appended_bytes = mock_client.append.call_args[0][1]
+        assert isinstance(appended_bytes, bytes)

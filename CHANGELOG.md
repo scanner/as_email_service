@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-03-15
+
+### Fixed
+
+- Fix UnicodeEncodeError when scanning or delivering emails with non-ASCII content but no charset declaration (common in spam)
+- Spam scan failures now log at ERROR level so unexpected issues generate Sentry alerts
+
 ## [0.5.7] - 2026-03-15
 
 ### Fixed

@@ -226,7 +226,7 @@ def test_scan_message_for_spam_success(
         b"\r\n"
         b"body text"
     )
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.body = scanned_bytes
     mock_process = mocker.patch(
         "as_email.tasks.aiospamc.process",
@@ -265,6 +265,39 @@ def test_scan_message_for_spam_failure(
 
     assert result is original
     assert "Spam scan failed" in caplog.text
+
+
+####################################################################
+#
+def test_scan_message_for_spam_non_ascii(
+    mocker: MockerFixture,
+    malformed_non_ascii_email: EmailMessage,
+    caplog: LogCaptureFixture,
+) -> None:
+    """
+    GIVEN a malformed message with non-ASCII content but no charset
+          declaration (common in spam)
+    WHEN  scan_message_for_spam is called
+    THEN  the message is serialized to spamd without UnicodeEncodeError
+    """
+    scanned_bytes = (
+        b"X-Spam-Status: Yes, score=9.0\r\n"
+        b"X-Spam-Score: 9.0\r\n"
+        b"\r\n"
+        b"body text"
+    )
+    mock_result = mocker.MagicMock()
+    mock_result.body = scanned_bytes
+    mocker.patch(
+        "as_email.tasks.aiospamc.process",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    )
+
+    result = scan_message_for_spam(malformed_non_ascii_email)
+
+    assert result["X-Spam-Score"] == "9.0"
+    assert "Spam scan failed" not in caplog.text
 
 
 ####################################################################
