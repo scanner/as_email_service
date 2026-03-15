@@ -223,6 +223,12 @@ class Server(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
+    # Track send_provider_id so the post_save signal can detect when the send
+    # provider is assigned or changed and trigger any remote configuration the
+    # new provider requires to support sending from this domain.
+    #
+    tracker = FieldTracker(fields=["send_provider_id"])
+
     class Meta:
         indexes = [
             models.Index(fields=["domain_name"]),

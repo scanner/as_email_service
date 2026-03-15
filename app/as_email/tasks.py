@@ -1257,12 +1257,13 @@ def delete_emailaccount_from_pwfile(email_address: str):
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_create_server(server_pk: int, provider_name: str) -> None:
+def provider_create_update_server(server_pk: int, provider_name: str) -> None:
     """
-    Register a server's domain on the specified provider.
+    Register or update a server's domain on the specified provider.
 
-    This task is triggered when a provider is added to a Server's
-    receive_providers.
+    Idempotent — safe to call when the domain already exists. Triggered
+    when a provider is added to a Server's receive_providers, or when
+    a Server's send_provider is set or changed.
 
     Args:
         server_pk: Primary key of the Server instance
@@ -1274,7 +1275,7 @@ def provider_create_server(server_pk: int, provider_name: str) -> None:
     backend = get_backend(provider_name)
 
     try:
-        backend.create_domain(server)
+        backend.create_update_domain(server)
         logger.info(
             "Registered server '%s' on provider '%s'",
             server.domain_name,

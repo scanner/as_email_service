@@ -36,7 +36,7 @@ from .tasks import (
     check_update_pwfile_for_emailaccount,
     delete_emailaccount_from_pwfile,
     provider_create_or_update_email_account,
-    provider_create_server,
+    provider_create_update_server,
     provider_delete_email_account,
     provider_sync_server_email_accounts,
 )
@@ -271,6 +271,35 @@ def server_pre_save(sender: Type[Server], instance: Server, **kwargs):
         Path(instance.mail_dir_parent).mkdir(parents=True, exist_ok=True)
 
 
+@receiver(post_save, sender=Server)
+def handle_send_provider_changed(
+    sender: Type[Server], instance: Server, created: bool, **kwargs
+) -> None:
+    """
+    When a Server's send_provider is set or changed, trigger domain
+    registration on the new provider so it can perform any remote
+    configuration required to support sending from this domain.
+
+    Clearing send_provider (setting it to None) is intentionally ignored —
+    no providers currently need cleanup when removed as send provider.
+    We will address that if it becomes necessary to clear something on the
+    remote provider.
+
+    Args:
+        sender: The model class (`Server`)
+        instance: The actual Server instance being saved
+        created: boolean, True if a new record was created
+    """
+    if not instance.tracker.has_changed("send_provider_id"):
+        return
+    if not instance.send_provider_id:
+        return
+
+    provider_create_update_server(
+        instance.pk, instance.send_provider.backend_name
+    )
+
+
 @receiver(m2m_changed, sender=Server.receive_providers.through)
 def handle_receive_providers_changed(
     sender, instance: Server, action: str, pk_set, **kwargs
@@ -292,7 +321,7 @@ def handle_receive_providers_changed(
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
                 # Chain tasks: register server first, then sync email accounts
-                pipeline = provider_create_server.s(
+                pipeline = provider_create_update_server.s(
                     instance.pk, provider.backend_name
                 ).then(
                     provider_sync_server_email_accounts,

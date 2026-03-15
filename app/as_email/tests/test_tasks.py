@@ -40,7 +40,7 @@ from ..tasks import (
     process_email_bounce,
     process_email_spam,
     provider_create_or_update_email_account,
-    provider_create_server,
+    provider_create_update_server,
     provider_delete_email_account,
     provider_report_unused_servers,
     provider_sync_all_email_accounts,
@@ -1284,7 +1284,7 @@ def test_check_update_pwfile_for_emailaccount_no_change(
 ########################################################################
 #
 class TestProviderCreateDomain:
-    """Tests for provider_create_server task."""
+    """Tests for provider_create_update_server task."""
 
     ####################################################################
     #
@@ -1298,10 +1298,9 @@ class TestProviderCreateDomain:
     ) -> None:
         """
         Given a provider and a server
-        When the provider is added as a receiving provider
-        Then the provider backend's create_domain method should be called
-             and the domain created by the provider backend (due to signals on
-             the server)
+        When provider_create_update_server is called
+        Then the provider backend's create_update_domain method should be
+             called and the domain registered with the provider backend
         """
         server = server_factory(send_provider=None, receive_providers=[])
 
@@ -1312,7 +1311,9 @@ class TestProviderCreateDomain:
 
         # Then call the task that creates the domain using the dummy provider.
         #
-        res = provider_create_server(server.pk, dummy_provider.PROVIDER_NAME)
+        res = provider_create_update_server(
+            server.pk, dummy_provider.PROVIDER_NAME
+        )
         res()
 
         # And now the domain should be one managed by the dummy provider.
@@ -1331,21 +1332,23 @@ class TestProviderCreateDomain:
     ) -> None:
         """
         Given a backend that raises an exception
-        When provider_create_server is called
+        When provider_create_update_server is called
         Then the exception should be logged and re-raised
         """
         server = server_factory(send_provider=None, receive_providers=[])
 
-        # Mock the dummy provider's `create_domain` method to raise an
+        # Mock the dummy provider's `create_update_domain` method to raise an
         # exception.
         #
         mocker.patch.object(
             dummy_provider,
-            "create_domain",
+            "create_update_domain",
             side_effect=Exception("API error"),
         )
 
-        res = provider_create_server(server.pk, dummy_provider.PROVIDER_NAME)
+        res = provider_create_update_server(
+            server.pk, dummy_provider.PROVIDER_NAME
+        )
         with pytest.raises(Exception, match="API error"):
             res()
 
