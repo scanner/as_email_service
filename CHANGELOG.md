@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `process_bounce` Huey task provides provider-agnostic bounce and spam complaint handling: permanent-bounce counting, `InactiveEmail` recording, account deactivation at the bounce limit, owner notification, and DSN delivery
 - ForwardEmail bounce webhook now handles both delivery bounces and spam complaints (ForwardEmail delivers both to the same webhook endpoint, distinguished by `bounce.category`)
 - `get_bounce_webhook_url(server)` on `ForwardEmailBackend` builds the per-domain webhook URL; `create_update_domain()` registers it with the ForwardEmail API on every domain create/update
+- `sync_provider_domains` management command syncs domain configuration across providers with `--domain`, `--provider`, and `--dry-run` options
+- Daily periodic task re-syncs domain settings on all configured providers, catching configuration drift
+
+### Changed
+
+- Removed redundant `create_domain()` from the provider backend interface; `create_update_domain()` handles both creation and updates
 
 ### Fixed
 

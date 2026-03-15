@@ -230,33 +230,21 @@ class DummyProviderBackend(ProviderBackend):
 
     ####################################################################
     #
-    def create_domain(self, server: "Server") -> dict[str, Any]:
-        """
-        Create a domain in the dummy provider state.
-
-        Raises:
-            ValueError: If domain already exists
-        """
+    def create_update_domain(
+        self, server: "Server", dry_run: bool = False
+    ) -> bool:
+        """Create or update a domain in the dummy provider state."""
         if server.domain_name in self.domains:
-            raise ValueError(f"Domain {server.domain_name} already exists")
+            return False
 
-        domain_data = {
+        if dry_run:
+            return True
+
+        self.domains[server.domain_name] = {
             "id": f"dummy-{server.domain_name}",
             "domain": server.domain_name,
         }
-        self.domains[server.domain_name] = domain_data
-        return domain_data
-
-    ####################################################################
-    #
-    def create_update_domain(self, server: "Server") -> dict[str, Any]:
-        """Create or update a domain in the dummy provider state."""
-        if server.domain_name in self.domains:
-            # Update existing domain
-            return self.domains[server.domain_name]
-        else:
-            # Create new domain
-            return self.create_domain(server)
+        return True
 
     ####################################################################
     #

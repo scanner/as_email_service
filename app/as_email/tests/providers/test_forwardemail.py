@@ -697,7 +697,7 @@ class TestForwardEmailAPIMethods:
         WHEN:  create_update_domain is called
         THEN:  a single POST is issued with DEFAULT_DOMAIN_SETTINGS plus
                bounce_webhook URL (no plan), the domain ID is cached, and
-               the domain info is returned
+               True is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
@@ -720,6 +720,7 @@ class TestForwardEmailAPIMethods:
 
         result = backend.create_update_domain(server)
 
+        assert result is True
         backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
 
         mock_req.assert_called_once()
@@ -737,8 +738,6 @@ class TestForwardEmailAPIMethods:
 
         redis_key = f"forwardemail:domain:{server.domain_name}"
         assert mock_redis.get(redis_key) == domain_id.encode()
-        assert result["id"] == domain_id
-        assert result["name"] == server.domain_name
 
     ####################################################################
     #
@@ -749,7 +748,7 @@ class TestForwardEmailAPIMethods:
         GIVEN: a domain that already exists with all settings matching,
                including the bounce_webhook URL
         WHEN:  create_update_domain is called
-        THEN:  only one GET is issued (no PUT) and the domain info is returned
+        THEN:  only one GET is issued (no PUT) and False is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
@@ -775,10 +774,10 @@ class TestForwardEmailAPIMethods:
 
         result = backend.create_update_domain(server)
 
+        assert result is False
         backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
         mock_req.assert_called_once()
         assert mock_req.call_args[0][0] == HTTPMethod.GET
-        assert result["id"] == existing_domain_id
 
     ####################################################################
     #
@@ -790,8 +789,7 @@ class TestForwardEmailAPIMethods:
                (bounce_webhook is already correct)
         WHEN:  create_update_domain is called
         THEN:  GET is followed by a PUT containing only the changed field,
-               the info log records the updated fields, and the updated domain
-               info is returned
+               the info log records the updated fields, and True is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
@@ -826,6 +824,7 @@ class TestForwardEmailAPIMethods:
 
         result = backend.create_update_domain(server)
 
+        assert result is True
         assert mock_req.call_count == 2
         get_call, put_call = mock_req.call_args_list
         assert get_call[0][0] == HTTPMethod.GET
@@ -836,7 +835,74 @@ class TestForwardEmailAPIMethods:
 
         assert "settings updated" in caplog.text
         assert server.domain_name in caplog.text
-        assert result["id"] == existing_domain_id
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "domain_exists,settings_drifted",
+        [
+            (False, False),  # new domain
+            (True, True),  # existing domain with drifted settings
+        ],
+        ids=["new_domain", "drifted_settings"],
+    )
+    def test_create_update_domain_dry_run_skips_writes(
+        self,
+        server_factory,
+        mocker,
+        faker,
+        caplog,
+        domain_exists: bool,
+        settings_drifted: bool,
+    ) -> None:
+        """
+        GIVEN: a domain that does not exist, or one with drifted settings
+        WHEN:  create_update_domain is called with dry_run=True
+        THEN:  no POST or PUT is issued, True is returned, and the log
+               message includes "dry run"
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        existing_domain_id = faker.uuid4()
+        bounce_url = backend.get_bounce_webhook_url(server)
+
+        if domain_exists:
+            mocker.patch.object(
+                backend.cache,
+                "get_domain_id",
+                return_value=existing_domain_id,
+            )
+            # Return settings with has_virus_protection drifted
+            current_settings = {**ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS}
+            current_settings["has_virus_protection"] = False
+            get_response = mocker.MagicMock()
+            get_response.json.return_value = {
+                "id": existing_domain_id,
+                "name": server.domain_name,
+                "bounce_webhook": bounce_url,
+                **current_settings,
+            }
+            mock_req = mocker.patch.object(
+                backend.api, "req", return_value=get_response
+            )
+        else:
+            mocker.patch.object(
+                backend.cache, "get_domain_id", side_effect=KeyError()
+            )
+            mock_req = mocker.patch.object(backend.api, "req")
+
+        result = backend.create_update_domain(server, dry_run=True)
+
+        assert result is True
+        assert "dry run" in caplog.text
+
+        if domain_exists:
+            # Only the GET should have been issued, no PUT
+            mock_req.assert_called_once()
+            assert mock_req.call_args[0][0] == HTTPMethod.GET
+        else:
+            # No API calls at all
+            mock_req.assert_not_called()
 
     ####################################################################
     #

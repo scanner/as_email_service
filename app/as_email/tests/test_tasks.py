@@ -1321,7 +1321,7 @@ class TestProviderCreateDomain:
 
     ####################################################################
     #
-    def test_create_domain_success(
+    def test_create_update_domain_success(
         self,
         mocker: MockerFixture,
         server_factory,
@@ -1330,10 +1330,9 @@ class TestProviderCreateDomain:
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
-        Given a provider and a server
-        When provider_create_update_server is called
-        Then the provider backend's create_update_domain method should be
-             called and the domain registered with the provider backend
+        GIVEN: a provider and a server whose domain does not yet exist
+        WHEN:  provider_create_update_server is called
+        THEN:  the domain is registered on the provider backend
         """
         server = server_factory(send_provider=None, receive_providers=[])
 
@@ -1355,7 +1354,7 @@ class TestProviderCreateDomain:
 
     ####################################################################
     #
-    def test_create_domain_backend_exception(
+    def test_create_update_domain_backend_exception(
         self,
         mocker: MockerFixture,
         server_factory,
@@ -1364,9 +1363,9 @@ class TestProviderCreateDomain:
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
-        Given a backend that raises an exception
-        When provider_create_update_server is called
-        Then the exception should be logged and re-raised
+        GIVEN: a backend whose create_update_domain raises an exception
+        WHEN:  provider_create_update_server is called
+        THEN:  the exception is logged and re-raised
         """
         server = server_factory(send_provider=None, receive_providers=[])
 
@@ -1440,9 +1439,8 @@ class TestProviderCreateAlias:
         server = server_factory(send_provider=None, receive_providers=[])
         email_account = email_account_factory(server=server)
 
-        # Mock get_backend to raise exception
-        # Mock the dummy provider's `create_domain` method to raise an
-        # exception.
+        # Mock the dummy provider's `create_update_email_account` method
+        # to raise an exception.
         #
         mocker.patch.object(
             dummy_provider,
@@ -1543,9 +1541,8 @@ class TestProviderDeleteAlias:
         server = server_factory(send_provider=None, receive_providers=[])
         email_account = email_account_factory(server=server)
 
-        # Mock get_backend to raise exception
-        # Mock the dummy provider's `create_domain` method to raise an
-        # exception.
+        # Mock the dummy provider's `delete_email_account_by_address`
+        # method to raise an exception.
         #
         mocker.patch.object(
             dummy_provider,

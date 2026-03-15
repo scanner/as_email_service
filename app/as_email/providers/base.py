@@ -313,33 +313,24 @@ class ProviderBackend(ABC):
     ####################################################################
     #
     @abstractmethod
-    def create_domain(self, server: "Server") -> Any:
-        """
-        Create a domain on the provider's service.
-
-        Args:
-            server: The Server instance whose domain to create
-
-        Returns:
-            Provider-specific response data about the created domain
-        """
-        ...
-
-    ####################################################################
-    #
-    @abstractmethod
-    def create_update_domain(self, server: "Server") -> Any:
+    def create_update_domain(
+        self, server: "Server", dry_run: bool = False
+    ) -> bool:
         """
         Create or update a domain on the provider's service.
 
         This is an idempotent operation - if the domain exists, it should
-        be updated (or info fetched), otherwise it should be created.
+        be updated with any settings that have drifted, otherwise it
+        should be created.
 
         Args:
             server: The Server instance whose domain to create or update
+            dry_run: If True, log what would change but do not make any
+                remote API calls.
 
         Returns:
-            Provider-specific response data about the domain
+            True if changes were made (or would be made in dry_run),
+            False if already correct.
         """
         ...
 

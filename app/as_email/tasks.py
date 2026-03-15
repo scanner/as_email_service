@@ -1282,12 +1282,19 @@ def provider_create_update_server(server_pk: int, provider_name: str) -> None:
     backend = get_backend(provider_name)
 
     try:
-        backend.create_update_domain(server)
-        logger.info(
-            "Registered server '%s' on provider '%s'",
-            server.domain_name,
-            provider_name,
-        )
+        changed = backend.create_update_domain(server)
+        if changed:
+            logger.info(
+                "Updated domain '%s' on provider '%s'",
+                server.domain_name,
+                provider_name,
+            )
+        else:
+            logger.debug(
+                "Domain '%s' already up to date on provider '%s'",
+                server.domain_name,
+                provider_name,
+            )
     except Exception as e:
         logger.exception(
             "Failed to register server '%s' on provider '%s': %r",
@@ -1586,7 +1593,14 @@ def provider_sync_all_server_domains() -> None:
 
         for provider_name in provider_names:
             try:
-                provider_create_update_server(server.pk, provider_name)
+                backend = get_backend(provider_name)
+                changed = backend.create_update_domain(server)
+                if changed:
+                    logger.info(
+                        "Domain sync: updated '%s' on provider '%s'",
+                        server.domain_name,
+                        provider_name,
+                    )
             except Exception as e:
                 logger.exception(
                     "Failed to sync domain config for server '%s' on "

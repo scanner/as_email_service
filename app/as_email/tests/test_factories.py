@@ -144,72 +144,44 @@ class TestDummyProviderBackend:
 
     ####################################################################
     #
-    def test_create_domain(self, dummy_provider, mocker, faker) -> None:
-        """
-        Given a domain name
-        When create_domain is called directly
-        Then the domain should be added to the provider's state
-        """
-        server = mocker.Mock()
-        server.domain_name = faker.domain_name()
-
-        result = dummy_provider.create_domain(server)
-
-        assert server.domain_name in dummy_provider.domains
-        assert result["domain"] == server.domain_name
-        assert result["id"] == f"dummy-{server.domain_name}"
-
-    ####################################################################
-    #
-    def test_create_domain_duplicate_raises_error(
-        self, dummy_provider, mocker, faker
+    @pytest.mark.parametrize(
+        "pre_create,dry_run,expected_return,expect_in_domains",
+        [
+            (False, False, True, True),  # new domain, real run
+            (True, False, False, True),  # already exists, no change
+            (False, True, True, False),  # new domain, dry run
+        ],
+        ids=["creates_new", "already_exists", "dry_run"],
+    )
+    def test_create_update_domain(
+        self,
+        dummy_provider,
+        mocker,
+        faker,
+        pre_create: bool,
+        dry_run: bool,
+        expected_return: bool,
+        expect_in_domains: bool,
     ) -> None:
         """
-        Given a domain that already exists
-        When create_domain is called again
-        Then it should raise a ValueError
+        GIVEN: a domain that does {not }exist on the provider
+        WHEN:  create_update_domain is called {with dry_run=True}
+        THEN:  returns True if changes were (or would be) made,
+               False if already correct; domain is only persisted
+               when dry_run is False and the domain was new
         """
         server = mocker.Mock()
         server.domain_name = faker.domain_name()
-        dummy_provider.create_domain(server)
 
-        with pytest.raises(ValueError, match="already exists"):
-            dummy_provider.create_domain(server)
+        if pre_create:
+            dummy_provider.create_update_domain(server)
 
-    ####################################################################
-    #
-    def test_create_update_domain_creates_new(
-        self, dummy_provider, mocker, faker
-    ) -> None:
-        """
-        Given a server with no existing domain
-        When create_update_domain is called
-        Then the domain should be created
-        """
-        server = mocker.Mock()
-        server.domain_name = faker.domain_name()
-        result = dummy_provider.create_update_domain(server)
+        result = dummy_provider.create_update_domain(server, dry_run=dry_run)
 
-        assert server.domain_name in dummy_provider.domains
-        assert result["domain"] == server.domain_name
-
-    ####################################################################
-    #
-    def test_create_update_domain_updates_existing(
-        self, dummy_provider, mocker, faker
-    ) -> None:
-        """
-        Given a domain that already exists
-        When create_update_domain is called
-        Then it should return the existing domain without error
-        """
-        server = mocker.Mock()
-        server.domain_name = faker.domain_name()
-        result1 = dummy_provider.create_domain(server)
-        result2 = dummy_provider.create_update_domain(server)
-
-        assert result1 == result2
-        assert len(dummy_provider.domains) == 1
+        assert result is expected_return
+        assert (
+            server.domain_name in dummy_provider.domains
+        ) is expect_in_domains
 
     ####################################################################
     #
@@ -221,7 +193,7 @@ class TestDummyProviderBackend:
         """
         server = mocker.Mock()
         server.domain_name = faker.domain_name()
-        dummy_provider.create_domain(server)
+        dummy_provider.create_update_domain(server)
         assert server.domain_name in dummy_provider.domains
 
         dummy_provider.delete_domain(server)

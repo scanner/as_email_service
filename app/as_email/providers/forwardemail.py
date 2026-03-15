@@ -1249,27 +1249,9 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
-    def create_domain(self, server: "Server") -> dict[str, Any]:
-        """
-        Create a domain in forwardemail.net.
-
-        This is a convenience method that delegates to create_update_domain().
-        If the domain already exists, it will return its info without error.
-
-        Args:
-            server: The Server instance whose domain to create
-
-        Returns:
-            Domain info dict from forwardemail.net API
-
-        Note:
-            This method is idempotent - calling it multiple times is safe.
-        """
-        return self.create_update_domain(server)
-
-    ####################################################################
-    #
-    def create_update_domain(self, server: "Server") -> dict[str, Any]:
+    def create_update_domain(
+        self, server: "Server", dry_run: bool = False
+    ) -> bool:
         """
         Create or update a domain in forwardemail.net.
 
@@ -1284,9 +1266,11 @@ class ForwardEmailBackend(ProviderBackend):
 
         Args:
             server: The Server instance whose domain to create or update
+            dry_run: If True, log what would change but skip API writes.
 
         Returns:
-            Domain info dict from forwardemail.net API
+            True if changes were made (or would be made in dry_run),
+            False if already correct.
         """
         # Merge static defaults with the server-specific bounce webhook URL.
         #
@@ -1307,27 +1291,42 @@ class ForwardEmailBackend(ProviderBackend):
             }
 
             if to_update:
-                logger.info(
-                    "Domain '%s' settings updated: %r",
-                    server.domain_name,
-                    to_update,
-                )
-                r = self.api.req(
-                    HTTPMethod.PUT, f"v1/domains/{domain_id}", data=to_update
-                )
-                domain_info = r.json()
-            else:
-                logger.debug(
-                    "Domain '%s' already exists on forwardemail.net (ID: %s)",
-                    server.domain_name,
-                    domain_id,
-                )
+                if dry_run:
+                    logger.info(
+                        "Domain '%s' would be updated (dry run): %r",
+                        server.domain_name,
+                        to_update,
+                    )
+                else:
+                    logger.info(
+                        "Domain '%s' settings updated: %r",
+                        server.domain_name,
+                        to_update,
+                    )
+                    self.api.req(
+                        HTTPMethod.PUT,
+                        f"v1/domains/{domain_id}",
+                        data=to_update,
+                    )
+                return True
 
-            return domain_info
+            logger.debug(
+                "Domain '%s' already up to date on forwardemail.net (ID: %s)",
+                server.domain_name,
+                domain_id,
+            )
+            return False
 
         except KeyError:
             # Domain doesn't exist, create it
             pass
+
+        if dry_run:
+            logger.info(
+                "Domain '%s' would be created on forwardemail.net (dry run)",
+                server.domain_name,
+            )
+            return True
 
         # Create the domain with our desired settings.
         # NOTE: `catchall` is a create-only field; it cannot be set via PUT.
@@ -1347,7 +1346,7 @@ class ForwardEmailBackend(ProviderBackend):
             domain_info["id"],
         )
 
-        return domain_info
+        return True
 
     ####################################################################
     #
