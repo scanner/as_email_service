@@ -6,6 +6,7 @@ Test the Postmark provider backend.
 # system imports
 #
 import json
+from email.message import EmailMessage
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -742,3 +743,66 @@ def test_postmark_backend_get_client_missing_token(server_factory, settings):
         backend._get_client(server)
 
     assert "token" in str(exc_info.value).lower()
+
+
+########################################################################
+#
+def test_postmark_backend_send_email_dispatches_to_smtp(
+    server_with_token, email_factory, mocker
+) -> None:
+    """
+    GIVEN: a PostmarkBackend and a message with From and To headers
+    WHEN:  send_email() is called
+    THEN:  it extracts From/To from the message and delegates to send_email_smtp()
+    """
+    server = server_with_token(provider_name="postmark")
+    backend = PostmarkBackend()
+    from_addr = f"sender@{server.domain_name}"
+    to_addr = "recipient@example.com"
+    msg = email_factory(msg_from=from_addr, to=to_addr)
+
+    mock_send_smtp = mocker.patch.object(
+        backend, "send_email_smtp", return_value=True
+    )
+
+    result = backend.send_email(server=server, message=msg)
+
+    assert result is True
+    mock_send_smtp.assert_called_once_with(
+        server, from_addr, [to_addr], msg, True
+    )
+
+
+########################################################################
+#
+def test_postmark_backend_send_email_includes_cc_and_bcc(
+    server_with_token, mocker
+) -> None:
+    """
+    GIVEN: a message with To, Cc, and Bcc recipients
+    WHEN:  send_email() is called
+    THEN:  all recipient addresses are passed to send_email_smtp()
+    """
+    server = server_with_token(provider_name="postmark")
+    backend = PostmarkBackend()
+    from_addr = f"sender@{server.domain_name}"
+    msg = EmailMessage()
+    msg["From"] = from_addr
+    msg["To"] = "to@example.com"
+    msg["Cc"] = "cc@example.com"
+    msg["Bcc"] = "bcc@example.com"
+    msg.set_content("body")
+
+    mock_send_smtp = mocker.patch.object(
+        backend, "send_email_smtp", return_value=True
+    )
+
+    backend.send_email(server=server, message=msg)
+
+    _, actual_from, actual_rcpts, _, _ = mock_send_smtp.call_args[0]
+    assert actual_from == from_addr
+    assert set(actual_rcpts) == {
+        "to@example.com",
+        "cc@example.com",
+        "bcc@example.com",
+    }

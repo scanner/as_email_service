@@ -83,7 +83,7 @@ class DummyProviderBackend(ProviderBackend):
 
     PROVIDER_NAME = "dummy"
     CAPABILITIES: frozenset[Capability] = frozenset(
-        {Capability.MANAGES_EMAIL_ACCOUNTS}
+        {Capability.MANAGES_EMAIL_ACCOUNTS, Capability.SMTP_RELAY}
     )
 
     ####################################################################
@@ -169,6 +169,16 @@ class DummyProviderBackend(ProviderBackend):
         spool_on_retryable: bool = True,
     ) -> bool:
         return True
+
+    ####################################################################
+    #
+    def send_email(
+        self,
+        server: "Server",
+        message: email.message.EmailMessage,
+        spool_on_retryable: bool = True,
+    ) -> bool:
+        return self.send_email_api(server, message, spool_on_retryable)
 
     ####################################################################
     #
@@ -309,7 +319,7 @@ class DummyProviderBackend(ProviderBackend):
     ####################################################################
     #
     def delete_email_account_by_address(
-        self, email_address: str, domain_name: str
+        self, email_address: str, server: "Server"
     ) -> None:
         """Delete an email account by address from the dummy provider state."""
         self.email_accounts.pop(email_address, None)

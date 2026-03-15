@@ -25,16 +25,22 @@ from pytest_mock import MockerFixture
 # Project imports
 #
 from ..models import EmailAccount, InactiveEmail, LocalDelivery
-from ..providers.base import Capability, EmailAccountInfo
+from ..providers.base import (
+    BounceEvent,
+    BounceType,
+    Capability,
+    EmailAccountInfo,
+)
 from ..tasks import (
     check_update_pwfile_for_emailaccount,
     decrement_num_bounces_counter,
     dispatch_incoming_email,
     dispatch_spooled_outgoing_email,
+    process_bounce,
     process_email_bounce,
     process_email_spam,
     provider_create_or_update_email_account,
-    provider_create_server,
+    provider_create_update_server,
     provider_delete_email_account,
     provider_report_unused_servers,
     provider_sync_all_email_accounts,
@@ -944,6 +950,178 @@ def test_process_spam_invalid_typecode(
     assert not ea.deactivated
 
 
+########################################################################
+########################################################################
+#
+class TestProcessBounce:
+    """Tests for the provider-agnostic process_bounce Huey task."""
+
+    ####################################################################
+    #
+    def _make_event(self, **overrides) -> BounceEvent:
+        """Return a minimal BounceEvent suitable for most tests."""
+        defaults = BounceEvent(
+            email_from="sender@example.com",
+            email_to="recipient@example.com",
+            subject="Test subject",
+            transient=False,
+            bounce_type=BounceType.BOUNCE,
+            description="550 No such user",
+            details="5.1.1",
+        )
+        for k, v in overrides.items():
+            setattr(defaults, k, v)
+        return defaults
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "transient,expected_bounce_delta",
+        [
+            pytest.param(False, 1, id="permanent-increments"),
+            pytest.param(True, 0, id="transient-no-increment"),
+        ],
+    )
+    def test_process_bounce_bounce_count(
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        transient: bool,
+        expected_bounce_delta: int,
+    ) -> None:
+        """
+        GIVEN: a BounceEvent that is either transient or permanent
+        WHEN:  process_bounce runs
+        THEN:  permanent events increment num_bounces; transient events do not
+        """
+        ea = email_account_factory(
+            email_address="sender@example.com", num_bounces=0
+        )
+        event = self._make_event(transient=transient)
+
+        res = process_bounce(ea.pk, event)
+        res()
+
+        ea.refresh_from_db()
+        assert ea.num_bounces == expected_bounce_delta
+
+    ####################################################################
+    #
+    def test_process_bounce_deactivates_at_limit(
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        django_outbox: list[Any],
+    ) -> None:
+        """
+        GIVEN: an account whose num_bounces is one below the limit
+        WHEN:  process_bounce runs with a permanent bounce
+        THEN:  the account is deactivated, the owner is notified by email,
+               and a DSN is sent to the EmailAccount
+        """
+        start = EmailAccount.NUM_EMAIL_BOUNCE_LIMIT - 1
+        ea = email_account_factory(
+            email_address="sender@example.com", num_bounces=start
+        )
+        event = self._make_event()
+
+        res = process_bounce(ea.pk, event)
+        res()
+
+        ea.refresh_from_db()
+        assert ea.deactivated is True
+        assert (
+            ea.deactivated_reason
+            == EmailAccount.DEACTIVATED_DUE_TO_BOUNCES_REASON
+        )
+        # Owner notified via send_mail (DSN goes through ea.deliver(), not outbox)
+        assert len(django_outbox) == 1
+        assert django_outbox[0].to[0] == ea.owner.email
+
+    ####################################################################
+    #
+    def test_process_bounce_transient_no_deactivation(
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        django_outbox: list[Any],
+    ) -> None:
+        """
+        GIVEN: an account at the bounce limit
+        WHEN:  process_bounce runs with a transient event
+        THEN:  the account is NOT deactivated and no owner email is sent
+        """
+        ea = email_account_factory(
+            email_address="sender@example.com",
+            num_bounces=EmailAccount.NUM_EMAIL_BOUNCE_LIMIT,
+        )
+        event = self._make_event(transient=True)
+
+        res = process_bounce(ea.pk, event)
+        res()
+
+        ea.refresh_from_db()
+        assert ea.deactivated is False
+        # Only DSN; no owner notification
+        assert all(ea.owner.email not in m.to for m in django_outbox)
+
+    ####################################################################
+    #
+    def test_process_bounce_inactive_recipient_creates_record(
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+    ) -> None:
+        """
+        GIVEN: a BounceEvent with inactive=True and can_activate=True
+        WHEN:  process_bounce runs
+        THEN:  an InactiveEmail record is created for the recipient address
+        """
+        ea = email_account_factory(email_address="sender@example.com")
+        event = self._make_event(inactive=True, can_activate=True)
+
+        res = process_bounce(ea.pk, event)
+        res()
+
+        assert InactiveEmail.objects.filter(
+            email_address=event.email_to
+        ).exists()
+        inactive = InactiveEmail.objects.get(email_address=event.email_to)
+        assert inactive.can_activate is True
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "bounce_type,expected_prefix",
+        [
+            pytest.param(
+                BounceType.BOUNCE, "Bounced email", id="bounce-subject"
+            ),
+            pytest.param(BounceType.SPAM, "Spam complaint", id="spam-subject"),
+        ],
+    )
+    def test_process_bounce_dsn_subject(
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        mocker: MockerFixture,
+        bounce_type: BounceType,
+        expected_prefix: str,
+    ) -> None:
+        """
+        GIVEN: a BounceEvent that is either a bounce or spam complaint
+        WHEN:  process_bounce runs
+        THEN:  the DSN subject line reflects the correct event type
+
+        NOTE: report_failed_message delivers via ea.deliver(), not Django's
+        mail backend, so we mock it and inspect the subject kwarg directly.
+        """
+        ea = email_account_factory(email_address="sender@example.com")
+        event = self._make_event(bounce_type=bounce_type)
+        mock_rfm = mocker.patch("as_email.tasks.report_failed_message")
+
+        res = process_bounce(ea.pk, event)
+        res()
+
+        mock_rfm.assert_called_once()
+        assert expected_prefix in mock_rfm.call_args.kwargs["subject"]
+
+
 ####################################################################
 #
 def test_delete_email_account_removes_pwfile_entry(
@@ -1106,7 +1284,7 @@ def test_check_update_pwfile_for_emailaccount_no_change(
 ########################################################################
 #
 class TestProviderCreateDomain:
-    """Tests for provider_create_server task."""
+    """Tests for provider_create_update_server task."""
 
     ####################################################################
     #
@@ -1120,10 +1298,9 @@ class TestProviderCreateDomain:
     ) -> None:
         """
         Given a provider and a server
-        When the provider is added as a receiving provider
-        Then the provider backend's create_domain method should be called
-             and the domain created by the provider backend (due to signals on
-             the server)
+        When provider_create_update_server is called
+        Then the provider backend's create_update_domain method should be
+             called and the domain registered with the provider backend
         """
         server = server_factory(send_provider=None, receive_providers=[])
 
@@ -1134,7 +1311,9 @@ class TestProviderCreateDomain:
 
         # Then call the task that creates the domain using the dummy provider.
         #
-        res = provider_create_server(server.pk, dummy_provider.PROVIDER_NAME)
+        res = provider_create_update_server(
+            server.pk, dummy_provider.PROVIDER_NAME
+        )
         res()
 
         # And now the domain should be one managed by the dummy provider.
@@ -1153,21 +1332,23 @@ class TestProviderCreateDomain:
     ) -> None:
         """
         Given a backend that raises an exception
-        When provider_create_server is called
+        When provider_create_update_server is called
         Then the exception should be logged and re-raised
         """
         server = server_factory(send_provider=None, receive_providers=[])
 
-        # Mock the dummy provider's `create_domain` method to raise an
+        # Mock the dummy provider's `create_update_domain` method to raise an
         # exception.
         #
         mocker.patch.object(
             dummy_provider,
-            "create_domain",
+            "create_update_domain",
             side_effect=Exception("API error"),
         )
 
-        res = provider_create_server(server.pk, dummy_provider.PROVIDER_NAME)
+        res = provider_create_update_server(
+            server.pk, dummy_provider.PROVIDER_NAME
+        )
         with pytest.raises(Exception, match="API error"):
             res()
 

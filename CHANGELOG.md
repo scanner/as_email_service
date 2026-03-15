@@ -7,11 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-14
+
+### Added
+
+- ForwardEmail.net backend is now a full send/receive provider: outbound email is sent via the ForwardEmail REST API using the account API key
+- `BounceEvent` dataclass in `providers/base.py` normalizes bounce and spam events across provider backends; lays the foundation for unified bounce/spam processing (GH-223)
+- `process_bounce` Huey task provides provider-agnostic bounce and spam complaint handling: permanent-bounce counting, `InactiveEmail` recording, account deactivation at the bounce limit, owner notification, and DSN delivery
+- ForwardEmail bounce webhook now handles both delivery bounces and spam complaints (ForwardEmail delivers both to the same webhook endpoint, distinguished by `bounce.category`)
+- `get_bounce_webhook_url(server)` on `ForwardEmailBackend` builds the per-domain webhook URL; `create_update_domain()` registers it with the ForwardEmail API on every domain create/update
+
+### Fixed
+
+- Transient bounces (temporary deferrals) no longer trigger account deactivation even when the permanent-bounce counter is already at its ceiling
+- `delete_email_account_by_address()` signature in `ProviderBackend` corrected to `server: Server` (was `domain_name: str`), consistent with all other provider methods
+
 ## [0.5.6] - 2026-03-09
 
 ### Added
 
-- Admin navbar link is now visible to members of the "admin" group in addition to superusers; `is_in_group` template filter added for reuse in future features
+- Admin navbar link is now visible to members of the "admin" group in addition to superusers; `is_in_group` template filter added
 
 ## [0.5.5] - 2026-03-09
 
