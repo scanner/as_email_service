@@ -43,7 +43,12 @@ from ..utils import (
     spool_message,
     write_spooled_email,
 )
-from .base import Capability, EmailAccountInfo, ProviderBackend
+from .base import (
+    Capability,
+    EmailAccountInfo,
+    ProviderBackend,
+    resolve_envelope,
+)
 
 # Avoid circular imports
 #
@@ -65,7 +70,7 @@ class PostmarkBackend(ProviderBackend):
     """
 
     PROVIDER_NAME = "postmark"
-    CAPABILITIES: frozenset[Capability] = frozenset()
+    CAPABILITIES: frozenset[Capability] = frozenset({Capability.SMTP_RELAY})
 
     ####################################################################
     #
@@ -94,13 +99,10 @@ class PostmarkBackend(ProviderBackend):
     #
     def send_email_smtp(
         self,
-        # XXX we should remove the need the 'server' here and just pass in the
-        #     domain name.
-        #
         server: "Server",
-        email_from: str,
-        rcpt_tos: list[str],
-        msg: email.message.EmailMessage,
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -112,9 +114,11 @@ class PostmarkBackend(ProviderBackend):
 
         Args:
             server: The Server instance sending the email
-            email_from: The email address sending from (must match server domain)
-            rcpt_tos: List of recipient email addresses
-            msg: The email message to send
+            message: The email message to send
+            email_from: The email address sending from (must match server
+                domain), or None to extract from the message From header
+            rcpt_tos: List of recipient email addresses, or None to extract
+                from To+Cc+Bcc headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -124,6 +128,7 @@ class PostmarkBackend(ProviderBackend):
             ValueError: If email_from domain doesn't match server domain
             KeyError: If server token is not configured in settings
         """
+        email_from, rcpt_tos = resolve_envelope(message, email_from, rcpt_tos)
         if server.domain_name != email_from.split("@")[-1]:
             raise ValueError(
                 f"Domain name of {email_from} is not the same "
@@ -143,15 +148,17 @@ class PostmarkBackend(ProviderBackend):
         # NOTE: In the future we might want to support other streams besides
         #       "outbound" and this would likely be set on the Server object.
         #
-        del msg["X-PM-Message-Stream"]
-        msg["X-PM-Message-Stream"] = "outbound"
+        del message["X-PM-Message-Stream"]
+        message["X-PM-Message-Stream"] = "outbound"
 
         smtp_server, port = server.send_provider.smtp_server.split(":")
         smtp_client = get_smtp_client(smtp_server, int(port))
         try:
             smtp_client.starttls()
             smtp_client.login(token, token)
-            sendmail(smtp_client, msg, from_addr=email_from, to_addrs=rcpt_tos)
+            sendmail(
+                smtp_client, message, from_addr=email_from, to_addrs=rcpt_tos
+            )
         except smtplib.SMTPException as exc:
             logger.error(
                 "Mail from %s, to: %s, failed with exception: %r",
@@ -160,7 +167,7 @@ class PostmarkBackend(ProviderBackend):
                 exc,
             )
             if spool_on_retryable:
-                spool_message(server.outgoing_spool_dir, msg.as_bytes())
+                spool_message(server.outgoing_spool_dir, message.as_bytes())
             return False
         finally:
             smtp_client.quit()
@@ -172,6 +179,8 @@ class PostmarkBackend(ProviderBackend):
         self,
         server: "Server",
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -181,9 +190,15 @@ class PostmarkBackend(ProviderBackend):
         On retryable failures (network issues, rate limits, maintenance), the
         message is spooled for later retry if spool_on_retryable is True.
 
+        NOTE: ``email_from`` and ``rcpt_tos`` are accepted for interface
+        consistency but unused — the Postmark API extracts recipients from
+        the message headers.
+
         Args:
             server: The Server instance sending the email
             message: The email message to send
+            email_from: Unused (accepted for interface consistency)
+            rcpt_tos: Unused (accepted for interface consistency)
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -218,6 +233,36 @@ class PostmarkBackend(ProviderBackend):
                 logger.error("Failed to send email: %r", exc)
                 raise
         return True
+
+    ####################################################################
+    #
+    def send_email(
+        self,
+        server: "Server",
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
+        spool_on_retryable: bool = True,
+    ) -> bool:
+        """
+        Send email via our preferred transport for Postmark (SMTP).
+
+        Delegates to send_email_smtp(), which calls resolve_envelope()
+        to extract email_from/rcpt_tos from headers when not provided.
+
+        Args:
+            server: The Server instance sending the email
+            message: The email message to send
+            email_from: The sender address, or None to extract from headers
+            rcpt_tos: Recipient list, or None to extract from headers
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the email was sent successfully, False otherwise
+        """
+        return self.send_email_smtp(
+            server, message, email_from, rcpt_tos, spool_on_retryable
+        )
 
     ####################################################################
     #
@@ -550,24 +595,9 @@ class PostmarkBackend(ProviderBackend):
 
     ####################################################################
     #
-    def create_domain(self, server: "Server") -> None:
-        """
-        Create a domain (server) on Postmark - NOT YET IMPLEMENTED.
-
-        This is a stub for future GH-180 implementation. Currently, Postmark
-        servers must be created manually through their web interface.
-
-        Args:
-            server: The Server instance representing the domain
-        """
-        logger.info(
-            "Postmark domain creation not yet implemented for %s (GH-180)",
-            server.domain_name,
-        )
-
-    ####################################################################
-    #
-    def create_update_domain(self, server: "Server") -> None:
+    def create_update_domain(
+        self, server: "Server", dry_run: bool = False
+    ) -> bool:
         """
         Create or update a domain (server) on Postmark - NOT YET IMPLEMENTED.
 
@@ -576,11 +606,16 @@ class PostmarkBackend(ProviderBackend):
 
         Args:
             server: The Server instance representing the domain
+            dry_run: If True, log what would change but skip API writes.
+
+        Returns:
+            Always False (not implemented).
         """
-        logger.info(
+        logger.debug(
             "Postmark domain create/update not yet implemented for %s (GH-180)",
             server.domain_name,
         )
+        return False
 
     ####################################################################
     #

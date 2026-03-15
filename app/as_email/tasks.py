@@ -38,7 +38,7 @@ from .models import (
     Server,
 )
 from .providers import get_backend
-from .providers.base import Capability
+from .providers.base import BounceEvent, BounceType, Capability
 from .utils import (
     BOUNCE_TYPES_BY_TYPE_CODE,
     PWUser,
@@ -498,10 +498,10 @@ def dispatch_spooled_outgoing_email():
                 # Try sending the message again but do not write it to the
                 # spool if it fails.
                 #
-                delete_message = server.send_email_via_smtp(
-                    message["From"],
-                    rcpt_tos,
+                delete_message = server.send_email(
                     message,
+                    email_from=message["From"],
+                    rcpt_tos=rcpt_tos,
                     spool_on_retryable=False,
                 )
             except Exception as exc:
@@ -1028,6 +1028,152 @@ def process_email_spam(email_account_pk: int, spam: dict):
 
 ####################################################################
 #
+@db_task(retries=3, retry_delay=15)
+def process_bounce(email_account_pk: int, event: BounceEvent) -> None:
+    """
+    Process a normalized bounce or spam complaint from any provider backend.
+
+    Both delivery bounces and spam complaints go through the same core logic:
+      - If non-transient: increment ea.num_bounces and save.
+      - If the provider has blacklisted the recipient: record an InactiveEmail.
+      - If the bounce limit is exceeded: deactivate the account and notify the
+        account owner via send_mail.
+      - Send a DSN to the EmailAccount via report_failed_message.
+
+    The BounceEvent dataclass is produced by each provider's
+    handle_bounce_webhook() after normalizing its provider-specific payload.
+    Postmark continues to use process_email_bounce / process_email_spam until
+    GH-223 migrates it to this task.
+
+    Args:
+        email_account_pk: Primary key of the sending EmailAccount.
+        event: Normalized bounce/spam event from the provider backend.
+    """
+    notify_user = False
+    ea = EmailAccount.objects.get(pk=email_account_pk)
+
+    # Derive all user-facing label strings from the bounce type in one place
+    # so that adding a new BounceType only requires adding a case here.
+    #
+    match event.bounce_type:
+        case BounceType.SPAM:
+            event_label = "spam complaint"
+            report_opening = "been marked as spam"
+            subject_prefix = "Spam complaint"
+        case BounceType.BOUNCE:
+            event_label = "bounce"
+            report_opening = "bounced"
+            subject_prefix = "Bounced email"
+        case _:
+            event_label = str(event.bounce_type)
+            report_opening = f"triggered a {event_label} event"
+            subject_prefix = event_label.capitalize()
+
+    report_text = [
+        f"Email from {event.email_from} to {event.email_to} has {report_opening}."
+    ]
+
+    # Only permanent (non-transient) events count against the bounce limit.
+    # Transient failures (e.g. a temporary "defer") are retriable and should
+    # not penalize the account.
+    #
+    if not event.transient:
+        ea.num_bounces += 1
+        ea.save()
+        report_text.append(f"Number of {event_label}s: {ea.num_bounces}")
+        report_text.append(
+            f"Email account will be deactivated from sending emails if this "
+            f"number exceeds {ea.NUM_EMAIL_BOUNCE_LIMIT} in a day "
+            "(the number of bounces will automatically decrease by 1 each day.)"
+        )
+
+    # Some providers permanently blacklist a recipient after too many bounces.
+    # Record that here so the system knows not to attempt delivery to that
+    # address in the future, and surface it in the DSN to the sender.
+    #
+    if event.inactive:
+        inactive, _ = InactiveEmail.objects.get_or_create(
+            email_address=event.email_to
+        )
+        if inactive.can_activate != event.can_activate:
+            inactive.can_activate = event.can_activate
+            inactive.save()
+        logger.info(
+            "Email %s is marked inactive by provider. Can activate: %s, "
+            "sending account: %s",
+            event.email_to,
+            event.can_activate,
+            ea.email_address,
+        )
+        report_text.append(
+            f"The provider has marked this email address ({event.email_to}) "
+            "as inactive and will not send email to this address. "
+            f"Reactivatable: {event.can_activate}. Contact the system "
+            "administrator to see if this can be resolved."
+        )
+
+    # Deactivate the account when the permanent-bounce count hits the limit.
+    # Transient bounces are intentionally excluded: a temporary deferral should
+    # not lock out the account even if the counter is already at its ceiling.
+    # Once deactivated the account can still receive mail; it just cannot send.
+    #
+    if not event.transient and not ea.deactivated:
+        if ea.num_bounces >= ea.NUM_EMAIL_BOUNCE_LIMIT:
+            notify_user = True
+            ea.deactivated = True
+            ea.deactivated_reason = ea.DEACTIVATED_DUE_TO_BOUNCES_REASON
+            ea.save()
+            logger.info(
+                "process_bounce: Account %s deactivated due to excessive %ss",
+                ea,
+                event_label,
+            )
+            report_text.append(
+                f"The account ({event.email_from}) has been deactivated from "
+                f"sending email due to excessive {event_label}s. The account "
+                "will automatically be reactivated after at most a day. "
+                "\nNOTE: This account can still receive email. It just cannot "
+                "send new emails."
+            )
+
+    # Append any provider-supplied description and diagnostic details to the
+    # DSN so the account owner has as much context as possible.
+    #
+    if event.description:
+        report_text.append(f"Description: {event.description}")
+    if event.details:
+        report_text.append(f"Details: {event.details}")
+
+    report_msg = "\n".join(report_text)
+
+    # If the account was just deactivated, also send a plain email to the
+    # owner's user account address. The owner may have forwarding set up on
+    # their EmailAccount, so the DSN alone might not reach them.
+    #
+    if notify_user:
+        send_mail(
+            f"NOTICE: The email account {ea.email_address} has been "
+            "deactivated and can not send email",
+            report_msg,
+            None,
+            [ea.owner.email],
+            fail_silently=True,
+        )
+
+    subject_detail = event.subject if event.subject else event.email_to
+    report_failed_message(
+        ea,
+        failed_message=event.original_message or event.description,
+        report_text=report_msg,
+        subject=f"{subject_prefix}: {subject_detail}",
+        action="failed",
+        status="5.1.1",
+        diagnostic=f"smtp; {event.details or event.description}",
+    )
+
+
+####################################################################
+#
 @db_task(retries=10, retry_delay=2)
 @lock_task("pwfile")
 def check_update_pwfile_for_emailaccount(ea_pk: int) -> None:
@@ -1118,12 +1264,13 @@ def delete_emailaccount_from_pwfile(email_address: str):
 ####################################################################
 #
 @db_task(retries=3, retry_delay=10)
-def provider_create_server(server_pk: int, provider_name: str) -> None:
+def provider_create_update_server(server_pk: int, provider_name: str) -> None:
     """
-    Register a server's domain on the specified provider.
+    Register or update a server's domain on the specified provider.
 
-    This task is triggered when a provider is added to a Server's
-    receive_providers.
+    Idempotent — safe to call when the domain already exists. Triggered
+    when a provider is added to a Server's receive_providers, or when
+    a Server's send_provider is set or changed.
 
     Args:
         server_pk: Primary key of the Server instance
@@ -1135,12 +1282,19 @@ def provider_create_server(server_pk: int, provider_name: str) -> None:
     backend = get_backend(provider_name)
 
     try:
-        backend.create_domain(server)
-        logger.info(
-            "Registered server '%s' on provider '%s'",
-            server.domain_name,
-            provider_name,
-        )
+        changed = backend.create_update_domain(server)
+        if changed:
+            logger.info(
+                "Updated domain '%s' on provider '%s'",
+                server.domain_name,
+                provider_name,
+            )
+        else:
+            logger.debug(
+                "Domain '%s' already up to date on provider '%s'",
+                server.domain_name,
+                provider_name,
+            )
     except Exception as e:
         logger.exception(
             "Failed to register server '%s' on provider '%s': %r",
@@ -1412,6 +1566,49 @@ def provider_sync_server_email_accounts(
         skipped_count,
         error_count,
     )
+
+
+####################################################################
+#
+@db_periodic_task(crontab(day="*", hour="3"))
+def provider_sync_all_server_domains() -> None:
+    """
+    Daily task to ensure every server's domain configuration is up to date
+    on all of its configured provider backends.
+
+    Iterates through all servers and calls provider_create_update_server for
+    each provider that the server uses (as either send_provider or
+    receive_provider).  This catches configuration drift — for example a
+    webhook URL that was corrected in code but never pushed to the remote
+    service.
+    """
+    for server in Server.objects.prefetch_related("receive_providers").all():
+        # Collect unique providers for this server (send + receive).
+        #
+        provider_names: set[str] = {
+            p.backend_name for p in server.receive_providers.all()
+        }
+        if server.send_provider:
+            provider_names.add(server.send_provider.backend_name)
+
+        for provider_name in provider_names:
+            try:
+                backend = get_backend(provider_name)
+                changed = backend.create_update_domain(server)
+                if changed:
+                    logger.info(
+                        "Domain sync: updated '%s' on provider '%s'",
+                        server.domain_name,
+                        provider_name,
+                    )
+            except Exception as e:
+                logger.exception(
+                    "Failed to sync domain config for server '%s' on "
+                    "provider '%s': %r",
+                    server.domain_name,
+                    provider_name,
+                    e,
+                )
 
 
 ####################################################################

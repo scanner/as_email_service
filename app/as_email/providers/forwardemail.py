@@ -3,7 +3,7 @@
 """
 ForwardEmail provider backend implementation.
 
-This is a **receive-only** provider — it does not support sending email.
+Handles both inbound and outbound email via the forwardemail.net REST API.
 
 **Incoming mail architecture**
 
@@ -19,6 +19,23 @@ flow is:
 
 Because the webhook URL is stored per-alias, ``create_update_email_account``
 always includes it when creating or updating an alias via the API.
+
+**Outbound mail**
+
+Outbound email is sent via the ``/v1/emails`` REST API endpoint using the
+account-level API key.  The raw RFC 2822 message is posted as the ``raw``
+field.  Transient failures (408, 429, 5xx) result in the message being
+spooled for retry.  SMTP sending (per-alias passwords) is supported by the
+provider but deferred pending a credential-storage strategy.
+
+**Bounce handling**
+
+forwardemail.net delivers bounce notifications (including spam complaints)
+to a single domain-level webhook URL (``bounce_webhook`` domain setting).
+Both hard bounces and spam complaints arrive at ``handle_bounce_webhook``;
+the ``bounce["bounce"]["category"]`` field distinguishes them.  There is no
+separate spam webhook - ``handle_spam_webhook`` returns a "not applicable"
+response and explains this.
 
 **Domain and alias ID caching**
 
@@ -48,18 +65,19 @@ References:
 # system imports
 #
 import email.message
+import email.policy
 import json
 import logging
 import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from io import BytesIO
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Iterator, Optional
 from urllib.error import HTTPError
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 # 3rd party imports
 #
@@ -77,16 +95,23 @@ from django.urls import reverse
 #
 from as_email.models import EmailAccount
 from as_email.provider_tokens import get_provider_token
-from as_email.tasks import dispatch_incoming_email
+from as_email.tasks import dispatch_incoming_email, process_bounce
 from as_email.utils import (
     now_str_datetime,
     redis_client,
     split_email_mailbox_hash,
+    spool_message,
     utc_now_str,
     write_spooled_email,
 )
 
-from .base import Capability, EmailAccountInfo, ProviderBackend
+from .base import (
+    BounceEvent,
+    BounceType,
+    Capability,
+    EmailAccountInfo,
+    ProviderBackend,
+)
 
 if TYPE_CHECKING:
     from django.contrib.auth.base_user import AbstractBaseUser
@@ -122,6 +147,35 @@ class ObjType(StrEnum):
     DOMAIN = "domain"
     ALIAS = "alias"
     ALIAS_DATA = "alias_data"
+
+
+########################################################################
+########################################################################
+#
+class RetryableHTTPStatus(IntEnum):
+    """
+    HTTP status codes from the ForwardEmail API that indicate a transient
+    failure worth retrying rather than a permanent error.
+
+    408 REQUEST_TIMEOUT      - server timed out waiting for the request
+    429 TOO_MANY_REQUESTS    - rate-limit hit; back off and retry
+    500 INTERNAL_SERVER_ERROR - provider-side bug or transient fault
+    502 BAD_GATEWAY          - upstream dependency temporarily unavailable
+    503 SERVICE_UNAVAILABLE  - provider in maintenance or overloaded
+    504 GATEWAY_TIMEOUT      - upstream dependency timed out
+    """
+
+    REQUEST_TIMEOUT = 408
+    TOO_MANY_REQUESTS = 429
+    INTERNAL_SERVER_ERROR = 500
+    BAD_GATEWAY = 502
+    SERVICE_UNAVAILABLE = 503
+    GATEWAY_TIMEOUT = 504
+
+
+# Frozenset to make checking against the return error code easier.
+#
+RETRYABLE_STATUS_CODES: frozenset[int] = frozenset(RetryableHTTPStatus)
 
 
 ########################################################################
@@ -379,7 +433,7 @@ class ForwardEmailCache:
     Redis-backed cache for forwardemail.net domain and alias ID lookups.
 
     On a cache miss the methods fall back to the forwardemail.net API,
-    populate the cache, and return the result — the caller never needs to
+    populate the cache, and return the result - the caller never needs to
     know whether the value came from Redis or from a live API call.
 
     **Alias ↔ EmailAccount mapping**
@@ -435,10 +489,10 @@ class ForwardEmailCache:
     # The hourly sync task refreshes alias and domain data well within these
     # windows, so normal operation never hits a cold cache mid-cycle.
     #
-    DOMAIN_ID_TTL: int = 24 * 3600  # 24 h — domain IDs change very rarely
-    ALIAS_ID_TTL: int = 24 * 3600  # 24 h — alias IDs are stable
-    ALIAS_DATA_TTL: int = 2 * 3600  # 2 h  — refreshed each hourly sync cycle
-    ALL_DOMAINS_TTL: int = 2 * 3600  # 2 h  — mirrors the 1-hour stale check
+    DOMAIN_ID_TTL: int = 24 * 3600  # 24 h - domain IDs change very rarely
+    ALIAS_ID_TTL: int = 24 * 3600  # 24 h - alias IDs are stable
+    ALIAS_DATA_TTL: int = 2 * 3600  # 2 h  - refreshed each hourly sync cycle
+    ALL_DOMAINS_TTL: int = 2 * 3600  # 2 h  - mirrors the 1-hour stale check
 
     ####################################################################
     #
@@ -624,8 +678,9 @@ class ForwardEmailBackend(ProviderBackend):
     """
     Backend implementation for ForwardEmail.net email service provider.
 
-    This is a receive-only provider. It handles incoming email webhooks
-    from forwardemail.net but does not support sending email.
+    Supports inbound email via per-alias webhooks, outbound email via the
+    ``/v1/emails`` REST API, and bounce notification handling via a
+    domain-level bounce webhook.
 
     References:
     - API Documentation: https://forwardemail.net/en/email-api
@@ -681,7 +736,7 @@ class ForwardEmailBackend(ProviderBackend):
     #   has_imap                 -- False; mail arrives via webhook, not IMAP
     #   has_pgp                  -- False; no PGP encryption at the provider
     #
-    # NOTE: `is_enabled` is not here — it is per-account and set from
+    # NOTE: `is_enabled` is not here - it is per-account and set from
     #       EmailAccount.enabled in create_update_email_account.
     #
     DEFAULT_ALIAS_SETTINGS: dict[str, Any] = {
@@ -702,23 +757,23 @@ class ForwardEmailBackend(ProviderBackend):
     def send_email_smtp(
         self,
         server: "Server",
-        email_from: str,
-        rcpt_tos: list[str],
-        msg: email.message.EmailMessage,
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
-        Send email via SMTP - NOT SUPPORTED.
+        Send email via SMTP — not supported by ForwardEmail.
 
-        ForwardEmail is a receive-only provider and does not support
-        sending email.
+        ForwardEmail does not support SMTP relay; use ``send_email()``
+        instead, which routes to the REST API.
 
         Raises:
-            NotImplementedError: This provider does not support sending
+            NotImplementedError: Always — use send_email() instead
         """
         raise NotImplementedError(
-            f"{self.PROVIDER_NAME} is a receive-only provider and does not "
-            "support sending email"
+            f"{self.PROVIDER_NAME} does not support SMTP relay; "
+            "use send_email() instead"
         )
 
     ####################################################################
@@ -727,20 +782,90 @@ class ForwardEmailBackend(ProviderBackend):
         self,
         server: "Server",
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
-        Send email via API - NOT SUPPORTED.
+        Send email via the ForwardEmail.net outbound REST API.
 
-        ForwardEmail is a receive-only provider and does not support
-        sending email.
+        Posts the RFC 2822 message to ``/v1/emails`` as the ``raw`` field.
+        Transient server-side failures (408, 429, 5xx) are retryable: the
+        message is spooled when ``spool_on_retryable`` is True.  All other
+        provider errors are re-raised.
+
+        NOTE: ``email_from`` and ``rcpt_tos`` are accepted for interface
+        consistency but unused — the ForwardEmail API extracts recipients
+        from the raw message headers.
+
+        Args:
+            server: The Server instance sending the email
+            message: The email message to send
+            email_from: Unused (accepted for interface consistency)
+            rcpt_tos: Unused (accepted for interface consistency)
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the provider accepted the message, False on retryable failure
 
         Raises:
-            NotImplementedError: This provider does not support sending
+            HTTPError: For non-retryable provider errors (e.g. 400, 422)
         """
-        raise NotImplementedError(
-            f"{self.PROVIDER_NAME} is a receive-only provider and does not "
-            "support sending email"
+        data = {"raw": message.as_string(policy=email.policy.SMTP)}
+        try:
+            self.api.req(HTTPMethod.POST, "v1/emails", data=data)
+            return True
+        except HTTPError as exc:
+            if exc.code in RETRYABLE_STATUS_CODES:
+                logger.warning(
+                    "Transient error sending email via %s (%d %s). %s.",
+                    self.PROVIDER_NAME,
+                    exc.code,
+                    exc.reason,
+                    (
+                        "Spooling for retry"
+                        if spool_on_retryable
+                        else "Not spooling"
+                    ),
+                )
+                if spool_on_retryable:
+                    spool_message(server.outgoing_spool_dir, message.as_bytes())
+                return False
+            logger.error(
+                "Failed to send email via %s: %d %s",
+                self.PROVIDER_NAME,
+                exc.code,
+                exc.reason,
+            )
+            raise
+
+    ####################################################################
+    #
+    def send_email(
+        self,
+        server: "Server",
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
+        spool_on_retryable: bool = True,
+    ) -> bool:
+        """
+        Send email via our preferred transport for ForwardEmail (REST API).
+
+        Delegates to send_email_api().
+
+        Args:
+            server: The Server instance sending the email
+            message: The email message to send
+            email_from: Passed through to send_email_api (unused by API)
+            rcpt_tos: Passed through to send_email_api (unused by API)
+            spool_on_retryable: If True, spool message on retryable failures
+
+        Returns:
+            True if the email was sent successfully, False otherwise
+        """
+        return self.send_email_api(
+            server, message, email_from, rcpt_tos, spool_on_retryable
         )
 
     ####################################################################
@@ -892,23 +1017,123 @@ class ForwardEmailBackend(ProviderBackend):
         self, request: HttpRequest, server: "Server"
     ) -> HttpResponse:
         """
-        Handle bounce notification webhook - NOT SUPPORTED.
+        Handle bounce and spam complaint notifications from forwardemail.net.
 
-        ForwardEmail is a receive-only provider and does not send email,
-        so bounce notifications are not applicable.
+        ForwardEmail delivers both hard bounces and spam complaints to this
+        single domain-level webhook URL (the ``bounce_webhook`` field on the
+        domain).  Spam complaints are distinguished by
+        ``bounce["bounce"]["category"] == "spam"``; transient failures by
+        ``bounce["bounce"]["action"] == "defer"``.
+
+        After validation the payload is normalized to a BounceEvent and
+        dispatched to the provider-agnostic process_bounce Huey task.
+
+        Args:
+            request: The Django HTTP request containing the webhook payload
+            server: The Server instance this webhook is for
 
         Returns:
-            HttpResponse indicating this webhook is not supported
+            HttpResponse indicating success or failure
         """
-        logger.warning(
-            "Received bounce webhook for receive-only provider %s on server %s",
-            self.PROVIDER_NAME,
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Bad JSON in bounce webhook from forwardemail.net: %r", exc
+            )
+            return HttpResponseBadRequest(f"invalid json: {exc}")
+
+        if not all(k in payload for k in ("email_id", "recipient", "bounce")):
+            return HttpResponseBadRequest(
+                "submitted json missing expected keys"
+            )
+
+        bounce_info = payload["bounce"]
+        if "action" not in bounce_info:
+            return HttpResponseBadRequest(
+                "submitted json bounce object missing 'action' key"
+            )
+
+        # The From address identifies the sending EmailAccount.
+        #
+        from_addr = payload.get("headers", {}).get("from", "")
+        if not from_addr:
+            logger.warning(
+                "ForwardEmail bounce webhook missing From header "
+                "(email_id=%s, server=%s)",
+                payload["email_id"],
+                server.domain_name,
+            )
+            return HttpResponseBadRequest(
+                "missing From address in bounce headers"
+            )
+
+        action = bounce_info["action"]
+        category = bounce_info.get("category", "")
+        # ForwardEmail currently uses "spam" as the only non-delivery category.
+        # When GH-223 migrates Postmark, additional BounceType values (e.g.
+        # UNSUBSCRIBE) will be added and this mapping will grow accordingly.
+        bounce_type = (
+            BounceType.SPAM if category == "spam" else BounceType.BOUNCE
+        )
+        is_transient = action == "defer"
+
+        logger.info(
+            "forwardemail bounce hook: from=%s to=%s action=%s category=%s "
+            "server=%s",
+            from_addr,
+            payload["recipient"],
+            action,
+            category,
             server.domain_name,
         )
+
+        try:
+            ea = EmailAccount.objects.get(email_address=from_addr)
+        except EmailAccount.DoesNotExist:
+            logger.warning(
+                "ForwardEmail %s for unrecognized From address '%s' "
+                "(server=%s, email_id=%s, to=%s) - ignored",
+                bounce_type,
+                from_addr,
+                server.domain_name,
+                payload["email_id"],
+                payload["recipient"],
+            )
+            return JsonResponse(
+                {
+                    "status": "all good",
+                    "message": (
+                        f"From address '{from_addr}' is not an EmailAccount "
+                        f"on server {server.domain_name}. Bounce ignored."
+                    ),
+                }
+            )
+
+        description = bounce_info.get("message", payload.get("message", ""))
+        status_code = bounce_info.get("status", "")
+
+        event = BounceEvent(
+            email_from=from_addr,
+            email_to=payload["recipient"],
+            subject="",
+            transient=is_transient,
+            bounce_type=bounce_type,
+            description=description,
+            details=status_code,
+            # ForwardEmail has no "inactive recipient" concept and does not
+            # provide the original message body in the bounce payload.
+        )
+        process_bounce(ea.pk, event)
+
+        event_label = bounce_type
         return JsonResponse(
             {
-                "status": "not supported",
-                "message": f"{self.PROVIDER_NAME} is a receive-only provider",
+                "status": "all good",
+                "message": (
+                    f"received {event_label} for "
+                    f"{server.domain_name}/{ea.email_address}"
+                ),
             }
         )
 
@@ -918,23 +1143,30 @@ class ForwardEmailBackend(ProviderBackend):
         self, request: HttpRequest, server: "Server"
     ) -> HttpResponse:
         """
-        Handle spam complaint webhook - NOT SUPPORTED.
+        Handle spam complaint webhook - NOT APPLICABLE for ForwardEmail.
 
-        ForwardEmail is a receive-only provider and does not send email,
-        so spam complaints are not applicable.
+        ForwardEmail delivers spam complaints via the bounce webhook
+        (``bounce["bounce"]["category"] == "spam"``), not a dedicated spam
+        endpoint.  This handler should never be called in production; it
+        exists only to satisfy the ProviderBackend interface.
 
         Returns:
-            JsonResponse indicating this webhook is not supported
+            JsonResponse indicating this endpoint is not applicable
         """
         logger.warning(
-            "Received spam webhook for receive-only provider %s on server %s",
+            "Received spam webhook request for %s on server %s - "
+            "ForwardEmail delivers spam via the bounce webhook, not here",
             self.PROVIDER_NAME,
             server.domain_name,
         )
         return JsonResponse(
             {
-                "status": "not supported",
-                "message": f"{self.PROVIDER_NAME} is a receive-only provider",
+                "status": "not applicable",
+                "message": (
+                    "ForwardEmail delivers spam complaints via the bounce "
+                    "webhook (bounce.category=spam), not a dedicated spam "
+                    "endpoint."
+                ),
             }
         )
 
@@ -1031,41 +1263,36 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
-    def create_domain(self, server: "Server") -> dict[str, Any]:
-        """
-        Create a domain in forwardemail.net.
-
-        This is a convenience method that delegates to create_update_domain().
-        If the domain already exists, it will return its info without error.
-
-        Args:
-            server: The Server instance whose domain to create
-
-        Returns:
-            Domain info dict from forwardemail.net API
-
-        Note:
-            This method is idempotent - calling it multiple times is safe.
-        """
-        return self.create_update_domain(server)
-
-    ####################################################################
-    #
-    def create_update_domain(self, server: "Server") -> dict[str, Any]:
+    def create_update_domain(
+        self, server: "Server", dry_run: bool = False
+    ) -> bool:
         """
         Create or update a domain in forwardemail.net.
 
-        If the domain does not yet exist it is created with
-        DEFAULT_DOMAIN_SETTINGS.  If it already exists its live settings are
-        fetched and compared against DEFAULT_DOMAIN_SETTINGS; any settings that
-        differ are updated with a single PUT request.
+        If the domain does not yet exist it is created with the desired
+        settings.  If it already exists its live settings are fetched and
+        compared; any settings that differ are updated with a single PUT
+        request.
+
+        The desired settings are ``DEFAULT_DOMAIN_SETTINGS`` plus the
+        server-specific ``bounce_webhook`` URL, which is computed here
+        because it depends on the server's domain name.
 
         Args:
             server: The Server instance whose domain to create or update
+            dry_run: If True, log what would change but skip API writes.
 
         Returns:
-            Domain info dict from forwardemail.net API
+            True if changes were made (or would be made in dry_run),
+            False if already correct.
         """
+        # Merge static defaults with the server-specific bounce webhook URL.
+        #
+        desired = {
+            **self.DEFAULT_DOMAIN_SETTINGS,
+            "bounce_webhook": self.get_bounce_webhook_url(server),
+        }
+
         try:
             domain_id = self.cache.get_domain_id(server.domain_name)
 
@@ -1074,33 +1301,46 @@ class ForwardEmailBackend(ProviderBackend):
             domain_info = r.json()
 
             to_update = {
-                k: v
-                for k, v in self.DEFAULT_DOMAIN_SETTINGS.items()
-                if domain_info.get(k) != v
+                k: v for k, v in desired.items() if domain_info.get(k) != v
             }
 
             if to_update:
-                logger.info(
-                    "Domain '%s' settings updated: %r",
-                    server.domain_name,
-                    to_update,
-                )
-                r = self.api.req(
-                    HTTPMethod.PUT, f"v1/domains/{domain_id}", data=to_update
-                )
-                domain_info = r.json()
-            else:
-                logger.debug(
-                    "Domain '%s' already exists on forwardemail.net (ID: %s)",
-                    server.domain_name,
-                    domain_id,
-                )
+                if dry_run:
+                    logger.info(
+                        "Domain '%s' would be updated (dry run): %r",
+                        server.domain_name,
+                        to_update,
+                    )
+                else:
+                    logger.info(
+                        "Domain '%s' settings updated: %r",
+                        server.domain_name,
+                        to_update,
+                    )
+                    self.api.req(
+                        HTTPMethod.PUT,
+                        f"v1/domains/{domain_id}",
+                        data=to_update,
+                    )
+                return True
 
-            return domain_info
+            logger.debug(
+                "Domain '%s' already up to date on forwardemail.net (ID: %s)",
+                server.domain_name,
+                domain_id,
+            )
+            return False
 
         except KeyError:
             # Domain doesn't exist, create it
             pass
+
+        if dry_run:
+            logger.info(
+                "Domain '%s' would be created on forwardemail.net (dry run)",
+                server.domain_name,
+            )
+            return True
 
         # Create the domain with our desired settings.
         # NOTE: `catchall` is a create-only field; it cannot be set via PUT.
@@ -1108,7 +1348,7 @@ class ForwardEmailBackend(ProviderBackend):
         data = {
             "domain": server.domain_name,
             "catchall": False,
-            **self.DEFAULT_DOMAIN_SETTINGS,
+            **desired,
         }
         r = self.api.req(HTTPMethod.POST, "v1/domains", data=data)
         domain_info = r.json()
@@ -1120,7 +1360,7 @@ class ForwardEmailBackend(ProviderBackend):
             domain_info["id"],
         )
 
-        return domain_info
+        return True
 
     ####################################################################
     #
@@ -1155,6 +1395,33 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
+    def get_bounce_webhook_url(self, server: "Server") -> str:
+        """
+        Construct the domain-level bounce webhook URL for a server.
+
+        This URL is registered on the forwardemail.net domain as the
+        ``bounce_webhook`` field so that both delivery bounces and spam
+        complaints are POSTed here.
+
+        Args:
+            server: The Server instance to get the bounce webhook URL for
+
+        Returns:
+            The full bounce webhook URL
+        """
+        webhook_path = reverse(
+            "as_email:hook_bounce",
+            kwargs={
+                "provider_name": self.PROVIDER_NAME,
+                "domain_name": server.domain_name,
+            },
+        )
+        base_url = f"https://{settings.SITE_NAME}"
+        webhook_url_base = urljoin(base_url, webhook_path)
+        return f"{webhook_url_base}?{urlencode({'api_key': server.api_key})}"
+
+    ####################################################################
+    #
     def get_webhook_url(self, email_account: "EmailAccount") -> str:
         """
         Construct the incoming webhook URL for an email account.
@@ -1180,7 +1447,8 @@ class ForwardEmailBackend(ProviderBackend):
         base_url = f"https://{settings.SITE_NAME}"
         webhook_url_base = urljoin(base_url, webhook_path)
         webhook_url = (
-            f"{webhook_url_base}?api_key={email_account.server.api_key}"
+            f"{webhook_url_base}?"
+            f"{urlencode({'api_key': email_account.server.api_key})}"
         )
 
         return webhook_url

@@ -179,14 +179,17 @@ def test_alias_to_delivery_self_loop(
 
 ####################################################################
 #
-def test_email_account_email_via_smtp(
-    email_account_factory, email_factory, smtp
-):
+def test_server_send_email(email_account_factory, email_factory, smtp):
+    """
+    GIVEN: a server with a configured send provider
+    WHEN:  send_email() is called with explicit email_from and rcpt_tos
+    THEN:  the email is sent via the provider backend
+    """
     ea = email_account_factory()
     msg = email_factory(frm=ea.email_address)
     from_addr = ea.email_address
     rcpt_tos = [msg["To"]]
-    ea.server.send_email_via_smtp(from_addr, rcpt_tos, msg)
+    ea.server.send_email(msg, email_from=from_addr, rcpt_tos=rcpt_tos)
 
     # NOTE: in the models object we create a smtp_client. On the smtp_client
     #       the only thing we care about is that the `sendmail` method was
@@ -207,21 +210,22 @@ def test_email_account_email_via_smtp(
 
 ####################################################################
 #
-def test_email_account_email_via_smtp_invalid_from(
+def test_server_send_email_invalid_from(
     email_account_factory, email_factory, faker
 ):
     """
-    You can only send email from the domain name that the server has.
+    GIVEN: a server with a configured send provider
+    WHEN:  send_email() is called with an email_from that doesn't match
+           the server's domain
+    THEN:  a ValueError is raised
     """
     ea = email_account_factory()
     msg = email_factory(frm=ea.email_address)
     with pytest.raises(ValueError):
-        ea.server.send_email_via_smtp(
-            faker.email(),
-            [
-                msg["To"],
-            ],
+        ea.server.send_email(
             msg,
+            email_from=faker.email(),
+            rcpt_tos=[msg["To"]],
         )
 
 

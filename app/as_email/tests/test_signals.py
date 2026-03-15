@@ -303,3 +303,53 @@ class TestProviderSignals:
             mock_sync.assert_any_call(
                 server.pk, provider.backend_name, enabled=False
             )
+
+    ####################################################################
+    #
+    def test_handle_send_provider_changed_fires_when_send_provider_set(
+        self,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN: a server with no send_provider
+        WHEN:  send_provider is set to a provider and saved
+        THEN:  provider_create_update_server is called with the server pk
+               and the new provider's backend name
+        """
+        server = server_factory(send_provider=None, receive_providers=[])
+        new_provider = provider_factory()
+
+        mock_task = mocker.patch(
+            "as_email.signals.provider_create_update_server"
+        )
+        server.send_provider = new_provider
+        server.save()
+
+        mock_task.assert_called_once_with(server.pk, new_provider.backend_name)
+
+    ####################################################################
+    #
+    def test_handle_send_provider_changed_does_not_fire_on_unrelated_save(
+        self,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN: a server with an existing send_provider
+        WHEN:  the server is saved without changing send_provider
+        THEN:  provider_create_update_server is not called
+        """
+        server = server_factory(send_provider=None, receive_providers=[])
+        provider = provider_factory()
+        server.send_provider = provider
+        server.save()
+
+        mock_task = mocker.patch(
+            "as_email.signals.provider_create_update_server"
+        )
+        server.save()
+
+        mock_task.assert_not_called()

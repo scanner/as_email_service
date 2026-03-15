@@ -6,6 +6,7 @@ Test the Postmark provider backend.
 # system imports
 #
 import json
+from email.message import EmailMessage
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -42,9 +43,9 @@ def test_postmark_backend_send_email_smtp_success(server_with_token, smtp):
 
     result = backend.send_email_smtp(
         server=server,
+        message=message,
         email_from=email_from,
         rcpt_tos=rcpt_tos,
-        msg=message,
         spool_on_retryable=False,
     )
 
@@ -75,9 +76,9 @@ def test_postmark_backend_send_email_smtp_wrong_domain(server_with_token):
     with pytest.raises(ValueError) as exc_info:
         backend.send_email_smtp(
             server=server,
+            message=message,
             email_from=email_from,
             rcpt_tos=rcpt_tos,
-            msg=message,
         )
 
     assert "Domain name" in str(exc_info.value)
@@ -113,9 +114,9 @@ def test_postmark_backend_send_email_smtp_missing_token(
     with pytest.raises(KeyError) as exc_info:
         backend.send_email_smtp(
             server=server,
+            message=message,
             email_from=email_from,
             rcpt_tos=rcpt_tos,
-            msg=message,
         )
 
     assert "token" in str(exc_info.value).lower()
@@ -148,9 +149,9 @@ def test_postmark_backend_send_email_smtp_exception_spools(
 
     result = backend.send_email_smtp(
         server=server,
+        message=message,
         email_from=email_from,
         rcpt_tos=rcpt_tos,
-        msg=message,
         spool_on_retryable=True,
     )
 
@@ -742,3 +743,63 @@ def test_postmark_backend_get_client_missing_token(server_factory, settings):
         backend._get_client(server)
 
     assert "token" in str(exc_info.value).lower()
+
+
+########################################################################
+#
+def test_postmark_backend_send_email_dispatches_to_smtp(
+    server_with_token, email_factory, mocker
+) -> None:
+    """
+    GIVEN: a PostmarkBackend and a message
+    WHEN:  send_email() is called with email_from and rcpt_tos
+    THEN:  it delegates to send_email_smtp() passing them through
+    """
+    server = server_with_token(provider_name="postmark")
+    backend = PostmarkBackend()
+    from_addr = f"sender@{server.domain_name}"
+    to_addr = "recipient@example.com"
+    msg = email_factory(msg_from=from_addr, to=to_addr)
+
+    mock_send_smtp = mocker.patch.object(
+        backend, "send_email_smtp", return_value=True
+    )
+
+    result = backend.send_email(
+        server=server, message=msg, email_from=from_addr, rcpt_tos=[to_addr]
+    )
+
+    assert result is True
+    mock_send_smtp.assert_called_once_with(
+        server, msg, from_addr, [to_addr], True
+    )
+
+
+########################################################################
+#
+def test_postmark_backend_send_email_passes_none_when_omitted(
+    server_with_token, email_factory, mocker
+) -> None:
+    """
+    GIVEN: a message with To, Cc, and Bcc recipients
+    WHEN:  send_email() is called without explicit email_from/rcpt_tos
+    THEN:  None values are passed through to send_email_smtp() which
+           calls resolve_envelope() to extract them from headers
+    """
+    server = server_with_token(provider_name="postmark")
+    backend = PostmarkBackend()
+    from_addr = f"sender@{server.domain_name}"
+    msg = EmailMessage()
+    msg["From"] = from_addr
+    msg["To"] = "to@example.com"
+    msg["Cc"] = "cc@example.com"
+    msg["Bcc"] = "bcc@example.com"
+    msg.set_content("body")
+
+    mock_send_smtp = mocker.patch.object(
+        backend, "send_email_smtp", return_value=True
+    )
+
+    backend.send_email(server=server, message=msg)
+
+    mock_send_smtp.assert_called_once_with(server, msg, None, None, True)

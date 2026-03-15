@@ -9,6 +9,7 @@ import email.message
 import json
 import logging
 import smtplib
+from enum import StrEnum
 from typing import Any, Sequence
 
 # 3rd party imports
@@ -38,7 +39,12 @@ from ..models import (
     Server,
 )
 from ..provider_tokens import get_provider_token
-from ..providers.base import Capability, EmailAccountInfo, ProviderBackend
+from ..providers.base import (
+    Capability,
+    EmailAccountInfo,
+    ProviderBackend,
+    resolve_envelope,
+)
 from ..utils import (
     get_smtp_client,
     sendmail,
@@ -50,6 +56,16 @@ User = get_user_model()
 fake = Faker()
 
 logger = logging.getLogger("as_email.tests.factories")
+
+
+########################################################################
+########################################################################
+#
+class SendMethod(StrEnum):
+    """Transport method for DummyProviderBackend.send_email() dispatch."""
+
+    SMTP = "smtp"
+    API = "api"
 
 
 ########################################################################
@@ -83,18 +99,25 @@ class DummyProviderBackend(ProviderBackend):
 
     PROVIDER_NAME = "dummy"
     CAPABILITIES: frozenset[Capability] = frozenset(
-        {Capability.MANAGES_EMAIL_ACCOUNTS}
+        {Capability.MANAGES_EMAIL_ACCOUNTS, Capability.SMTP_RELAY}
     )
 
     ####################################################################
     #
-    def __init__(self) -> None:
+    def __init__(self, send_method: SendMethod = SendMethod.SMTP) -> None:
         """
         Initialize the dummy provider.
 
         Uses shared module-level state so all instances within a test
         share the same domains and email_accounts.
+
+        Args:
+            send_method: Which transport ``send_email()`` dispatches to.
+                ``SendMethod.SMTP`` (default) routes to
+                ``send_email_smtp()``; ``SendMethod.API`` routes to
+                ``send_email_api()``.
         """
+        self._send_method = SendMethod(send_method)
         # Reference the shared state instead of creating new dicts
         self.domains = _DUMMY_PROVIDER_SHARED_STATE["domains"]
         self.email_accounts = _DUMMY_PROVIDER_SHARED_STATE["email_accounts"]
@@ -104,9 +127,9 @@ class DummyProviderBackend(ProviderBackend):
     def send_email_smtp(
         self,
         server: Server,
-        email_from: str,
-        rcpt_tos: list[str],
-        msg: email.message.EmailMessage,
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         """
@@ -116,9 +139,11 @@ class DummyProviderBackend(ProviderBackend):
 
         Args:
             server: The Server instance sending the email
-            email_from: The email address sending from (must match server domain)
-            rcpt_tos: List of recipient email addresses
-            msg: The email message to send
+            message: The email message to send
+            email_from: The email address sending from (must match server
+                domain), or None to extract from message headers
+            rcpt_tos: List of recipient email addresses, or None to extract
+                from message headers
             spool_on_retryable: If True, spool message on retryable failures
 
         Returns:
@@ -128,6 +153,7 @@ class DummyProviderBackend(ProviderBackend):
             ValueError: If email_from domain doesn't match server domain
             KeyError: If server token is not configured in settings
         """
+        email_from, rcpt_tos = resolve_envelope(message, email_from, rcpt_tos)
         if server.domain_name != email_from.split("@")[-1]:
             raise ValueError(
                 f"Domain name of {email_from} is not the same "
@@ -145,7 +171,9 @@ class DummyProviderBackend(ProviderBackend):
         try:
             smtp_client.starttls()
             smtp_client.login(token, token)
-            sendmail(smtp_client, msg, from_addr=email_from, to_addrs=rcpt_tos)
+            sendmail(
+                smtp_client, message, from_addr=email_from, to_addrs=rcpt_tos
+            )
         except smtplib.SMTPException as exc:
             logger.error(
                 "Mail from %s, to: %s, failed with exception: %r",
@@ -154,7 +182,7 @@ class DummyProviderBackend(ProviderBackend):
                 exc,
             )
             if spool_on_retryable:
-                spool_message(server.outgoing_spool_dir, msg.as_bytes())
+                spool_message(server.outgoing_spool_dir, message.as_bytes())
             return False
         finally:
             smtp_client.quit()
@@ -166,9 +194,29 @@ class DummyProviderBackend(ProviderBackend):
         self,
         server: "Server",
         message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
         spool_on_retryable: bool = True,
     ) -> bool:
         return True
+
+    ####################################################################
+    #
+    def send_email(
+        self,
+        server: "Server",
+        message: email.message.EmailMessage,
+        email_from: str | None = None,
+        rcpt_tos: list[str] | None = None,
+        spool_on_retryable: bool = True,
+    ) -> bool:
+        if self._send_method == SendMethod.API:
+            return self.send_email_api(
+                server, message, email_from, rcpt_tos, spool_on_retryable
+            )
+        return self.send_email_smtp(
+            server, message, email_from, rcpt_tos, spool_on_retryable
+        )
 
     ####################################################################
     #
@@ -220,33 +268,21 @@ class DummyProviderBackend(ProviderBackend):
 
     ####################################################################
     #
-    def create_domain(self, server: "Server") -> dict[str, Any]:
-        """
-        Create a domain in the dummy provider state.
-
-        Raises:
-            ValueError: If domain already exists
-        """
+    def create_update_domain(
+        self, server: "Server", dry_run: bool = False
+    ) -> bool:
+        """Create or update a domain in the dummy provider state."""
         if server.domain_name in self.domains:
-            raise ValueError(f"Domain {server.domain_name} already exists")
+            return False
 
-        domain_data = {
+        if dry_run:
+            return True
+
+        self.domains[server.domain_name] = {
             "id": f"dummy-{server.domain_name}",
             "domain": server.domain_name,
         }
-        self.domains[server.domain_name] = domain_data
-        return domain_data
-
-    ####################################################################
-    #
-    def create_update_domain(self, server: "Server") -> dict[str, Any]:
-        """Create or update a domain in the dummy provider state."""
-        if server.domain_name in self.domains:
-            # Update existing domain
-            return self.domains[server.domain_name]
-        else:
-            # Create new domain
-            return self.create_domain(server)
+        return True
 
     ####################################################################
     #
@@ -309,7 +345,7 @@ class DummyProviderBackend(ProviderBackend):
     ####################################################################
     #
     def delete_email_account_by_address(
-        self, email_address: str, domain_name: str
+        self, email_address: str, server: "Server"
     ) -> None:
         """Delete an email account by address from the dummy provider state."""
         self.email_accounts.pop(email_address, None)

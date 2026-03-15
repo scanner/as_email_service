@@ -612,8 +612,8 @@ def setup_dummy_provider_get_backend(
       continue working
 
     All DummyProviderBackend instances in a test share the same state, so if you
-    create a domain via provider.backend.create_domain(), it will be visible to
-    all other provider.backend instances in that test.
+    create a domain via provider.backend.create_update_domain(), it will be
+    visible to all other provider.backend instances in that test.
 
     Example:
         def test_shared_state(server_factory):
@@ -622,7 +622,7 @@ def setup_dummy_provider_get_backend(
             server2 = server_factory()
 
             # Create domain via server1's provider backend
-            server1.send_provider.backend.create_domain(server1)
+            server1.send_provider.backend.create_update_domain(server1)
 
             # Domain is visible via server2's provider backend
             assert server1.domain_name in server2.send_provider.backend.domains

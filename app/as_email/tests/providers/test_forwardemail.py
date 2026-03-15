@@ -10,15 +10,19 @@ import json
 import time
 from io import BytesIO
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 
 # 3rd party imports
 #
 import pytest
 from dirty_equals import IsPartialDict
+from django.conf import settings
 from django.http import HttpRequest
+from django.urls import reverse
 
 # Project imports
 #
+from as_email.providers.base import BounceType
 from as_email.providers.forwardemail import (
     APIClient,
     ForwardEmailBackend,
@@ -56,9 +60,9 @@ class TestForwardEmailBackend:
         self, server_factory, email_factory
     ) -> None:
         """
-        Given a ForwardEmail backend (receive-only provider)
-        When attempting to send email via SMTP
-        Then it should raise NotImplementedError
+        GIVEN: a ForwardEmail backend
+        WHEN:  attempting to send email via SMTP
+        THEN:  it should raise NotImplementedError
         """
         backend = ForwardEmailBackend()
         server = server_factory()
@@ -67,70 +71,226 @@ class TestForwardEmailBackend:
         with pytest.raises(NotImplementedError) as exc_info:
             backend.send_email_smtp(
                 server=server,
+                message=msg,
                 email_from="test@example.com",
                 rcpt_tos=["recipient@example.com"],
-                msg=msg,
             )
 
-        assert "receive-only provider" in str(exc_info.value)
-        assert "does not support sending email" in str(exc_info.value)
+        assert "does not support SMTP relay" in str(exc_info.value)
 
     ####################################################################
     #
-    def test_send_email_api_not_supported(
-        self, server_factory, email_factory
-    ) -> None:
-        """
-        Given a ForwardEmail backend (receive-only provider)
-        When attempting to send email via API
-        Then it should raise NotImplementedError
-        """
-        backend = ForwardEmailBackend()
-        server = server_factory()
-        msg = email_factory()
-
-        with pytest.raises(NotImplementedError) as exc_info:
-            backend.send_email_api(server=server, message=msg)
-
-        assert "receive-only provider" in str(exc_info.value)
-        assert "does not support sending email" in str(exc_info.value)
-
-    ####################################################################
-    #
-    def test_handle_bounce_webhook_not_supported(
+    def test_handle_bounce_webhook_invalid_json(
         self, server_factory, mocker, caplog
     ) -> None:
         """
-        Given a ForwardEmail backend (receive-only provider)
-        When receiving a bounce webhook
-        Then it should return a "not supported" response and log a warning
+        GIVEN: a bounce webhook request with invalid JSON body
+        WHEN:  handle_bounce_webhook is called
+        THEN:  a 400 response is returned and a warning is logged
         """
         backend = ForwardEmailBackend()
         server = server_factory()
         request = mocker.Mock(spec=HttpRequest)
+        request.body = b"not valid json{{"
 
         response = backend.handle_bounce_webhook(request, server)
 
-        # Verify response
-        response_data = json.loads(response.content)
-        assert response_data["status"] == "not supported"
-        assert "receive-only provider" in response_data["message"]
-
-        # Verify logging
-        assert (
-            "Received bounce webhook for receive-only provider" in caplog.text
-        )
-        assert server.domain_name in caplog.text
+        assert response.status_code == 400
+        assert "invalid json" in response.content.decode()
+        assert "Bad JSON" in caplog.text
 
     ####################################################################
     #
-    def test_handle_spam_webhook_not_supported(
+    @pytest.mark.parametrize(
+        "payload,expected_error",
+        [
+            pytest.param(
+                {"bounce": {"action": "reject"}, "recipient": "r@e.com"},
+                "missing expected keys",
+                id="missing-email_id",
+            ),
+            pytest.param(
+                {"email_id": "x", "bounce": {"action": "reject"}},
+                "missing expected keys",
+                id="missing-recipient",
+            ),
+            pytest.param(
+                {"email_id": "x", "recipient": "r@e.com"},
+                "missing expected keys",
+                id="missing-bounce",
+            ),
+            pytest.param(
+                {"email_id": "x", "recipient": "r@e.com", "bounce": {}},
+                "action",
+                id="bounce-missing-action",
+            ),
+        ],
+    )
+    def test_handle_bounce_webhook_missing_keys(
+        self, server_factory, mocker, payload, expected_error
+    ) -> None:
+        """
+        GIVEN: a bounce webhook request with required keys missing
+        WHEN:  handle_bounce_webhook is called
+        THEN:  a 400 response is returned
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        request = mocker.Mock(spec=HttpRequest)
+        request.body = json.dumps(payload).encode()
+
+        response = backend.handle_bounce_webhook(request, server)
+
+        assert response.status_code == 400
+        assert expected_error in response.content.decode()
+
+    ####################################################################
+    #
+    def test_handle_bounce_webhook_missing_from_header(
+        self, server_factory, mocker, faker, caplog
+    ) -> None:
+        """
+        GIVEN: a bounce webhook with no From header in the payload
+        WHEN:  handle_bounce_webhook is called
+        THEN:  a 400 response is returned and a warning is logged
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        payload = {
+            "email_id": faker.uuid4(),
+            "recipient": faker.email(),
+            "bounce": {"action": "reject"},
+            "headers": {},
+        }
+        request = mocker.Mock(spec=HttpRequest)
+        request.body = json.dumps(payload).encode()
+
+        response = backend.handle_bounce_webhook(request, server)
+
+        assert response.status_code == 400
+        assert "From address" in response.content.decode()
+        assert "missing From header" in caplog.text
+
+    ####################################################################
+    #
+    def test_handle_bounce_webhook_unknown_from_address(
+        self, server_factory, mocker, faker, caplog
+    ) -> None:
+        """
+        GIVEN: a bounce webhook whose From address is not a known EmailAccount
+        WHEN:  handle_bounce_webhook is called
+        THEN:  200 "all good" is returned and a warning is logged
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        payload = {
+            "email_id": faker.uuid4(),
+            "recipient": faker.email(),
+            "bounce": {"action": "reject", "category": "general"},
+            "headers": {"from": faker.email()},
+        }
+        request = mocker.Mock(spec=HttpRequest)
+        request.body = json.dumps(payload).encode()
+
+        response = backend.handle_bounce_webhook(request, server)
+
+        data = json.loads(response.content)
+        assert response.status_code == 200
+        assert data["status"] == "all good"
+        assert "not an EmailAccount" in data["message"]
+        assert "unrecognized From address" in caplog.text
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "action,category,expected_transient,expected_bounce_type",
+        [
+            pytest.param(
+                "reject", "general", False, BounceType.BOUNCE, id="hard-bounce"
+            ),
+            pytest.param(
+                "defer",
+                "general",
+                True,
+                BounceType.BOUNCE,
+                id="transient-bounce",
+            ),
+            pytest.param(
+                "reject", "spam", False, BounceType.SPAM, id="spam-complaint"
+            ),
+        ],
+    )
+    def test_handle_bounce_webhook_dispatches_process_bounce(
+        self,
+        server_factory,
+        email_account_factory,
+        mocker,
+        faker,
+        action,
+        category,
+        expected_transient,
+        expected_bounce_type,
+    ) -> None:
+        """
+        GIVEN: a valid bounce webhook for a known EmailAccount
+        WHEN:  handle_bounce_webhook is called with hard bounce / transient /
+               spam payloads
+        THEN:  process_bounce is called with a correctly normalized BounceEvent
+               and a 200 "all good" response is returned
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        ea = email_account_factory(server=server)
+
+        mock_process_bounce = mocker.patch(
+            "as_email.providers.forwardemail.process_bounce"
+        )
+
+        description = "Delivery failed: some reason"
+        status_code = "5.1.1"
+        payload = {
+            "email_id": faker.uuid4(),
+            "recipient": faker.email(),
+            "bounce": {
+                "action": action,
+                "category": category,
+                "message": description,
+                "status": status_code,
+            },
+            "headers": {"from": ea.email_address},
+        }
+        request = mocker.Mock(spec=HttpRequest)
+        request.body = json.dumps(payload).encode()
+
+        response = backend.handle_bounce_webhook(request, server)
+
+        data = json.loads(response.content)
+        assert response.status_code == 200
+        assert data["status"] == "all good"
+
+        mock_process_bounce.assert_called_once()
+        call_args = mock_process_bounce.call_args
+        assert call_args[0][0] == ea.pk
+        event = call_args[0][1]
+        assert event.email_from == ea.email_address
+        assert event.email_to == payload["recipient"]
+        assert event.transient is expected_transient
+        assert event.bounce_type is expected_bounce_type
+        assert event.description == description
+        assert event.details == status_code
+        assert event.inactive is False
+        assert event.original_message is None
+
+    ####################################################################
+    #
+    def test_handle_spam_webhook_not_applicable(
         self, server_factory, mocker, caplog
     ) -> None:
         """
-        Given a ForwardEmail backend (receive-only provider)
-        When receiving a spam complaint webhook
-        Then it should return a "not supported" response and log a warning
+        GIVEN: a ForwardEmail backend
+        WHEN:  handle_spam_webhook is called (should never happen in production)
+        THEN:  a 200 "not applicable" response is returned explaining that
+               spam arrives via the bounce webhook, and a warning is logged
         """
         backend = ForwardEmailBackend()
         server = server_factory()
@@ -138,13 +298,11 @@ class TestForwardEmailBackend:
 
         response = backend.handle_spam_webhook(request, server)
 
-        # Verify response
-        response_data = json.loads(response.content)
-        assert response_data["status"] == "not supported"
-        assert "receive-only provider" in response_data["message"]
-
-        # Verify logging
-        assert "Received spam webhook for receive-only provider" in caplog.text
+        data = json.loads(response.content)
+        assert response.status_code == 200
+        assert data["status"] == "not applicable"
+        assert "bounce webhook" in data["message"]
+        assert "bounce webhook" in caplog.text
         assert server.domain_name in caplog.text
 
     ####################################################################
@@ -504,18 +662,46 @@ class TestForwardEmailAPIMethods:
 
     ####################################################################
     #
+    def test_get_bounce_webhook_url(self, server_factory) -> None:
+        """
+        GIVEN: a server
+        WHEN:  get_bounce_webhook_url is called
+        THEN:  the returned URL exactly matches the hook_bounce URL for this
+               provider and domain, prefixed with https://SITE_NAME
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+
+        expected_path = reverse(
+            "as_email:hook_bounce",
+            kwargs={
+                "provider_name": "forwardemail",
+                "domain_name": server.domain_name,
+            },
+        )
+        expected_url = (
+            f"https://{settings.SITE_NAME}{expected_path}"
+            f"?{urlencode({'api_key': server.api_key})}"
+        )
+
+        assert backend.get_bounce_webhook_url(server) == expected_url
+
+    ####################################################################
+    #
     def test_create_update_domain_creates_new_domain(
         self, server_factory, use_fakeredis, mocker, faker
     ) -> None:
         """
         GIVEN: a server whose domain does not exist on forwardemail.net
         WHEN:  create_update_domain is called
-        THEN:  a single POST is issued with DEFAULT_DOMAIN_SETTINGS (no plan),
-               the domain ID is cached, and the domain info is returned
+        THEN:  a single POST is issued with DEFAULT_DOMAIN_SETTINGS plus
+               bounce_webhook URL (no plan), the domain ID is cached, and
+               True is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
         mock_redis = use_fakeredis
+        bounce_url = backend.get_bounce_webhook_url(server)
 
         mocker.patch.object(
             backend.cache, "get_domain_id", side_effect=KeyError()
@@ -533,6 +719,7 @@ class TestForwardEmailAPIMethods:
 
         result = backend.create_update_domain(server)
 
+        assert result is True
         backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
 
         mock_req.assert_called_once()
@@ -541,16 +728,15 @@ class TestForwardEmailAPIMethods:
         assert call_args[0][1] == "v1/domains"
         # plan must not appear in the POST data
         assert "plan" not in call_args[1]["data"]
-        # all DEFAULT_DOMAIN_SETTINGS fields must be present
+        # DEFAULT_DOMAIN_SETTINGS fields plus bounce_webhook must be present
         assert call_args[1]["data"] == IsPartialDict(
             domain=server.domain_name,
+            bounce_webhook=bounce_url,
             **ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS,
         )
 
         redis_key = f"forwardemail:domain:{server.domain_name}"
         assert mock_redis.get(redis_key) == domain_id.encode()
-        assert result["id"] == domain_id
-        assert result["name"] == server.domain_name
 
     ####################################################################
     #
@@ -558,23 +744,27 @@ class TestForwardEmailAPIMethods:
         self, server_factory, mocker, faker
     ) -> None:
         """
-        GIVEN: a domain that already exists with all settings matching DEFAULT_DOMAIN_SETTINGS
+        GIVEN: a domain that already exists with all settings matching,
+               including the bounce_webhook URL
         WHEN:  create_update_domain is called
-        THEN:  only one GET is issued (no PUT) and the domain info is returned
+        THEN:  only one GET is issued (no PUT) and False is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
         existing_domain_id = faker.uuid4()
+        bounce_url = backend.get_bounce_webhook_url(server)
 
         mocker.patch.object(
             backend.cache, "get_domain_id", return_value=existing_domain_id
         )
 
-        # GET response includes all DEFAULT_DOMAIN_SETTINGS at their correct values
+        # GET response includes DEFAULT_DOMAIN_SETTINGS and the correct
+        # bounce_webhook URL — nothing should be out of date.
         mock_response = mocker.MagicMock()
         mock_response.json.return_value = {
             "id": existing_domain_id,
             "name": server.domain_name,
+            "bounce_webhook": bounce_url,
             **ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS,
         }
         mock_req = mocker.patch.object(
@@ -583,10 +773,10 @@ class TestForwardEmailAPIMethods:
 
         result = backend.create_update_domain(server)
 
+        assert result is False
         backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
         mock_req.assert_called_once()
         assert mock_req.call_args[0][0] == HTTPMethod.GET
-        assert result["id"] == existing_domain_id
 
     ####################################################################
     #
@@ -595,20 +785,21 @@ class TestForwardEmailAPIMethods:
     ) -> None:
         """
         GIVEN: a domain that already exists but with one setting out of date
+               (bounce_webhook is already correct)
         WHEN:  create_update_domain is called
         THEN:  GET is followed by a PUT containing only the changed field,
-               the info log records the updated fields, and the updated domain
-               info is returned
+               the info log records the updated fields, and True is returned
         """
         backend = ForwardEmailBackend()
         server = server_factory()
         existing_domain_id = faker.uuid4()
+        bounce_url = backend.get_bounce_webhook_url(server)
 
         mocker.patch.object(
             backend.cache, "get_domain_id", return_value=existing_domain_id
         )
 
-        # GET response has has_virus_protection wrong
+        # GET response has has_virus_protection wrong; bounce_webhook is correct.
         current_settings = {**ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS}
         current_settings["has_virus_protection"] = False
 
@@ -616,12 +807,14 @@ class TestForwardEmailAPIMethods:
         get_response.json.return_value = {
             "id": existing_domain_id,
             "name": server.domain_name,
+            "bounce_webhook": bounce_url,
             **current_settings,
         }
         put_response = mocker.MagicMock()
         put_response.json.return_value = {
             "id": existing_domain_id,
             "name": server.domain_name,
+            "bounce_webhook": bounce_url,
             **ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS,
         }
         mock_req = mocker.patch.object(
@@ -630,17 +823,85 @@ class TestForwardEmailAPIMethods:
 
         result = backend.create_update_domain(server)
 
+        assert result is True
         assert mock_req.call_count == 2
         get_call, put_call = mock_req.call_args_list
         assert get_call[0][0] == HTTPMethod.GET
         assert put_call[0][0] == HTTPMethod.PUT
         assert f"v1/domains/{existing_domain_id}" in put_call[0][1]
-        # Only the changed field should be sent
+        # Only the changed field should be sent; bounce_webhook was already correct
         assert put_call[1]["data"] == {"has_virus_protection": True}
 
         assert "settings updated" in caplog.text
         assert server.domain_name in caplog.text
-        assert result["id"] == existing_domain_id
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "domain_exists,settings_drifted",
+        [
+            (False, False),  # new domain
+            (True, True),  # existing domain with drifted settings
+        ],
+        ids=["new_domain", "drifted_settings"],
+    )
+    def test_create_update_domain_dry_run_skips_writes(
+        self,
+        server_factory,
+        mocker,
+        faker,
+        caplog,
+        domain_exists: bool,
+        settings_drifted: bool,
+    ) -> None:
+        """
+        GIVEN: a domain that does not exist, or one with drifted settings
+        WHEN:  create_update_domain is called with dry_run=True
+        THEN:  no POST or PUT is issued, True is returned, and the log
+               message includes "dry run"
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        existing_domain_id = faker.uuid4()
+        bounce_url = backend.get_bounce_webhook_url(server)
+
+        if domain_exists:
+            mocker.patch.object(
+                backend.cache,
+                "get_domain_id",
+                return_value=existing_domain_id,
+            )
+            # Return settings with has_virus_protection drifted
+            current_settings = {**ForwardEmailBackend.DEFAULT_DOMAIN_SETTINGS}
+            current_settings["has_virus_protection"] = False
+            get_response = mocker.MagicMock()
+            get_response.json.return_value = {
+                "id": existing_domain_id,
+                "name": server.domain_name,
+                "bounce_webhook": bounce_url,
+                **current_settings,
+            }
+            mock_req = mocker.patch.object(
+                backend.api, "req", return_value=get_response
+            )
+        else:
+            mocker.patch.object(
+                backend.cache, "get_domain_id", side_effect=KeyError()
+            )
+            mock_req = mocker.patch.object(backend.api, "req")
+
+        result = backend.create_update_domain(server, dry_run=True)
+
+        assert result is True
+        assert "dry run" in caplog.text
+
+        if domain_exists:
+            # Only the GET should have been issued, no PUT
+            mock_req.assert_called_once()
+            assert mock_req.call_args[0][0] == HTTPMethod.GET
+        else:
+            # No API calls at all
+            mock_req.assert_not_called()
 
     ####################################################################
     #
@@ -2129,3 +2390,164 @@ class TestAPIClientReq:
             "data" not in kwargs
         ), "req() must not use data= (causes bool serialisation as 'True'/'False')"
         assert kwargs["json"] == payload
+
+
+########################################################################
+########################################################################
+#
+class TestForwardEmailSendEmailAPI:
+    """Tests for ForwardEmailBackend.send_email_api."""
+
+    ####################################################################
+    #
+    @pytest.fixture(autouse=True)
+    def mock_spool_message(self, mocker):
+        return mocker.patch("as_email.providers.forwardemail.spool_message")
+
+    ####################################################################
+    #
+    @pytest.fixture(autouse=True)
+    def mock_signal_tasks(self, mocker):
+        mocker.patch("as_email.signals.HUEY.enqueue")
+
+    ####################################################################
+    #
+    def test_send_email_api_success(
+        self, server_factory, email_factory, mocker, mock_spool_message
+    ) -> None:
+        """
+        GIVEN: a ForwardEmailBackend and a valid email message
+        WHEN:  send_email_api is called and the API accepts it
+        THEN:  it returns True and does not spool
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        msg = email_factory()
+        mock_req = mocker.patch.object(backend.api, "req")
+
+        result = backend.send_email_api(server=server, message=msg)
+
+        assert result is True
+        mock_req.assert_called_once_with(
+            HTTPMethod.POST,
+            "v1/emails",
+            data={"raw": msg.as_string(policy=email.policy.SMTP)},
+        )
+        mock_spool_message.assert_not_called()
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize("status_code", [408, 429, 500, 502, 503, 504])
+    def test_send_email_api_retryable_spools(
+        self,
+        server_factory,
+        email_factory,
+        mocker,
+        mock_spool_message,
+        caplog,
+        status_code,
+    ) -> None:
+        """
+        GIVEN: a ForwardEmailBackend and a retryable HTTP error from the API
+        WHEN:  send_email_api is called with spool_on_retryable=True
+        THEN:  it returns False, spools the message, and logs a warning
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        msg = email_factory()
+        error = HTTPError("url", status_code, "reason", {}, BytesIO(b""))
+        mocker.patch.object(backend.api, "req", side_effect=error)
+
+        result = backend.send_email_api(
+            server=server, message=msg, spool_on_retryable=True
+        )
+
+        assert result is False
+        mock_spool_message.assert_called_once_with(
+            server.outgoing_spool_dir, msg.as_bytes()
+        )
+        assert "Transient error" in caplog.text
+        assert "Spooling for retry" in caplog.text
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize("status_code", [408, 500])
+    def test_send_email_api_retryable_no_spool(
+        self,
+        server_factory,
+        email_factory,
+        mocker,
+        mock_spool_message,
+        caplog,
+        status_code,
+    ) -> None:
+        """
+        GIVEN: a ForwardEmailBackend and a retryable HTTP error from the API
+        WHEN:  send_email_api is called with spool_on_retryable=False
+        THEN:  it returns False, does NOT spool, and logs a warning
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        msg = email_factory()
+        error = HTTPError("url", status_code, "reason", {}, BytesIO(b""))
+        mocker.patch.object(backend.api, "req", side_effect=error)
+
+        result = backend.send_email_api(
+            server=server, message=msg, spool_on_retryable=False
+        )
+
+        assert result is False
+        mock_spool_message.assert_not_called()
+        assert "Not spooling" in caplog.text
+
+    ####################################################################
+    #
+    def test_send_email_api_non_retryable_raises(
+        self,
+        server_factory,
+        email_factory,
+        mocker,
+        mock_spool_message,
+        caplog,
+    ) -> None:
+        """
+        GIVEN: a ForwardEmailBackend and a non-retryable HTTP error (e.g. 422)
+        WHEN:  send_email_api is called
+        THEN:  the HTTPError is re-raised and the message is not spooled
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        msg = email_factory()
+        error = HTTPError("url", 422, "Unprocessable Entity", {}, BytesIO(b""))
+        mocker.patch.object(backend.api, "req", side_effect=error)
+
+        with pytest.raises(HTTPError) as exc_info:
+            backend.send_email_api(server=server, message=msg)
+
+        assert exc_info.value.code == 422
+        mock_spool_message.assert_not_called()
+        assert "Failed to send email" in caplog.text
+
+    ####################################################################
+    #
+    def test_send_email_dispatches_to_api(
+        self, server_factory, email_factory, mocker, mock_spool_message
+    ) -> None:
+        """
+        GIVEN: a ForwardEmailBackend
+        WHEN:  send_email() is called
+        THEN:  it delegates to send_email_api() with the same arguments
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        msg = email_factory()
+        mock_send_api = mocker.patch.object(
+            backend, "send_email_api", return_value=True
+        )
+
+        result = backend.send_email(
+            server=server, message=msg, spool_on_retryable=False
+        )
+
+        assert result is True
+        mock_send_api.assert_called_once_with(server, msg, None, None, False)

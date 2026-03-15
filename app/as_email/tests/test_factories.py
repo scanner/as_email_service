@@ -6,7 +6,6 @@ it returns the correct type of object.
 """
 # system imports
 #
-from email.mime.text import MIMEText
 
 # 3rd party imports
 #
@@ -56,25 +55,25 @@ def test_server_factory(server_factory):
 ####################################################################
 #
 def test_server_factory_client(
-    server_factory, settings, faker, postmark_client
+    server_factory, settings, faker, postmark_client, email_factory
 ):
     """
     Test that server factory creates servers that can send email.
 
-    Given: A server is created via server_factory
-    When: send_email() is called on the server
-    Then: The email is sent via the provider backend
+    GIVEN: a server is created via server_factory
+    WHEN:  send_email() is called on the server
+    THEN:  the email is sent via the provider backend
     """
     server = server_factory()
     # Set up EMAIL_SERVER_TOKENS for the provider backend
-    provider_name = "postmark"
+    provider_name = "dummy"
     if provider_name not in settings.EMAIL_SERVER_TOKENS:
         settings.EMAIL_SERVER_TOKENS[provider_name] = {}
     settings.EMAIL_SERVER_TOKENS[provider_name][
         server.domain_name
     ] = faker.uuid4()
 
-    message = MIMEText("Test message")
+    message = email_factory(msg_from=f"test@{server.domain_name}")
     server.send_email(message)
 
 
@@ -144,72 +143,44 @@ class TestDummyProviderBackend:
 
     ####################################################################
     #
-    def test_create_domain(self, dummy_provider, mocker, faker) -> None:
-        """
-        Given a domain name
-        When create_domain is called directly
-        Then the domain should be added to the provider's state
-        """
-        server = mocker.Mock()
-        server.domain_name = faker.domain_name()
-
-        result = dummy_provider.create_domain(server)
-
-        assert server.domain_name in dummy_provider.domains
-        assert result["domain"] == server.domain_name
-        assert result["id"] == f"dummy-{server.domain_name}"
-
-    ####################################################################
-    #
-    def test_create_domain_duplicate_raises_error(
-        self, dummy_provider, mocker, faker
+    @pytest.mark.parametrize(
+        "pre_create,dry_run,expected_return,expect_in_domains",
+        [
+            (False, False, True, True),  # new domain, real run
+            (True, False, False, True),  # already exists, no change
+            (False, True, True, False),  # new domain, dry run
+        ],
+        ids=["creates_new", "already_exists", "dry_run"],
+    )
+    def test_create_update_domain(
+        self,
+        dummy_provider,
+        mocker,
+        faker,
+        pre_create: bool,
+        dry_run: bool,
+        expected_return: bool,
+        expect_in_domains: bool,
     ) -> None:
         """
-        Given a domain that already exists
-        When create_domain is called again
-        Then it should raise a ValueError
+        GIVEN: a domain that does {not }exist on the provider
+        WHEN:  create_update_domain is called {with dry_run=True}
+        THEN:  returns True if changes were (or would be) made,
+               False if already correct; domain is only persisted
+               when dry_run is False and the domain was new
         """
         server = mocker.Mock()
         server.domain_name = faker.domain_name()
-        dummy_provider.create_domain(server)
 
-        with pytest.raises(ValueError, match="already exists"):
-            dummy_provider.create_domain(server)
+        if pre_create:
+            dummy_provider.create_update_domain(server)
 
-    ####################################################################
-    #
-    def test_create_update_domain_creates_new(
-        self, dummy_provider, mocker, faker
-    ) -> None:
-        """
-        Given a server with no existing domain
-        When create_update_domain is called
-        Then the domain should be created
-        """
-        server = mocker.Mock()
-        server.domain_name = faker.domain_name()
-        result = dummy_provider.create_update_domain(server)
+        result = dummy_provider.create_update_domain(server, dry_run=dry_run)
 
-        assert server.domain_name in dummy_provider.domains
-        assert result["domain"] == server.domain_name
-
-    ####################################################################
-    #
-    def test_create_update_domain_updates_existing(
-        self, dummy_provider, mocker, faker
-    ) -> None:
-        """
-        Given a domain that already exists
-        When create_update_domain is called
-        Then it should return the existing domain without error
-        """
-        server = mocker.Mock()
-        server.domain_name = faker.domain_name()
-        result1 = dummy_provider.create_domain(server)
-        result2 = dummy_provider.create_update_domain(server)
-
-        assert result1 == result2
-        assert len(dummy_provider.domains) == 1
+        assert result is expected_return
+        assert (
+            server.domain_name in dummy_provider.domains
+        ) is expect_in_domains
 
     ####################################################################
     #
@@ -221,7 +192,7 @@ class TestDummyProviderBackend:
         """
         server = mocker.Mock()
         server.domain_name = faker.domain_name()
-        dummy_provider.create_domain(server)
+        dummy_provider.create_update_domain(server)
         assert server.domain_name in dummy_provider.domains
 
         dummy_provider.delete_domain(server)
@@ -342,7 +313,7 @@ class TestDummyProviderBackend:
         dummy_provider.create_email_account(account)
 
         dummy_provider.delete_email_account_by_address(
-            account.email_address, account.server.domain_name
+            account.email_address, account.server
         )
         assert account.email_address not in dummy_provider.email_accounts
 
@@ -416,7 +387,10 @@ class TestDummyProviderBackend:
         }
 
         result = dummy_provider.send_email_smtp(
-            account.server, account.email_address, [faker.email()], msg
+            account.server,
+            msg,
+            email_from=account.email_address,
+            rcpt_tos=[faker.email()],
         )
         assert result is True
 
