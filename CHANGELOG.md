@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-03-15
+
+### Fixed
+
+- SMTP session exceptions from misbehaving or abruptly disconnecting clients are now logged at WARNING instead of ERROR, preventing spurious Sentry alerts
+
 ## [0.5.6] - 2026-03-09
 
 ### Added
