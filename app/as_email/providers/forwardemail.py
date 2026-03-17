@@ -1071,8 +1071,6 @@ class ForwardEmailBackend(ProviderBackend):
         action = bounce_info["action"]
         category = bounce_info.get("category", "")
         # ForwardEmail currently uses "spam" as the only non-delivery category.
-        # When GH-223 migrates Postmark, additional BounceType values (e.g.
-        # UNSUBSCRIBE) will be added and this mapping will grow accordingly.
         bounce_type = (
             BounceType.SPAM if category == "spam" else BounceType.BOUNCE
         )

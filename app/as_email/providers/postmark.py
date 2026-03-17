@@ -32,10 +32,10 @@ from ..models import EmailAccount
 from ..provider_tokens import get_provider_token
 from ..tasks import (
     dispatch_incoming_email,
-    process_email_bounce,
-    process_email_spam,
+    process_bounce,
 )
 from ..utils import (
+    BOUNCE_TYPES_BY_TYPE_CODE,
     get_smtp_client,
     msg_froms,
     sendmail,
@@ -44,6 +44,8 @@ from ..utils import (
     write_spooled_email,
 )
 from .base import (
+    BounceEvent,
+    BounceType,
     Capability,
     EmailAccountInfo,
     ProviderBackend,
@@ -381,6 +383,54 @@ class PostmarkBackend(ProviderBackend):
 
     ####################################################################
     #
+    def _bounce_payload_to_event(
+        self, payload: dict, bounce_type: BounceType
+    ) -> BounceEvent:
+        """
+        Normalize a Postmark bounce or spam webhook payload to a BounceEvent.
+
+        Postmark's bounce and spam webhooks share a similar payload structure.
+        This method extracts the relevant fields and determines whether the
+        event is transient by looking up the TypeCode in our bounce type table.
+
+        Args:
+            payload: The decoded JSON payload from Postmark's webhook.
+            bounce_type: Whether this is a BOUNCE or SPAM event.
+
+        Returns:
+            A BounceEvent suitable for the process_bounce task.
+        """
+        type_code = payload.get("TypeCode")
+        transient = False
+        if type_code is not None:
+            try:
+                type_code = int(type_code)
+            except (ValueError, TypeError):
+                type_code = 2048  # Unknown
+            if type_code in BOUNCE_TYPES_BY_TYPE_CODE:
+                transient = BOUNCE_TYPES_BY_TYPE_CODE[type_code]["transient"]
+            else:
+                logger.warning(
+                    "Received Postmark TypeCode %s which is not recognized. "
+                    "Assuming non-transient.",
+                    type_code,
+                )
+
+        return BounceEvent(
+            email_from=payload["From"],
+            email_to=payload["Email"],
+            subject=payload.get("Subject", ""),
+            transient=transient,
+            bounce_type=bounce_type,
+            description=payload.get("Description", ""),
+            details=payload.get("Details", ""),
+            inactive=payload.get("Inactive", False),
+            can_activate=payload.get("CanActivate", False),
+            original_message=payload.get("Content"),
+        )
+
+    ####################################################################
+    #
     def handle_bounce_webhook(
         self, request: HttpRequest, server: "Server"
     ) -> HttpResponse:
@@ -410,10 +460,7 @@ class PostmarkBackend(ProviderBackend):
         # we expect.
         #
         if not all(
-            [
-                x in bounce
-                for x in ("From", "Type", "ID", "Email", "Description")
-            ]
+            x in bounce for x in ("From", "Type", "ID", "Email", "Description")
         ):
             return HttpResponseBadRequest(
                 "submitted json missing expected keys"
@@ -455,11 +502,11 @@ class PostmarkBackend(ProviderBackend):
                 }
             )
 
-        # We do the rest of the processing in an async huey task (this will involve
-        # querying postmark's bounce API, and sending a notification email to the
-        # email account in question.)
+        # Normalize the Postmark bounce payload to a BounceEvent and dispatch
+        # to the provider-agnostic process_bounce task.
         #
-        process_email_bounce(ea.pk, bounce)
+        event = self._bounce_payload_to_event(bounce, BounceType.BOUNCE)
+        process_bounce(ea.pk, event)
 
         return JsonResponse(
             {
@@ -499,19 +546,17 @@ class PostmarkBackend(ProviderBackend):
         # we expect.
         #
         if not all(
-            [
-                x in spam
-                for x in (
-                    "From",
-                    "Type",
-                    "TypeCode",
-                    "Details",
-                    "Subject",
-                    "ID",
-                    "Email",
-                    "Description",
-                )
-            ]
+            x in spam
+            for x in (
+                "From",
+                "Type",
+                "TypeCode",
+                "Details",
+                "Subject",
+                "ID",
+                "Email",
+                "Description",
+            )
         ):
             logger.warning(
                 "submitted json missing expected keys, message: %r", spam
@@ -574,11 +619,11 @@ class PostmarkBackend(ProviderBackend):
                 }
             )
 
-        # We do the rest of the processing in an async huey task (this will involve
-        # querying postmark's spam API, and sending a notification email to the
-        # email account in question.)
+        # Normalize the Postmark spam payload to a BounceEvent and dispatch
+        # to the provider-agnostic process_bounce task.
         #
-        process_email_spam(ea.pk, spam)
+        event = self._bounce_payload_to_event(spam, BounceType.SPAM)
+        process_bounce(ea.pk, event)
 
         return JsonResponse(
             {
