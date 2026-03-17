@@ -91,8 +91,7 @@ class BounceType(StrEnum):
     SPAM:   A spam complaint — the recipient reported the message as
         spam.  Always non-transient.
 
-    New categories (e.g. UNSUBSCRIBE) should be added here as provider
-    backends are migrated to the unified BounceEvent path (GH-223).
+    New categories (e.g. UNSUBSCRIBE) can be added here as needed.
     """
 
     BOUNCE = "bounce"

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-16
+
+### Changed
+
+- Postmark bounce and spam webhooks now use the unified `process_bounce` Huey task via `BounceEvent`, replacing the Postmark-specific `process_email_bounce` and `process_email_spam` tasks (GH-223)
+
+### Removed
+
+- `process_email_bounce` and `process_email_spam` Huey tasks; all providers now use the provider-agnostic `process_bounce` task
+
 ## [0.6.0] - 2026-03-14
 
 ### Added

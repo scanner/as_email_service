@@ -18,6 +18,7 @@ from requests import RequestException
 
 # project imports
 #
+from ...providers.base import BounceType
 from ...providers.postmark import PostmarkBackend
 
 pytestmark = pytest.mark.django_db
@@ -475,14 +476,14 @@ def test_postmark_backend_handle_bounce_webhook_success(
     Given: A valid bounce webhook from Postmark
     When: handle_bounce_webhook() is called
     Then: A success JsonResponse is returned
-    And: The process_email_bounce task is queued
+    And: The process_bounce task is queued with a BounceEvent
     """
     server = server_factory()
     email_account = email_account_factory(server=server)
 
     # Mock the bounce processing task
     mock_process_bounce = mocker.patch(
-        "as_email.providers.postmark.process_email_bounce"
+        "as_email.providers.postmark.process_bounce"
     )
 
     backend = PostmarkBackend()
@@ -490,9 +491,14 @@ def test_postmark_backend_handle_bounce_webhook_success(
     bounce_payload = {
         "From": email_account.email_address,
         "Type": "HardBounce",
+        "TypeCode": 1,
         "ID": 12345,
         "Email": "bounced@example.com",
         "Description": "The server was unable to deliver your message",
+        "Details": "Test bounce details",
+        "Subject": "Test subject",
+        "Inactive": False,
+        "CanActivate": True,
     }
 
     request = rf.post(
@@ -508,10 +514,15 @@ def test_postmark_backend_handle_bounce_webhook_success(
     assert data["status"] == "all good"
     assert "received bounce" in data["message"]
 
-    # Verify bounce processing task was called
-    mock_process_bounce.assert_called_once_with(
-        email_account.pk, bounce_payload
-    )
+    # Verify process_bounce was called with a properly normalized BounceEvent
+    mock_process_bounce.assert_called_once()
+    call_args = mock_process_bounce.call_args[0]
+    assert call_args[0] == email_account.pk
+    event = call_args[1]
+    assert event.bounce_type == BounceType.BOUNCE
+    assert event.email_from == email_account.email_address
+    assert event.email_to == "bounced@example.com"
+    assert event.transient is False  # TypeCode 1 = HardBounce
 
 
 ########################################################################
@@ -531,7 +542,7 @@ def test_postmark_backend_handle_bounce_webhook_no_account(
 
     # Mock the bounce processing task
     mock_process_bounce = mocker.patch(
-        "as_email.providers.postmark.process_email_bounce"
+        "as_email.providers.postmark.process_bounce"
     )
 
     backend = PostmarkBackend()
@@ -606,14 +617,14 @@ def test_postmark_backend_handle_spam_webhook_success(
     Given: A valid spam complaint webhook from Postmark
     When: handle_spam_webhook() is called
     Then: A success JsonResponse is returned
-    And: The process_email_spam task is queued
+    And: The process_bounce task is queued with a BounceEvent
     """
     server = server_factory()
     email_account = email_account_factory(server=server)
 
-    # Mock the spam processing task
-    mock_process_spam = mocker.patch(
-        "as_email.providers.postmark.process_email_spam"
+    # Mock the bounce processing task
+    mock_process_bounce = mocker.patch(
+        "as_email.providers.postmark.process_bounce"
     )
 
     backend = PostmarkBackend()
@@ -643,8 +654,15 @@ def test_postmark_backend_handle_spam_webhook_success(
     assert data["status"] == "all good"
     assert "received spam" in data["message"]
 
-    # Verify spam processing task was called
-    mock_process_spam.assert_called_once_with(email_account.pk, spam_payload)
+    # Verify process_bounce was called with a properly normalized BounceEvent
+    mock_process_bounce.assert_called_once()
+    call_args = mock_process_bounce.call_args[0]
+    assert call_args[0] == email_account.pk
+    event = call_args[1]
+    assert event.bounce_type == BounceType.SPAM
+    assert event.email_from == email_account.email_address
+    assert event.email_to == "complained@example.com"
+    assert event.transient is False  # TypeCode 512 = SpamNotification
 
 
 ########################################################################
@@ -657,16 +675,16 @@ def test_postmark_backend_handle_spam_webhook_invalid_typecode(
 
     Given: A spam webhook with non-integer TypeCode
     When: handle_spam_webhook() is called
-    Then: The TypeCode is set to 2048 (unknown)
+    Then: The TypeCode is normalized to 2048 (unknown)
     And: A success response is returned
-    And: The spam processing task is called with corrected TypeCode
+    And: The process_bounce task is called with a non-transient BounceEvent
     """
     server = server_factory()
     email_account = email_account_factory(server=server)
 
-    # Mock the spam processing task
-    mock_process_spam = mocker.patch(
-        "as_email.providers.postmark.process_email_spam"
+    # Mock the bounce processing task
+    mock_process_bounce = mocker.patch(
+        "as_email.providers.postmark.process_bounce"
     )
 
     backend = PostmarkBackend()
@@ -693,11 +711,121 @@ def test_postmark_backend_handle_spam_webhook_invalid_typecode(
 
     assert response.status_code == 200
 
-    # Verify spam processing task was called with corrected TypeCode
-    mock_process_spam.assert_called_once()
-    call_args = mock_process_spam.call_args[0]
-    assert call_args[0] == email_account.pk
-    assert call_args[1]["TypeCode"] == 2048  # Should be set to 2048 for unknown
+    # Invalid TypeCode should be treated as non-transient
+    mock_process_bounce.assert_called_once()
+    event = mock_process_bounce.call_args[0][1]
+    assert event.transient is False
+    assert event.bounce_type == BounceType.SPAM
+
+
+########################################################################
+#
+@pytest.mark.parametrize(
+    "type_code,expected_transient",
+    [
+        pytest.param(2, True, id="transient-typecode"),
+        pytest.param(99999, False, id="unrecognized-typecode"),
+        pytest.param(None, False, id="absent-typecode"),
+    ],
+)
+def test_postmark_backend_handle_bounce_webhook_typecode_transient(
+    rf,
+    server_factory,
+    email_account_factory,
+    mocker,
+    type_code,
+    expected_transient,
+) -> None:
+    """
+    Given: A bounce webhook with various TypeCode values
+    When: handle_bounce_webhook() normalizes the payload
+    Then: The BounceEvent.transient field reflects the TypeCode category
+    """
+    server = server_factory()
+    email_account = email_account_factory(server=server)
+
+    mock_process_bounce = mocker.patch(
+        "as_email.providers.postmark.process_bounce"
+    )
+
+    backend = PostmarkBackend()
+
+    bounce_payload = {
+        "From": email_account.email_address,
+        "Type": "Transient",
+        "ID": 12345,
+        "Email": "bounced@example.com",
+        "Description": "Test bounce",
+    }
+    if type_code is not None:
+        bounce_payload["TypeCode"] = type_code
+
+    request = rf.post(
+        f"/hook/postmark/bounce/{server.domain_name}/",
+        data=json.dumps(bounce_payload),
+        content_type="application/json",
+    )
+
+    response = backend.handle_bounce_webhook(request, server)
+
+    assert response.status_code == 200
+    event = mock_process_bounce.call_args[0][1]
+    assert event.transient is expected_transient
+
+
+########################################################################
+#
+def test_postmark_backend_handle_bounce_webhook_all_fields_mapped(
+    rf, server_factory, email_account_factory, mocker
+) -> None:
+    """
+    Given: A bounce webhook with all optional Postmark fields populated
+    When: handle_bounce_webhook() normalizes the payload
+    Then: Every BounceEvent field is correctly mapped from the payload
+    """
+    server = server_factory()
+    email_account = email_account_factory(server=server)
+
+    mock_process_bounce = mocker.patch(
+        "as_email.providers.postmark.process_bounce"
+    )
+
+    backend = PostmarkBackend()
+
+    bounce_payload = {
+        "From": email_account.email_address,
+        "Type": "HardBounce",
+        "TypeCode": 1,
+        "ID": 12345,
+        "Email": "bounced@example.com",
+        "Description": "The server was unable to deliver your message",
+        "Details": "smtp; 550 5.1.1 unknown user",
+        "Subject": "Important message",
+        "Inactive": True,
+        "CanActivate": True,
+        "Content": "Original message body",
+    }
+
+    request = rf.post(
+        f"/hook/postmark/bounce/{server.domain_name}/",
+        data=json.dumps(bounce_payload),
+        content_type="application/json",
+    )
+
+    response = backend.handle_bounce_webhook(request, server)
+
+    assert response.status_code == 200
+    event = mock_process_bounce.call_args[0][1]
+    assert event.email_from == email_account.email_address
+    assert event.email_to == "bounced@example.com"
+    assert event.bounce_type == BounceType.BOUNCE
+    assert event.transient is False
+    assert event.subject == "Important message"
+    assert event.description == "The server was unable to deliver your message"
+    assert event.details == "smtp; 550 5.1.1 unknown user"
+    assert event.inactive is True
+    assert event.can_activate is True
+    assert event.original_message == "Original message body"
 
 
 ########################################################################
