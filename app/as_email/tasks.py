@@ -10,6 +10,7 @@ import email
 import email.policy
 import json
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import cast
 import aiospamc
 import pytz
 import redis as redis_module
+import requests.exceptions
 from django.conf import settings
 from django.core.mail import send_mail
 from huey import crontab
@@ -72,6 +74,23 @@ DELIVERY_NOTIFY_SUPPRESS_SECONDS = 86400  # 24 h
 #
 BASE_RETRY_INTERVAL_SECONDS = 600  # 10 minutes (matches task crontab)
 MAX_RETRY_BACKOFF_SECONDS = 14400  # 4 hours
+
+# EmailAccount/alias sync: minimum interval between successful syncs for a
+# given server/provider pair.  The hourly cron skips pairs synced more
+# recently, spreading work across runs instead of bursting all at once.
+#
+ALIAS_SYNC_INTERVAL_SECONDS = 14400  # 4 hours
+
+# If a server/provider pair has not had a successful EmailAccount/alias sync
+# in this window, log an error (which triggers a Sentry alert).
+#
+ALIAS_SYNC_STALE_THRESHOLD_SECONDS = 86400  # 24 hours
+
+# Maximum number of server/provider pairs to run EmailAccount/alias sync for
+# per hourly run.  Keeps API request bursts small; remaining pairs are picked
+# up in subsequent runs.
+#
+ALIAS_SYNC_MAX_PER_RUN = 3
 
 # Keywords in exception messages that indicate an IMAP authentication failure
 # rather than a transient network / server problem.
@@ -1098,7 +1117,37 @@ def provider_delete_email_account(
 
 ####################################################################
 #
-@db_task(retries=3, retry_delay=10)
+def _alias_sync_last_ok(server_pk: int, provider_name: str) -> float | None:
+    """
+    Return the Unix timestamp of the last successful EmailAccount/alias sync
+    for the given server/provider pair, or None if never synced (or expired).
+    """
+    r = redis_client()
+    val = r.get(f"alias_sync:last_ok:{server_pk}:{provider_name}")
+    if val is None:
+        return None
+    return float(val)
+
+
+####################################################################
+#
+def _alias_sync_set_ok(server_pk: int, provider_name: str) -> None:
+    """
+    Record a successful EmailAccount/alias sync for the given server/provider
+    pair.  The key auto-expires after 48 hours so stale entries clean
+    themselves up.
+    """
+    r = redis_client()
+    r.set(
+        f"alias_sync:last_ok:{server_pk}:{provider_name}",
+        str(time.time()),
+        ex=172800,  # 48 hours
+    )
+
+
+####################################################################
+#
+@db_task()
 def provider_sync_server_email_accounts(
     server_pk: int, provider_name: str, enabled: bool
 ) -> None:
@@ -1133,10 +1182,21 @@ def provider_sync_server_email_accounts(
         remote_email_accounts = backend.list_email_accounts(server)
     except KeyError as e:
         # Domain does not exist on the provider — nothing to sync or clean up.
-        # Log at error level (no traceback) and return so Huey does not retry.
         logger.error(
             "Failed to list email accounts for server '%s' on provider '%s'"
             " (domain does not exist on provider): %r",
+            server.domain_name,
+            provider_name,
+            e,
+        )
+        return
+    except requests.exceptions.ConnectionError as e:
+        # Network-level failure (e.g. "Network is unreachable").  Don't
+        # retry — the hourly scheduling will pick this up next run, and
+        # the 24-hour staleness check will alert if it persists.
+        logger.warning(
+            "Network error syncing email accounts for server '%s' on "
+            "provider '%s': %r",
             server.domain_name,
             provider_name,
             e,
@@ -1275,6 +1335,11 @@ def provider_sync_server_email_accounts(
         error_count,
     )
 
+    # Record successful sync so the hourly scheduler knows this pair is
+    # up to date and can skip it until the interval elapses.
+    #
+    _alias_sync_set_ok(server_pk, provider_name)
+
 
 ####################################################################
 #
@@ -1309,6 +1374,14 @@ def provider_sync_all_server_domains() -> None:
                         server.domain_name,
                         provider_name,
                     )
+            except requests.exceptions.ConnectionError as e:
+                logger.warning(
+                    "Network error syncing domain config for server '%s' "
+                    "on provider '%s': %r",
+                    server.domain_name,
+                    provider_name,
+                    e,
+                )
             except Exception as e:
                 logger.exception(
                     "Failed to sync domain config for server '%s' on "
@@ -1324,14 +1397,22 @@ def provider_sync_all_server_domains() -> None:
 @db_periodic_task(crontab(minute="0"))
 def provider_sync_all_email_accounts() -> None:
     """
-    Hourly task to sync email accounts across all servers and configured
-    providers.
+    Hourly task to sync EmailAccount/alias records across providers.
 
-    Enqueues provider_sync_server_email_accounts for every server/provider
-    combination, passing enabled=True when the provider is configured as a
-    receive provider for that server and enabled=False when it is not.
+    Instead of syncing every server/provider pair on every run, this task
+    spreads the work: it collects all pairs that are *due* (not successfully
+    synced within ``ALIAS_SYNC_INTERVAL_SECONDS``), sorts them
+    least-recently-synced first, and dispatches at most
+    ``ALIAS_SYNC_MAX_PER_RUN`` per run.  Pairs that haven't been synced in
+    ``ALIAS_SYNC_STALE_THRESHOLD_SECONDS`` generate an error log (Sentry
+    alert).
     """
-    # Process each provider that supports email account management
+    now = time.time()
+
+    # Build a list of (last_ok, server, provider_name) for all due pairs.
+    #
+    due_pairs: list[tuple[float, Server, str]] = []
+
     for provider in Provider.objects.all():
         try:
             get_backend(provider.backend_name)
@@ -1343,22 +1424,77 @@ def provider_sync_all_email_accounts() -> None:
             )
             continue
 
-        servers_with_provider = Server.objects.filter(
-            receive_providers=provider
-        )
+        for server in Server.objects.filter(receive_providers=provider):
+            last_ok = _alias_sync_last_ok(server.pk, provider.backend_name)
 
-        for server in servers_with_provider:
-            try:
-                provider_sync_server_email_accounts(
-                    server.pk, provider.backend_name, enabled=True
-                )
-            except Exception as e:
-                logger.exception(
-                    "Failed to sync email accounts for server '%s' on provider '%s': %r",
+            # Skip pairs synced recently enough.
+            #
+            if (
+                last_ok is not None
+                and (now - last_ok) < ALIAS_SYNC_INTERVAL_SECONDS
+            ):
+                continue
+
+            # Alert if this pair has gone too long without a successful sync.
+            #
+            if (
+                last_ok is not None
+                and (now - last_ok) >= ALIAS_SYNC_STALE_THRESHOLD_SECONDS
+            ):
+                logger.error(
+                    "EmailAccount/alias sync for server '%s' on provider "
+                    "'%s' has not succeeded in %.0f hours",
                     server.domain_name,
                     provider.backend_name,
-                    e,
+                    (now - last_ok) / 3600,
                 )
+            elif last_ok is None:
+                logger.info(
+                    "No prior alias sync recorded for server '%s' on "
+                    "provider '%s'; scheduling sync",
+                    server.domain_name,
+                    provider.backend_name,
+                )
+
+            # Use 0.0 for never-synced so they sort first (highest priority).
+            #
+            due_pairs.append(
+                (
+                    last_ok if last_ok is not None else 0.0,
+                    server,
+                    provider.backend_name,
+                )
+            )
+
+    # Sort least-recently-synced first and cap the number we dispatch.
+    #
+    due_pairs.sort(key=lambda t: t[0])
+
+    dispatched = 0
+    for _last_ok, server, provider_name in due_pairs:
+        if dispatched >= ALIAS_SYNC_MAX_PER_RUN:
+            break
+        try:
+            provider_sync_server_email_accounts(
+                server.pk, provider_name, enabled=True
+            )
+            dispatched += 1
+        except Exception as e:
+            logger.exception(
+                "Failed to dispatch alias sync for server '%s' on "
+                "provider '%s': %r",
+                server.domain_name,
+                provider_name,
+                e,
+            )
+
+    if due_pairs:
+        logger.info(
+            "Alias sync scheduler: %d due, %d dispatched, %d deferred",
+            len(due_pairs),
+            dispatched,
+            max(0, len(due_pairs) - dispatched),
+        )
 
 
 ####################################################################
