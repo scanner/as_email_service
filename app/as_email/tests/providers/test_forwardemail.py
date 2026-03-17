@@ -28,6 +28,7 @@ from as_email.providers.forwardemail import (
     ForwardEmailBackend,
     ForwardEmailCache,
     HTTPMethod,
+    RateLimiter,
     RateLimitInfo,
     _owner_display_name,
 )
@@ -1906,31 +1907,31 @@ class TestRateLimitInfo:
 ########################################################################
 ########################################################################
 #
-class TestAPIClientRateLimit:
-    """Tests for APIClient rate-limit throttling behavior."""
+class TestRateLimiter:
+    """Tests for the process-global RateLimiter throttling behavior."""
 
     ####################################################################
     #
     @pytest.fixture
-    def client(self) -> APIClient:
-        return APIClient("test_provider")
+    def limiter(self) -> RateLimiter:
+        return RateLimiter()
 
     ####################################################################
     #
-    # _update_rate_limit_from_headers
+    # update_from_headers
     ####################################################################
 
     ####################################################################
     #
-    def test_update_from_headers_sets_rate_limit(self, client) -> None:
+    def test_update_from_headers_sets_rate_limit(self, limiter) -> None:
         """
         GIVEN: a response with all three X-RateLimit-* headers present
-        WHEN:  _update_rate_limit_from_headers is called
-        THEN:  _rate_limit is populated with the correct values
+        WHEN:  update_from_headers is called
+        THEN:  _info is populated with the correct values
         """
-        assert client._rate_limit is None
+        assert limiter._info is None
 
-        client._update_rate_limit_from_headers(
+        limiter.update_from_headers(
             {
                 "X-RateLimit-Remaining": "42",
                 "X-RateLimit-Reset": "9999999999",
@@ -1938,10 +1939,10 @@ class TestAPIClientRateLimit:
             }
         )
 
-        assert client._rate_limit is not None
-        assert client._rate_limit.remaining == 42
-        assert client._rate_limit.reset_timestamp == 9999999999
-        assert client._rate_limit.limit == 100
+        assert limiter._info is not None
+        assert limiter._info.remaining == 42
+        assert limiter._info.reset_timestamp == 9999999999
+        assert limiter._info.limit == 100
 
     ####################################################################
     #
@@ -1959,28 +1960,28 @@ class TestAPIClientRateLimit:
         ],
     )
     def test_update_from_headers_noop_when_headers_incomplete(
-        self, client, headers: dict
+        self, limiter, headers: dict
     ) -> None:
         """
         GIVEN: a response missing at least one of the three X-RateLimit-* headers
-        WHEN:  _update_rate_limit_from_headers is called
-        THEN:  _rate_limit remains None (all three must be present)
+        WHEN:  update_from_headers is called
+        THEN:  _info remains None (all three must be present)
         """
-        client._update_rate_limit_from_headers(headers)
+        limiter.update_from_headers(headers)
 
-        assert client._rate_limit is None
+        assert limiter._info is None
 
     ####################################################################
     #
     def test_update_from_headers_handles_malformed_values(
-        self, client, caplog
+        self, limiter, caplog
     ) -> None:
         """
         GIVEN: X-RateLimit-* headers containing a non-integer value
-        WHEN:  _update_rate_limit_from_headers is called
-        THEN:  the parse error is caught and logged; _rate_limit remains None
+        WHEN:  update_from_headers is called
+        THEN:  the parse error is caught and logged; _info remains None
         """
-        client._update_rate_limit_from_headers(
+        limiter.update_from_headers(
             {
                 "X-RateLimit-Remaining": "not-a-number",
                 "X-RateLimit-Reset": "9999999999",
@@ -1988,7 +1989,7 @@ class TestAPIClientRateLimit:
             }
         )
 
-        assert client._rate_limit is None
+        assert limiter._info is None
         assert "Failed to parse rate limit headers" in caplog.text
 
     ####################################################################
@@ -2001,14 +2002,14 @@ class TestAPIClientRateLimit:
         ],
     )
     def test_update_from_headers_low_capacity_warning(
-        self, client, caplog, remaining: int, expect_warning: bool
+        self, limiter, caplog, remaining: int, expect_warning: bool
     ) -> None:
         """
         GIVEN: X-RateLimit-* headers with varying remaining capacity
-        WHEN:  _update_rate_limit_from_headers is called
+        WHEN:  update_from_headers is called
         THEN:  a warning is logged when remaining capacity is below 20%
         """
-        client._update_rate_limit_from_headers(
+        limiter.update_from_headers(
             {
                 "X-RateLimit-Remaining": str(remaining),
                 "X-RateLimit-Reset": "9999999999",
@@ -2025,14 +2026,14 @@ class TestAPIClientRateLimit:
 
     ####################################################################
     #
-    def test_should_throttle_false_when_no_rate_limit(self, client) -> None:
+    def test_should_throttle_false_when_no_rate_limit(self, limiter) -> None:
         """
-        GIVEN: an APIClient with no rate limit info yet (_rate_limit is None)
+        GIVEN: a RateLimiter with no rate limit info yet (_info is None)
         WHEN:  _should_throttle is called
         THEN:  it returns False
         """
-        assert client._rate_limit is None
-        assert client._should_throttle() is False
+        assert limiter._info is None
+        assert limiter._should_throttle() is False
 
     ####################################################################
     #
@@ -2046,20 +2047,20 @@ class TestAPIClientRateLimit:
         ],
     )
     def test_should_throttle_with_active_rate_limit(
-        self, client, remaining: int, seconds_offset: int, expected: bool
+        self, limiter, remaining: int, seconds_offset: int, expected: bool
     ) -> None:
         """
-        GIVEN: an APIClient with a RateLimitInfo at various remaining levels
+        GIVEN: a RateLimiter with a RateLimitInfo at various remaining levels
         WHEN:  _should_throttle is called
         THEN:  it returns True only when remaining <= 10% of limit and not expired
         """
-        client._rate_limit = RateLimitInfo(
+        limiter._info = RateLimitInfo(
             remaining=remaining,
             reset_timestamp=int(time.time()) + seconds_offset,
             limit=100,
             last_updated=0,
         )
-        assert client._should_throttle() is expected
+        assert limiter._should_throttle() is expected
 
     ####################################################################
     #
@@ -2068,30 +2069,30 @@ class TestAPIClientRateLimit:
 
     ####################################################################
     #
-    def test_calculate_sleep_zero_when_no_rate_limit(self, client) -> None:
+    def test_calculate_sleep_zero_when_no_rate_limit(self, limiter) -> None:
         """
-        GIVEN: an APIClient with no rate limit info (_rate_limit is None)
+        GIVEN: a RateLimiter with no rate limit info (_info is None)
         WHEN:  _calculate_sleep_time is called
         THEN:  it returns 0
         """
-        assert client._rate_limit is None
-        assert client._calculate_sleep_time() == 0
+        assert limiter._info is None
+        assert limiter._calculate_sleep_time() == 0
 
     ####################################################################
     #
-    def test_calculate_sleep_zero_when_expired(self, client) -> None:
+    def test_calculate_sleep_zero_when_expired(self, limiter) -> None:
         """
-        GIVEN: an APIClient whose rate limit window has already expired
+        GIVEN: a RateLimiter whose rate limit window has already expired
         WHEN:  _calculate_sleep_time is called
         THEN:  it returns 0
         """
-        client._rate_limit = RateLimitInfo(
+        limiter._info = RateLimitInfo(
             remaining=2,
             reset_timestamp=int(time.time()) - 100,
             limit=100,
             last_updated=0,
         )
-        assert client._calculate_sleep_time() == 0
+        assert limiter._calculate_sleep_time() == 0
 
     ####################################################################
     #
@@ -2125,7 +2126,12 @@ class TestAPIClientRateLimit:
         ],
     )
     def test_calculate_sleep_time_with_active_rate_limit(
-        self, client, mocker, remaining: int, reset_offset: int, expected: float
+        self,
+        limiter,
+        mocker,
+        remaining: int,
+        reset_offset: int,
+        expected: float,
     ) -> None:
         """
         GIVEN: an active rate limit window with varying remaining requests and time
@@ -2135,41 +2141,41 @@ class TestAPIClientRateLimit:
         mocker.patch(
             "as_email.providers.forwardemail.time.time", return_value=1000.0
         )
-        client._rate_limit = RateLimitInfo(
+        limiter._info = RateLimitInfo(
             remaining=remaining,
             reset_timestamp=int(1000 + reset_offset),
             limit=100,
             last_updated=1000.0,
         )
-        assert client._calculate_sleep_time() == expected
+        assert limiter._calculate_sleep_time() == expected
 
     ####################################################################
     #
-    # _wait_if_needed
+    # wait_if_needed
     ####################################################################
 
     ####################################################################
     #
     def test_wait_if_needed_sleeps_when_throttling(
-        self, client, mocker
+        self, limiter, mocker
     ) -> None:
         """
-        GIVEN: an APIClient that needs throttling with a 2.0s calculated sleep
-        WHEN:  _wait_if_needed is called
+        GIVEN: a RateLimiter that needs throttling with a 2.0s calculated sleep
+        WHEN:  wait_if_needed is called
         THEN:  time.sleep is called with the calculated sleep time
         """
-        mocker.patch.object(client, "_should_throttle", return_value=True)
-        mocker.patch.object(client, "_calculate_sleep_time", return_value=2.0)
+        mocker.patch.object(limiter, "_should_throttle", return_value=True)
+        mocker.patch.object(limiter, "_calculate_sleep_time", return_value=2.0)
         mock_sleep = mocker.patch("as_email.providers.forwardemail.time.sleep")
-        # Populate _rate_limit so the log statement inside _wait_if_needed works
-        client._rate_limit = RateLimitInfo(
+        # Populate _info so the log statement inside wait_if_needed works
+        limiter._info = RateLimitInfo(
             remaining=5,
             reset_timestamp=int(time.time()) + 60,
             limit=100,
             last_updated=0,
         )
 
-        client._wait_if_needed()
+        limiter.wait_if_needed()
 
         mock_sleep.assert_called_once_with(2.0)
 
@@ -2183,24 +2189,49 @@ class TestAPIClientRateLimit:
         ],
     )
     def test_wait_if_needed_no_sleep(
-        self, client, mocker, should_throttle: bool, sleep_time: float
+        self, limiter, mocker, should_throttle: bool, sleep_time: float
     ) -> None:
         """
         GIVEN: either throttling is not needed, or the calculated sleep time is 0
-        WHEN:  _wait_if_needed is called
+        WHEN:  wait_if_needed is called
         THEN:  time.sleep is never called
         """
         mocker.patch.object(
-            client, "_should_throttle", return_value=should_throttle
+            limiter, "_should_throttle", return_value=should_throttle
         )
         mocker.patch.object(
-            client, "_calculate_sleep_time", return_value=sleep_time
+            limiter, "_calculate_sleep_time", return_value=sleep_time
         )
         mock_sleep = mocker.patch("as_email.providers.forwardemail.time.sleep")
 
-        client._wait_if_needed()
+        limiter.wait_if_needed()
 
         mock_sleep.assert_not_called()
+
+    ####################################################################
+    #
+    def test_shared_across_api_clients(self) -> None:
+        """
+        GIVEN: two APIClient instances for the same provider
+        WHEN:  one updates rate-limit state from headers
+        THEN:  the other sees the updated state
+        """
+        client_a = APIClient("shared_test_provider")
+        client_b = APIClient("shared_test_provider")
+
+        assert client_a._limiter is client_b._limiter
+
+        client_a._limiter.update_from_headers(
+            {
+                "X-RateLimit-Remaining": "7",
+                "X-RateLimit-Reset": "9999999999",
+                "X-RateLimit-Limit": "100",
+            }
+        )
+
+        info = client_b._limiter.get_info()
+        assert info is not None
+        assert info["remaining"] == 7
 
 
 ########################################################################

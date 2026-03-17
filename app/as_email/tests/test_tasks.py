@@ -6,6 +6,7 @@ Test the huey tasks
 # system imports
 #
 import json
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
@@ -16,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 # 3rd party imports
 #
 import pytest
+import requests.exceptions
 from _pytest.logging import LogCaptureFixture
 from dirty_equals import Contains
 from django.conf import LazySettings
@@ -32,6 +34,10 @@ from ..providers.base import (
     EmailAccountInfo,
 )
 from ..tasks import (
+    ALIAS_SYNC_INTERVAL_SECONDS,
+    ALIAS_SYNC_MAX_PER_RUN,
+    ALIAS_SYNC_STALE_THRESHOLD_SECONDS,
+    _alias_sync_last_ok,
     check_update_pwfile_for_emailaccount,
     decrement_num_bounces_counter,
     dispatch_incoming_email,
@@ -1628,7 +1634,7 @@ class TestProviderSyncAllEmailAccounts:
 
     ####################################################################
     #
-    def test_sync_all_email_accounts_processes_all_providers(
+    def test_sync_all_email_accounts_caps_dispatches(
         self,
         mocker: MockerFixture,
         dummy_provider: DummyProviderBackend,
@@ -1638,9 +1644,9 @@ class TestProviderSyncAllEmailAccounts:
         requests_mock,
     ) -> None:
         """
-        Given multiple providers with multiple servers
-        When provider_sync_all_email_accounts is called
-        Then provider_sync_server_email_accounts should be called for all servers
+        GIVEN: 4 server/provider pairs, none synced yet
+        WHEN:  provider_sync_all_email_accounts runs
+        THEN:  at most ALIAS_SYNC_MAX_PER_RUN (3) syncs are dispatched
         """
         provider1 = provider_factory(backend_name="dummy")
         provider2 = provider_factory(backend_name="dummy")
@@ -1650,28 +1656,27 @@ class TestProviderSyncAllEmailAccounts:
         server3 = server_factory(receive_providers=[provider2])
         server4 = server_factory(receive_providers=[provider2])
 
-        # We actually do not need any email address because we are going to
-        # mock the underlying provider_sync_server_email_accounts task and verify it
-        # is called. Testing _that_ task is a separate test from this one.
-        #
         for server in (server1, server2, server3, server4):
             email_account_factory(server=server)
             email_account_factory(server=server)
 
-        # Mock provider_sync_server_email_accounts after the factories run so we only
-        # capture the calls from the periodic task under test.
+        # Factory setup triggers signals that run
+        # provider_sync_server_email_accounts, setting last_ok keys.  Clear
+        # them so all 4 pairs appear "never synced" to the scheduler.
         #
+        r = redis_client()
+        for key in r.scan_iter("alias_sync:*"):
+            r.delete(key)
+
         mock_sync = mocker.patch(
             "as_email.tasks.provider_sync_server_email_accounts"
         )
         res = provider_sync_all_email_accounts()
         res()
 
-        assert mock_sync.call_count == 4
-
-        called_server_ids = {call[0][0] for call in mock_sync.call_args_list}
-        expected_server_ids = {server1.pk, server2.pk, server3.pk, server4.pk}
-        assert called_server_ids == expected_server_ids
+        # With ALIAS_SYNC_MAX_PER_RUN=3, only 3 of 4 pairs are dispatched.
+        #
+        assert mock_sync.call_count == 3
 
     ####################################################################
     #
@@ -1714,6 +1719,209 @@ class TestProviderSyncAllEmailAccounts:
         # Verify error was logged for invalid backend
         assert "Failed to get backend" in caplog.text
         assert "invalid_backend" in caplog.text
+
+
+########################################################################
+########################################################################
+#
+class TestAliasSyncStaleness:
+    """Tests for the Redis-based alias sync staleness and spreading logic."""
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "age_seconds,expected_dispatches,expected_log",
+        [
+            (0, 0, None),
+            (ALIAS_SYNC_INTERVAL_SECONDS - 60, 0, None),
+            (ALIAS_SYNC_INTERVAL_SECONDS + 1, 1, None),
+            (ALIAS_SYNC_STALE_THRESHOLD_SECONDS + 1, 1, "has not succeeded"),
+        ],
+        ids=[
+            "recent",
+            "within-interval",
+            "past-interval",
+            "stale-24h-error",
+        ],
+    )
+    def test_dispatch_based_on_sync_age(
+        self,
+        age_seconds: int,
+        expected_dispatches: int,
+        expected_log: str | None,
+        mocker: MockerFixture,
+        dummy_provider: DummyProviderBackend,
+        server_factory,
+        email_account_factory,
+        provider_factory,
+        requests_mock,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        """
+        GIVEN: a server/provider pair synced <age_seconds> ago
+        WHEN:  provider_sync_all_email_accounts runs
+        THEN:  the pair is dispatched only if older than the sync interval,
+               and an error is logged if older than the stale threshold
+        """
+        provider = provider_factory(backend_name="dummy")
+        server = server_factory(receive_providers=[provider])
+        email_account_factory(server=server)
+
+        r = redis_client()
+        r.set(
+            f"alias_sync:last_ok:{server.pk}:{provider.backend_name}",
+            str(time.time() - age_seconds),
+            ex=172800,
+        )
+
+        mock_sync = mocker.patch(
+            "as_email.tasks.provider_sync_server_email_accounts"
+        )
+        with caplog.at_level("ERROR", logger="as_email.tasks"):
+            res = provider_sync_all_email_accounts()
+            res()
+
+        assert mock_sync.call_count == expected_dispatches
+
+        if expected_log is not None:
+            assert expected_log in caplog.text
+            assert server.domain_name in caplog.text
+        else:
+            assert "has not succeeded" not in caplog.text
+
+    ####################################################################
+    #
+    def test_least_recently_synced_dispatched_first(
+        self,
+        mocker: MockerFixture,
+        dummy_provider: DummyProviderBackend,
+        server_factory,
+        email_account_factory,
+        provider_factory,
+        requests_mock,
+    ) -> None:
+        """
+        GIVEN: multiple due pairs with different last_ok timestamps
+        WHEN:  provider_sync_all_email_accounts runs
+        THEN:  pairs are dispatched oldest-first, up to the per-run cap
+        """
+        provider = provider_factory(backend_name="dummy")
+        servers = [
+            server_factory(receive_providers=[provider]) for _ in range(4)
+        ]
+        for s in servers:
+            email_account_factory(server=s)
+
+        # Set stale timestamps: servers[0] is oldest, servers[3] is newest
+        # (but all are past the interval).
+        #
+        r = redis_client()
+        base = time.time() - ALIAS_SYNC_INTERVAL_SECONDS - 3600
+        for i, s in enumerate(servers):
+            r.set(
+                f"alias_sync:last_ok:{s.pk}:{provider.backend_name}",
+                str(base + i * 100),
+                ex=172800,
+            )
+
+        mock_sync = mocker.patch(
+            "as_email.tasks.provider_sync_server_email_accounts"
+        )
+        res = provider_sync_all_email_accounts()
+        res()
+
+        assert mock_sync.call_count == ALIAS_SYNC_MAX_PER_RUN
+
+        # The first 3 dispatched should be the 3 oldest (servers 0, 1, 2).
+        #
+        dispatched_pks = [call[0][0] for call in mock_sync.call_args_list]
+        expected_pks = [s.pk for s in servers[:ALIAS_SYNC_MAX_PER_RUN]]
+        assert dispatched_pks == expected_pks
+
+    ####################################################################
+    #
+    def test_successful_sync_sets_last_ok(
+        self,
+        dummy_provider: DummyProviderBackend,
+        server_factory,
+        email_account_factory,
+        provider_factory,
+        requests_mock,
+    ) -> None:
+        """
+        GIVEN: a server/provider pair with no prior sync
+        WHEN:  provider_sync_server_email_accounts completes successfully
+        THEN:  the Redis last_ok key is set
+        """
+        provider = provider_factory(backend_name="dummy")
+        server = server_factory(receive_providers=[provider])
+        email_account_factory(server=server)
+
+        # Factory signals trigger a sync that sets last_ok — clear it so
+        # we can verify the task sets it on its own.
+        #
+        r = redis_client()
+        r.delete(f"alias_sync:last_ok:{server.pk}:{provider.backend_name}")
+
+        assert _alias_sync_last_ok(server.pk, provider.backend_name) is None
+
+        res = provider_sync_server_email_accounts(
+            server.pk, provider.backend_name, enabled=True
+        )
+        res()
+
+        last_ok = _alias_sync_last_ok(server.pk, provider.backend_name)
+        assert last_ok is not None
+        assert time.time() - last_ok < 5  # set within last 5 seconds
+
+    ####################################################################
+    #
+    def test_connection_error_does_not_retry(
+        self,
+        mocker: MockerFixture,
+        dummy_provider: DummyProviderBackend,
+        server_factory,
+        email_account_factory,
+        provider_factory,
+        requests_mock,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        """
+        GIVEN: a server/provider pair where list_email_accounts raises
+               ConnectionError
+        WHEN:  provider_sync_server_email_accounts runs
+        THEN:  a warning is logged, last_ok is NOT set, and the task
+               returns without raising (no Huey retry)
+        """
+        provider = provider_factory(backend_name="dummy")
+        server = server_factory(receive_providers=[provider])
+        email_account_factory(server=server)
+
+        # Factory signals trigger a sync that sets last_ok — clear it so
+        # we can verify the failed task does NOT set it.
+        #
+        r = redis_client()
+        r.delete(f"alias_sync:last_ok:{server.pk}:{provider.backend_name}")
+
+        mocker.patch(
+            "as_email.tasks.get_backend",
+            return_value=mocker.Mock(
+                list_email_accounts=mocker.Mock(
+                    side_effect=requests.exceptions.ConnectionError(
+                        "Network is unreachable"
+                    )
+                )
+            ),
+        )
+
+        with caplog.at_level("WARNING", logger="as_email.tasks"):
+            res = provider_sync_server_email_accounts(
+                server.pk, provider.backend_name, enabled=True
+            )
+            res()
+
+        assert "Network error" in caplog.text
+        assert _alias_sync_last_ok(server.pk, provider.backend_name) is None
 
 
 ########################################################################

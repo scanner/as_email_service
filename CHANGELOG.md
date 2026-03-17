@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Postmark bounce and spam webhooks now use the unified `process_bounce` Huey task via `BounceEvent`, replacing the Postmark-specific `process_email_bounce` and `process_email_spam` tasks (GH-223)
+- Hourly EmailAccount/alias sync now spreads work across a 4-hour window: each server/provider pair is synced at most once per 4 hours, with the 3 least-recently-synced pairs dispatched per run; a Sentry error alert fires if any pair goes 24 hours without a successful sync
+- ForwardEmail API rate-limit state is now process-global and thread-safe — all `APIClient` instances within the same process share one `RateLimiter` per provider, so rate-limit headers from one request inform throttling for all subsequent requests
+- Network-unreachable errors in provider sync tasks are now logged as warnings and do not trigger Huey retries; the hourly scheduler retries naturally on the next run
+- Removed Huey task-level retries from `provider_sync_server_email_accounts`; the hourly staleness-based scheduling serves as the retry mechanism
 
 ### Removed
 

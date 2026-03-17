@@ -184,9 +184,7 @@ RETRYABLE_STATUS_CODES: frozenset[int] = frozenset(RetryableHTTPStatus)
 @dataclass
 class RateLimitInfo:
     """
-    Store rate limit information. Fancier then we will ever need for our
-    use, but they have info about rate limiting in their API so I felt
-    obligated to code for it.
+    Snapshot of rate-limit values parsed from a single API response.
     """
 
     remaining: int
@@ -210,39 +208,28 @@ class RateLimitInfo:
 ########################################################################
 ########################################################################
 #
-class APIClient:
+class RateLimiter:
     """
-    Thin HTTP client for the forwardemail.net REST API with rate-limit
-    throttling.
+    Thread-safe, process-global rate limiter for a single API provider.
 
-    After each response the client reads ``X-RateLimit-Remaining``,
-    ``X-RateLimit-Reset``, and ``X-RateLimit-Limit`` headers into a
-    thread-safe ``RateLimitInfo`` dataclass.  Before each request it checks
-    whether remaining capacity has fallen below ``rate_limit_threshold_percent``
-    (default 10 %).  When throttling is needed it sleeps for at most 5 seconds,
-    always keeping ``min_requests_reserved`` (default 5) requests in reserve.
+    Tracks the most recent ``RateLimitInfo`` (from response headers) and
+    provides throttling logic: before each request, ``wait_if_needed()``
+    sleeps if remaining capacity has fallen below a configurable threshold.
 
-    Non-200 responses are raised as ``urllib.error.HTTPError``.
+    Instances are meant to be shared across all ``APIClient`` objects for
+    the same provider via ``get_rate_limiter()``, so that rate-limit state
+    survives even when short-lived backend instances are created by
+    ``get_backend()``.
     """
 
-    API_ENDPOINT = "https://api.forwardemail.net/"
-
-    ####################################################################
-    #
     def __init__(
         self,
-        provider_name: str,
         rate_limit_threshold_percent: float = 10.0,
         min_requests_reserved: int = 5,
     ):
-        # Rate limiting state
-        self._rate_limit: Optional[RateLimitInfo] = None
-        self._lock = Lock()  # Thread safety
-
-        self.provider_name = provider_name
+        self._info: RateLimitInfo | None = None
+        self._lock = Lock()
         self.rate_limit_threshold_percent = rate_limit_threshold_percent
-        # Always keep some requests in reserve
-        #
         self.min_requests_reserved = min_requests_reserved
         self.logger = logging.getLogger(__name__)
 
@@ -252,22 +239,20 @@ class APIClient:
         """
         Calculate optimal sleep time based on remaining requests and time.
         """
-        if not self._rate_limit or self._rate_limit.is_expired:
+        if not self._info or self._info.is_expired:
             return 0
 
         # If we're below minimum reserved requests, wait until reset
-        if self._rate_limit.remaining <= self.min_requests_reserved:
-            return self._rate_limit.seconds_until_reset
+        if self._info.remaining <= self.min_requests_reserved:
+            return self._info.seconds_until_reset
 
         # Calculate requests per second we can safely make
-        seconds_until_reset = self._rate_limit.seconds_until_reset
+        seconds_until_reset = self._info.seconds_until_reset
         if seconds_until_reset <= 0:
             return 0
 
         # Reserve some requests
-        available_requests = (
-            self._rate_limit.remaining - self.min_requests_reserved
-        )
+        available_requests = self._info.remaining - self.min_requests_reserved
         if available_requests <= 0:
             return seconds_until_reset
 
@@ -280,42 +265,42 @@ class APIClient:
     ####################################################################
     #
     def _should_throttle(self) -> bool:
-        """Check if we should throttle based on rate limit."""
-        with self._lock:
-            if not self._rate_limit:
-                return False
+        """
+        Check if we should throttle based on rate limit.
 
-            # If rate limit period has expired, we're good
-            if self._rate_limit.is_expired:
-                return False
+        Reads of ``_info`` are intentionally lock-free: the reference is
+        swapped atomically in ``update_from_headers``, so the worst case
+        is a slightly stale snapshot — acceptable for throttling decisions.
+        """
+        if not (info := self._info):
+            return False
 
-            # Check if we're below threshold
-            threshold = self._rate_limit.limit * (
-                self.rate_limit_threshold_percent / 100
-            )
-            return self._rate_limit.remaining <= threshold
+        if info.is_expired:
+            return False
+
+        threshold = info.limit * (self.rate_limit_threshold_percent / 100)
+        return info.remaining <= threshold
 
     ####################################################################
     #
-    def _wait_if_needed(self):
+    def wait_if_needed(self) -> None:
         """Sleep if we're approaching rate limit."""
         if self._should_throttle():
             sleep_time = self._calculate_sleep_time()
 
             if sleep_time > 0:
-                with self._lock:
-                    if self._rate_limit:
-                        self.logger.info(
-                            f"Rate limiting: {self._rate_limit.remaining}/{self._rate_limit.limit} "
-                            f"requests remaining ({self._rate_limit.percent_remaining:.1f}%). "
-                            f"Sleeping {sleep_time:.1f}s"
-                        )
+                if info := self._info:
+                    self.logger.info(
+                        f"Rate limiting: {info.remaining}/{info.limit} "
+                        f"requests remaining ({info.percent_remaining:.1f}%). "
+                        f"Sleeping {sleep_time:.1f}s"
+                    )
 
                 time.sleep(sleep_time)
 
     ####################################################################
     #
-    def _update_rate_limit_from_headers(self, headers: dict[str, str]):
+    def update_from_headers(self, headers: dict[str, str]) -> None:
         """Update rate limit state from response headers."""
         try:
             # Only update if all headers are present
@@ -327,8 +312,12 @@ class APIClient:
                     "X-RateLimit-Limit",
                 ]
             ):
+                # NOTE: We create a whole new RateLimitInfo instance and
+                # assign it atomically.  Lock-free readers just hold a
+                # reference to the previous instance; slightly stale
+                # data there is fine.
                 with self._lock:
-                    self._rate_limit = RateLimitInfo(
+                    self._info = RateLimitInfo(
                         remaining=int(headers["X-RateLimit-Remaining"]),
                         reset_timestamp=int(headers["X-RateLimit-Reset"]),
                         limit=int(headers["X-RateLimit-Limit"]),
@@ -336,10 +325,10 @@ class APIClient:
                     )
 
                     # Log if we're getting low
-                    if self._rate_limit.percent_remaining < 20:
+                    if self._info.percent_remaining < 20:
                         self.logger.warning(
-                            f"Rate limit warning: {self._rate_limit.remaining}/{self._rate_limit.limit} "
-                            f"requests remaining ({self._rate_limit.percent_remaining:.1f}%)"
+                            f"Rate limit warning: {self._info.remaining}/{self._info.limit} "
+                            f"requests remaining ({self._info.percent_remaining:.1f}%)"
                         )
 
         except (ValueError, TypeError) as e:
@@ -347,13 +336,74 @@ class APIClient:
 
     ####################################################################
     #
+    def get_info(self) -> dict[str, Any] | None:
+        """Get current rate limit information."""
+        if info := self._info:
+            return {
+                "remaining": info.remaining,
+                "limit": info.limit,
+                "percent_remaining": info.percent_remaining,
+                "reset_timestamp": info.reset_timestamp,
+                "reset_datetime": datetime.fromtimestamp(info.reset_timestamp),
+                "seconds_until_reset": info.seconds_until_reset,
+                "is_expired": info.is_expired,
+                "is_throttling": self._should_throttle(),
+            }
+        return None
+
+
+# Process-global rate limiters keyed by provider name.  In practice we
+# only expect a single ForwardEmail provider, but keying by name avoids
+# hard-coding that assumption — if a second provider with its own rate
+# limits were added it would get its own limiter automatically.
+#
+_RATE_LIMITERS: dict[str, RateLimiter] = {}
+_RATE_LIMITERS_LOCK = Lock()
+
+
+####################################################################
+#
+def get_rate_limiter(provider_name: str) -> RateLimiter:
+    """Get or create the process-global rate limiter for a provider."""
+    with _RATE_LIMITERS_LOCK:
+        if provider_name not in _RATE_LIMITERS:
+            _RATE_LIMITERS[provider_name] = RateLimiter()
+        return _RATE_LIMITERS[provider_name]
+
+
+########################################################################
+########################################################################
+#
+class APIClient:
+    """
+    Thin HTTP client for the forwardemail.net REST API.
+
+    Rate-limit throttling is handled by a shared ``RateLimiter`` instance
+    (obtained via ``get_rate_limiter``), so all ``APIClient`` objects for the
+    same provider — even short-lived ones — share the same rate-limit state
+    within the process.
+
+    Non-200 responses are raised as ``urllib.error.HTTPError``.
+    """
+
+    API_ENDPOINT = "https://api.forwardemail.net/"
+
+    ####################################################################
+    #
+    def __init__(self, provider_name: str):
+        self.provider_name = provider_name
+        self._limiter = get_rate_limiter(provider_name)
+        self.logger = logging.getLogger(__name__)
+
+    ####################################################################
+    #
     def req(self, method: HTTPMethod, url: str, data=None) -> requests.Response:
         """
         Construct the url from the api endpoint + relative URL provided.
-        Implements rate limiting with automatic throttling.
+        Delegates rate-limit throttling to the shared RateLimiter.
         """
         # Check if we need to throttle before making request
-        self._wait_if_needed()
+        self._limiter.wait_if_needed()
 
         u = urljoin(self.API_ENDPOINT, url)
         token = get_provider_token(self.provider_name, "account_api_key")
@@ -365,7 +415,7 @@ class APIClient:
         request_time = time.time() - start_time
 
         # Update rate limit state from response headers
-        self._update_rate_limit_from_headers(r.headers)
+        self._limiter.update_from_headers(r.headers)
 
         # Log slow requests
         if request_time > 5.0:
@@ -381,24 +431,9 @@ class APIClient:
 
     ####################################################################
     #
-    def get_rate_limit_info(self) -> Optional[dict[str, Any]]:
+    def get_rate_limit_info(self) -> dict[str, Any] | None:
         """Get current rate limit information."""
-        with self._lock:
-            if not self._rate_limit:
-                return None
-
-            return {
-                "remaining": self._rate_limit.remaining,
-                "limit": self._rate_limit.limit,
-                "percent_remaining": self._rate_limit.percent_remaining,
-                "reset_timestamp": self._rate_limit.reset_timestamp,
-                "reset_datetime": datetime.fromtimestamp(
-                    self._rate_limit.reset_timestamp
-                ),
-                "seconds_until_reset": self._rate_limit.seconds_until_reset,
-                "is_expired": self._rate_limit.is_expired,
-                "is_throttling": self._should_throttle(),
-            }
+        return self._limiter.get_info()
 
 
 ########################################################################
