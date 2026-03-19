@@ -2052,6 +2052,25 @@ class TestProviderReportUnusedDomains:
 
     ####################################################################
     #
+    def test_report_unused_domains_provider_no_servers(
+        self,
+        provider_factory,
+        django_outbox,
+    ) -> None:
+        """
+        Given a provider with no receiving servers
+        When provider_report_unused_servers is called
+        Then no error should occur and no email should be sent
+        """
+        provider_factory(backend_name="postmark")
+
+        res = provider_report_unused_servers()
+        res()
+
+        assert len(django_outbox) == 0
+
+    ####################################################################
+    #
     def test_report_unused_domains_multiple_providers(
         self,
         mocker: MockerFixture,

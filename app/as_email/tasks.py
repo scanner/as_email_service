@@ -1530,8 +1530,8 @@ def provider_report_unused_servers() -> None:
     #
     for provider in Provider.objects.all():
 
+        unused_servers = []
         for server in provider.receiving_servers.all():
-            unused_servers = []
             email_account_count = server.email_accounts.count()
             if email_account_count == 0:
                 unused_servers.append((server.domain_name, 0))
