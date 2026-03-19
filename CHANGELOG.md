@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-03-18
+
+### Fixed
+
+- Fix unused servers report where the list was reset on each iteration, causing only the last server to appear in the report
+
 ## [0.6.1] - 2026-03-16
 
 ### Changed
