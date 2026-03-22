@@ -6,9 +6,14 @@ Test the various functions in the `deliver` module
 
 # system imports
 #
+from collections.abc import Callable
+from email.message import EmailMessage
+
 # 3rd party imports
 #
 import pytest
+from faker import Faker
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -18,7 +23,12 @@ from ..deliver import (
     make_delivery_status_notification,
     report_failed_message,
 )
-from ..models import AliasToDelivery, LocalDelivery, MessageFilterRule
+from ..models import (
+    AliasToDelivery,
+    EmailAccount,
+    LocalDelivery,
+    MessageFilterRule,
+)
 from .conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -27,9 +37,9 @@ pytestmark = pytest.mark.django_db
 ####################################################################
 #
 def test_apply_message_filter_rules(
-    email_account_factory,
-    message_filter_rule_factory,
-    email_factory,
+    email_account_factory: Callable[..., EmailAccount],
+    message_filter_rule_factory: Callable[..., MessageFilterRule],
+    email_factory: Callable[..., EmailMessage],
 ) -> None:
     ea = email_account_factory()
     msg = email_factory()
@@ -56,7 +66,9 @@ def test_apply_message_filter_rules(
 ####################################################################
 #
 def test_deliver_message_locally(
-    email_account_factory, message_filter_rule_factory, email_factory
+    email_account_factory: Callable[..., EmailAccount],
+    message_filter_rule_factory: Callable[..., MessageFilterRule],
+    email_factory: Callable[..., EmailMessage],
 ) -> None:
     ea = email_account_factory()
     ld = LocalDelivery.objects.get(email_account=ea)
@@ -92,7 +104,10 @@ def test_deliver_message_locally(
 
 ####################################################################
 #
-def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
+def test_deliver_spam_locally(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+) -> None:
     ea = email_account_factory()
     ld = LocalDelivery.objects.get(email_account=ea)
 
@@ -125,7 +140,10 @@ def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
 
 ####################################################################
 #
-def test_deliver_alias(email_account_factory, email_factory) -> None:
+def test_deliver_alias(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+) -> None:
     """
     Messages delivered to an alias-only account are forwarded to the target.
     """
@@ -167,7 +185,8 @@ def test_deliver_alias(email_account_factory, email_factory) -> None:
 ####################################################################
 #
 def test_deliver_to_multiple_aliases(
-    email_account_factory, email_factory
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
 ) -> None:
     """
     An account with multiple AliasToDelivery entries delivers to all targets.
@@ -195,7 +214,9 @@ def test_deliver_to_multiple_aliases(
 ####################################################################
 #
 def test_deliver_alias_loop_detection(
-    email_account_factory, email_factory, caplog
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     GIVEN a cycle in alias targets (A → B → A)
@@ -217,7 +238,10 @@ def test_deliver_alias_loop_detection(
 ####################################################################
 #
 def test_deliver_alias_hop_limit(
-    email_account_factory, email_factory, caplog, mocker
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    caplog: pytest.LogCaptureFixture,
+    mocker: MockerFixture,
 ) -> None:
     """
     GIVEN a chain of alias accounts longer than MAX_HOPS
@@ -244,7 +268,10 @@ def test_deliver_alias_hop_limit(
 
 ####################################################################
 #
-def test_generate_dsn(email_account_factory, email_factory) -> None:
+def test_generate_dsn(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+) -> None:
     ea = email_account_factory()
     msg = email_factory()
 
@@ -288,7 +315,10 @@ def test_generate_dsn(email_account_factory, email_factory) -> None:
 ####################################################################
 #
 def test_report_failed_message(
-    email_account_factory, email_factory, caplog, faker
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    caplog: pytest.LogCaptureFixture,
+    faker: Faker,
 ) -> None:
     ea = email_account_factory()
     ld = LocalDelivery.objects.get(email_account=ea)

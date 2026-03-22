@@ -19,6 +19,7 @@ from pathlib import Path
 # 3rd party imports
 #
 import pytest
+from django.conf import LazySettings
 from faker import Faker
 from pytest_mock import MockerFixture
 
@@ -62,7 +63,7 @@ class TestLocalDeliveryModel:
     def test_maildir_path_preserved_when_set(
         self,
         email_account_factory: Callable[..., EmailAccount],
-        settings,
+        settings: LazySettings,
     ) -> None:
         """
         GIVEN a LocalDelivery created with an explicit maildir_path
@@ -81,7 +82,7 @@ class TestLocalDeliveryModel:
     def test_mh_creates_mailbox_directory(
         self,
         email_account_factory: Callable[..., EmailAccount],
-        settings,
+        settings: LazySettings,
     ) -> None:
         """
         GIVEN a LocalDelivery

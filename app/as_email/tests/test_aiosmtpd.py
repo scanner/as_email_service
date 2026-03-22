@@ -58,7 +58,7 @@ class TestHelperFunctions:
 
     ####################################################################
     #
-    def test_format_dnsbl_providers_empty(self):
+    def test_format_dnsbl_providers_empty(self) -> None:
         """
         Given an empty list of DNSBL providers
         When format_dnsbl_providers is called
@@ -69,7 +69,9 @@ class TestHelperFunctions:
 
     ####################################################################
     #
-    def test_format_dnsbl_providers_single_provider_single_category(self):
+    def test_format_dnsbl_providers_single_provider_single_category(
+        self,
+    ) -> None:
         """
         Given a single DNSBL provider with one category
         When format_dnsbl_providers is called
@@ -81,7 +83,9 @@ class TestHelperFunctions:
 
     ####################################################################
     #
-    def test_format_dnsbl_providers_single_provider_multiple_categories(self):
+    def test_format_dnsbl_providers_single_provider_multiple_categories(
+        self,
+    ) -> None:
         """
         Given a single DNSBL provider with multiple categories
         When format_dnsbl_providers is called
@@ -93,7 +97,7 @@ class TestHelperFunctions:
 
     ####################################################################
     #
-    def test_format_dnsbl_providers_multiple_providers(self):
+    def test_format_dnsbl_providers_multiple_providers(self) -> None:
         """
         Given multiple DNSBL providers with various categories
         When format_dnsbl_providers is called
@@ -109,7 +113,7 @@ class TestHelperFunctions:
 
     ####################################################################
     #
-    def test_validate_from_header_unauthenticated(self, email_factory):
+    def test_validate_from_header_unauthenticated(self, email_factory) -> None:
         """
         Given an unauthenticated session (no account)
         When validate_from_header is called
@@ -121,7 +125,9 @@ class TestHelperFunctions:
 
     ####################################################################
     #
-    def test_validate_from_header_no_from_headers(self, email_account_factory):
+    def test_validate_from_header_no_from_headers(
+        self, email_account_factory
+    ) -> None:
         """
         Given a message with no FROM headers
         When validate_from_header is called
@@ -136,7 +142,7 @@ class TestHelperFunctions:
     #
     def test_validate_from_header_valid_match(
         self, email_account_factory, email_factory
-    ):
+    ) -> None:
         """
         Given a message with FROM matching the authenticated account
         When validate_from_header is called
@@ -151,7 +157,7 @@ class TestHelperFunctions:
     #
     def test_validate_from_header_with_display_name(
         self, email_account_factory, email_factory, faker
-    ):
+    ) -> None:
         """
         Given a message with display name but valid email in FROM
         When validate_from_header is called
@@ -167,7 +173,7 @@ class TestHelperFunctions:
     #
     def test_validate_from_header_invalid_mismatch(
         self, email_account_factory, email_factory, faker
-    ):
+    ) -> None:
         """
         Given a message with FROM not matching the authenticated account
         When validate_from_header is called
@@ -182,7 +188,9 @@ class TestHelperFunctions:
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_categorize_recipients_all_local(self, email_account_factory):
+    async def test_categorize_recipients_all_local(
+        self, email_account_factory
+    ) -> None:
         """
         Given a list of email addresses that all have local EmailAccounts
         When categorize_recipients is called
@@ -207,7 +215,7 @@ class TestHelperFunctions:
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_categorize_recipients_all_remote(self, faker):
+    async def test_categorize_recipients_all_remote(self, faker) -> None:
         """
         Given a list of email addresses on external domains
         When categorize_recipients is called
@@ -227,7 +235,7 @@ class TestHelperFunctions:
     @pytest.mark.asyncio
     async def test_categorize_recipients_mixed(
         self, email_account_factory, faker
-    ):
+    ) -> None:
         """
         Given a list with both local and remote email addresses
         When categorize_recipients is called
@@ -252,7 +260,7 @@ class TestHelperFunctions:
     @pytest.mark.asyncio
     async def test_categorize_recipients_invalid_local(
         self, server_factory, faker
-    ):
+    ) -> None:
         """
         Given an email address on our domain but with no EmailAccount
         When categorize_recipients is called
@@ -274,7 +282,7 @@ class TestHelperFunctions:
     @pytest.mark.asyncio
     async def test_categorize_recipients_case_insensitive(
         self, email_account_factory
-    ):
+    ) -> None:
         """
         Given an email address with uppercase characters
         When categorize_recipients is called
@@ -304,7 +312,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_authenticator_authenticate_success(
         self, email_account_factory, faker, aiosmtp_session
-    ):
+    ) -> None:
         """
         Given valid credentials for an active EmailAccount
         When authenticating with LOGIN or PLAIN mechanism
@@ -331,7 +339,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_authenticator_invalid_password(
         self, email_account_factory, faker, aiosmtp_session
-    ):
+    ) -> None:
         """
         Given valid account credentials with incorrect password
         When authenticating
@@ -355,7 +363,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_authenticator_invalid_account(
         self, email_account_factory, faker, aiosmtp_session
-    ):
+    ) -> None:
         """
         Given credentials for a non-existent account
         When authenticating
@@ -379,7 +387,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_authenticator_deactivated_account(
         self, email_account_factory, faker, aiosmtp_session
-    ):
+    ) -> None:
         """
         Given valid credentials for a deactivated account
         When authenticating
@@ -409,7 +417,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_authenticator_unsupported_mechanisms(
         self, email_account_factory, faker, aiosmtp_session
-    ):
+    ) -> None:
         """
         Given valid credentials but unsupported authentication mechanism
         When authenticating with mechanisms other than LOGIN or PLAIN
@@ -442,7 +450,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_authenticator_blacklist_mechanism(
         self, email_account_factory, faker, aiosmtp_session
-    ):
+    ) -> None:
         """
         Given a peer with repeated authentication failures
         When the number of failures exceeds MAX_NUM_AUTH_FAILURES
@@ -499,7 +507,7 @@ class TestAuthentication:
         aiosmtp_envelope,
         mock_tarpit_delay,
         mocker,
-    ):
+    ) -> None:
         """
         Given a peer that has been blacklisted for auth failures
         When handle_CONNECT is called
@@ -571,7 +579,7 @@ class TestHandleMAIL:
         deactivated,
         case_transform,
         expected_account,
-    ):
+    ) -> None:
         """
         Given MAIL FROM with various address types
         When handle_MAIL is called
@@ -622,7 +630,7 @@ class TestHandleRCPT:
     @pytest.mark.asyncio
     async def test_handle_RCPT_local_valid_recipient(
         self, email_account_factory, aiosmtp_session, aiosmtp_envelope, tmp_path
-    ):
+    ) -> None:
         """
         Given RCPT TO with a valid local EmailAccount
         When handle_RCPT is called
@@ -650,7 +658,7 @@ class TestHandleRCPT:
     @pytest.mark.asyncio
     async def test_handle_RCPT_local_invalid_recipient(
         self, server_factory, faker, aiosmtp_session, aiosmtp_envelope, tmp_path
-    ):
+    ) -> None:
         """
         Given RCPT TO with an address on our domain but no EmailAccount exists
         When handle_RCPT is called
@@ -678,7 +686,7 @@ class TestHandleRCPT:
     @pytest.mark.asyncio
     async def test_handle_RCPT_remote_unauthenticated(
         self, faker, aiosmtp_session, aiosmtp_envelope, tmp_path
-    ):
+    ) -> None:
         """
         Given RCPT TO with a remote address and no authentication
         When handle_RCPT is called
@@ -708,7 +716,7 @@ class TestHandleRCPT:
         aiosmtp_session,
         aiosmtp_envelope,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given RCPT TO with a remote address and authenticated session
         When handle_RCPT is called
@@ -742,7 +750,7 @@ class TestHandleRCPT:
         aiosmtp_session,
         aiosmtp_envelope,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given MAIL FROM is a deactivated local account
         And RCPT TO is a remote address
@@ -783,7 +791,7 @@ class TestHandleRCPT:
         aiosmtp_session,
         aiosmtp_envelope,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given MAIL FROM is an active local account but session is not authenticated
         And RCPT TO is a remote address
@@ -821,7 +829,7 @@ class TestHandleRCPT:
         aiosmtp_session,
         aiosmtp_envelope,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given multiple RCPT TO commands (local and remote)
         When handle_RCPT is called multiple times
@@ -877,7 +885,7 @@ class TestHandleDATA:
         aiosmtp_envelope,
         mocker,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given a valid SMTP transaction with local recipient
         When handle_DATA is called
@@ -924,7 +932,7 @@ class TestHandleDATA:
         aiosmtp_envelope,
         tmp_path,
         mocker,
-    ):
+    ) -> None:
         """
         Given an envelope with no valid recipients (all rejected in RCPT)
         When handle_DATA is called
@@ -962,7 +970,7 @@ class TestHandleDATA:
         smtp,
         mocker,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given an authenticated session sending to a remote address
         When handle_DATA is called
@@ -1004,7 +1012,7 @@ class TestHandleDATA:
         smtp,
         mocker,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given an authenticated session sending to both local and remote addresses
         When handle_DATA is called
@@ -1066,7 +1074,7 @@ class TestFromHeaderValidation:
         smtp,
         mocker,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given an authenticated session with correct FROM header
         When handle_DATA is called
@@ -1107,7 +1115,7 @@ class TestFromHeaderValidation:
         smtp,
         mocker,
         tmp_path,
-    ):
+    ) -> None:
         """
         Given an authenticated session with wrong FROM header
         When handle_DATA is called
@@ -1151,7 +1159,7 @@ class TestDNSBL:
     @pytest.mark.asyncio
     async def test_handle_CONNECT_not_blacklisted(
         self, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
-    ):
+    ) -> None:
         """
         Given a connecting IP that is not on any DNSBL
         When handle_CONNECT is called
@@ -1181,7 +1189,7 @@ class TestDNSBL:
     @pytest.mark.asyncio
     async def test_handle_CONNECT_blacklisted(
         self, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
-    ):
+    ) -> None:
         """
         Given a connecting IP that is on a DNSBL
         When handle_CONNECT is called
@@ -1331,7 +1339,7 @@ class TestSMTPIntegration:
         mocker,
         smtp,
         tmp_path,
-    ):
+    ) -> None:
         """
         Test complete SMTP transaction flows for various scenarios.
 
@@ -1467,7 +1475,7 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_port_or_off_rejects_invalid_port(self):
+    def test_port_or_off_rejects_invalid_port(self) -> None:
         """
         Given an invalid port number (out of range or non-numeric)
         When port_or_off is called
@@ -1490,7 +1498,9 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_handle_with_both_ports_enabled(self, mocker, tmp_path, faker):
+    def test_handle_with_both_ports_enabled(
+        self, mocker, tmp_path, faker
+    ) -> None:
         """
         Given both submission_port and smtp_port are valid integers
         When handle() is called
@@ -1543,7 +1553,7 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_handle_with_submission_port_off(self, mocker, tmp_path):
+    def test_handle_with_submission_port_off(self, mocker, tmp_path) -> None:
         """
         Given submission_port is "off" and smtp_port is a valid integer
         When handle() is called
@@ -1593,7 +1603,7 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_handle_with_smtp_port_off(self, mocker, tmp_path):
+    def test_handle_with_smtp_port_off(self, mocker, tmp_path) -> None:
         """
         Given smtp_port is "off" and submission_port is a valid integer
         When handle() is called
@@ -1643,7 +1653,7 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_handle_with_both_ports_off(self, mocker, tmp_path):
+    def test_handle_with_both_ports_off(self, mocker, tmp_path) -> None:
         """
         Given both submission_port and smtp_port are "off"
         When handle() is called
@@ -1699,7 +1709,7 @@ class TestRelayToProvider:
         faker,
         smtp,
         mocker,
-    ):
+    ) -> None:
         """
         Given a message sent only to inactive email addresses
         When relay_email_to_provider is called
@@ -1752,7 +1762,7 @@ class TestRelayToProvider:
         faker,
         smtp,
         mocker,
-    ):
+    ) -> None:
         """
         Given a message sent to both valid and inactive addresses
         When relay_email_to_provider is called

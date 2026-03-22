@@ -7,17 +7,21 @@ Test the Postmark provider backend.
 # system imports
 #
 import json
+from collections.abc import Callable
 from email.message import EmailMessage
 from pathlib import Path
 
 # 3rd party imports
 #
 import pytest
+from django.test import RequestFactory
 from postmarker.exceptions import ClientError
+from pytest_mock import MockerFixture
 from requests import RequestException
 
 # project imports
 #
+from ...models import EmailAccount, Server
 from ...providers.base import BounceType
 from ...providers.postmark import PostmarkBackend
 
@@ -35,7 +39,9 @@ def _make_text_message(body: str = "Test message") -> EmailMessage:
 
 ########################################################################
 #
-def test_postmark_backend_send_email_smtp_success(server_with_token, smtp):
+def test_postmark_backend_send_email_smtp_success(
+    server_with_token, smtp
+) -> None:
     """
     Test successful SMTP email sending via Postmark backend.
 
@@ -68,7 +74,9 @@ def test_postmark_backend_send_email_smtp_success(server_with_token, smtp):
 
 ########################################################################
 #
-def test_postmark_backend_send_email_smtp_wrong_domain(server_with_token):
+def test_postmark_backend_send_email_smtp_wrong_domain(
+    server_with_token,
+) -> None:
     """
     Test SMTP sending fails when email domain doesn't match server.
 
@@ -99,7 +107,7 @@ def test_postmark_backend_send_email_smtp_wrong_domain(server_with_token):
 #
 def test_postmark_backend_send_email_smtp_missing_token(
     server_factory, settings
-):
+) -> None:
     """
     Test SMTP sending fails when server token is missing.
 
@@ -136,7 +144,7 @@ def test_postmark_backend_send_email_smtp_missing_token(
 #
 def test_postmark_backend_send_email_smtp_exception_spools(
     server_with_token, smtp, email_spool_dir
-):
+) -> None:
     """
     Test SMTP exception causes message to be spooled.
 
@@ -173,7 +181,9 @@ def test_postmark_backend_send_email_smtp_exception_spools(
 
 ########################################################################
 #
-def test_postmark_backend_send_email_api_success(server_with_token, mocker):
+def test_postmark_backend_send_email_api_success(
+    server_with_token, mocker
+) -> None:
     """
     Test successful API email sending via Postmark backend.
 
@@ -207,7 +217,7 @@ def test_postmark_backend_send_email_api_success(server_with_token, mocker):
 #
 def test_postmark_backend_send_email_api_request_exception(
     server_with_token, email_spool_dir, mocker
-):
+) -> None:
     """
     Test API sending handles RequestException gracefully.
 
@@ -244,7 +254,7 @@ def test_postmark_backend_send_email_api_request_exception(
 #
 def test_postmark_backend_send_email_api_retryable_client_error(
     server_with_token, email_spool_dir, mocker
-):
+) -> None:
     """
     Test API sending spools on retryable ClientError codes.
 
@@ -283,7 +293,7 @@ def test_postmark_backend_send_email_api_retryable_client_error(
 #
 def test_postmark_backend_send_email_api_non_retryable_client_error(
     server_with_token, mocker
-):
+) -> None:
     """
     Test API sending raises on non-retryable ClientError.
 
@@ -316,7 +326,7 @@ def test_postmark_backend_send_email_api_non_retryable_client_error(
 #
 def test_postmark_backend_handle_incoming_webhook_success(
     rf, server_factory, email_account_factory, email_spool_dir, mocker
-):
+) -> None:
     """
     Test successful incoming email webhook handling.
 
@@ -396,7 +406,7 @@ def test_postmark_backend_handle_incoming_webhook_no_delivery(
     account_exists,
     account_enabled,
     expected_log,
-):
+) -> None:
     """
     Test incoming webhook when delivery should not occur.
 
@@ -451,7 +461,9 @@ def test_postmark_backend_handle_incoming_webhook_no_delivery(
 
 ########################################################################
 #
-def test_postmark_backend_handle_incoming_webhook_bad_json(rf, server_factory):
+def test_postmark_backend_handle_incoming_webhook_bad_json(
+    rf, server_factory
+) -> None:
     """
     Test incoming webhook with invalid JSON.
 
@@ -478,7 +490,7 @@ def test_postmark_backend_handle_incoming_webhook_bad_json(rf, server_factory):
 #
 def test_postmark_backend_handle_bounce_webhook_success(
     rf, server_factory, email_account_factory, mocker
-):
+) -> None:
     """
     Test successful bounce webhook handling.
 
@@ -538,7 +550,7 @@ def test_postmark_backend_handle_bounce_webhook_success(
 #
 def test_postmark_backend_handle_bounce_webhook_no_account(
     rf, server_factory, mocker
-):
+) -> None:
     """
     Test bounce webhook for non-existent email account.
 
@@ -584,7 +596,7 @@ def test_postmark_backend_handle_bounce_webhook_no_account(
 #
 def test_postmark_backend_handle_bounce_webhook_missing_keys(
     rf, server_factory
-):
+) -> None:
     """
     Test bounce webhook with missing required keys.
 
@@ -619,7 +631,7 @@ def test_postmark_backend_handle_bounce_webhook_missing_keys(
 #
 def test_postmark_backend_handle_spam_webhook_success(
     rf, server_factory, email_account_factory, mocker
-):
+) -> None:
     """
     Test successful spam webhook handling.
 
@@ -678,7 +690,7 @@ def test_postmark_backend_handle_spam_webhook_success(
 #
 def test_postmark_backend_handle_spam_webhook_invalid_typecode(
     rf, server_factory, email_account_factory, mocker
-):
+) -> None:
     """
     Test spam webhook with invalid TypeCode.
 
@@ -738,12 +750,12 @@ def test_postmark_backend_handle_spam_webhook_invalid_typecode(
     ],
 )
 def test_postmark_backend_handle_bounce_webhook_typecode_transient(
-    rf,
-    server_factory,
-    email_account_factory,
-    mocker,
-    type_code,
-    expected_transient,
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    email_account_factory: Callable[..., EmailAccount],
+    mocker: MockerFixture,
+    type_code: int | None,
+    expected_transient: bool,
 ) -> None:
     """
     Given: A bounce webhook with various TypeCode values
@@ -785,7 +797,10 @@ def test_postmark_backend_handle_bounce_webhook_typecode_transient(
 ########################################################################
 #
 def test_postmark_backend_handle_bounce_webhook_all_fields_mapped(
-    rf, server_factory, email_account_factory, mocker
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    email_account_factory: Callable[..., EmailAccount],
+    mocker: MockerFixture,
 ) -> None:
     """
     Given: A bounce webhook with all optional Postmark fields populated
@@ -839,7 +854,7 @@ def test_postmark_backend_handle_bounce_webhook_all_fields_mapped(
 
 ########################################################################
 #
-def test_postmark_backend_get_client(server_with_token):
+def test_postmark_backend_get_client(server_with_token) -> None:
     """
     Test _get_client() returns configured PostmarkClient.
 
@@ -857,7 +872,9 @@ def test_postmark_backend_get_client(server_with_token):
 
 ########################################################################
 #
-def test_postmark_backend_get_client_missing_token(server_factory, settings):
+def test_postmark_backend_get_client_missing_token(
+    server_factory, settings
+) -> None:
     """
     Test _get_client() raises KeyError when token is missing.
 
@@ -885,7 +902,9 @@ def test_postmark_backend_get_client_missing_token(server_factory, settings):
 ########################################################################
 #
 def test_postmark_backend_send_email_dispatches_to_smtp(
-    server_with_token, email_factory, mocker
+    server_with_token: Callable[..., Server],
+    email_factory: Callable[..., EmailMessage],
+    mocker: MockerFixture,
 ) -> None:
     """
     GIVEN: a PostmarkBackend and a message
@@ -915,7 +934,9 @@ def test_postmark_backend_send_email_dispatches_to_smtp(
 ########################################################################
 #
 def test_postmark_backend_send_email_passes_none_when_omitted(
-    server_with_token, email_factory, mocker
+    server_with_token: Callable[..., Server],
+    email_factory: Callable[..., EmailMessage],
+    mocker: MockerFixture,
 ) -> None:
     """
     GIVEN: a message with To, Cc, and Bcc recipients

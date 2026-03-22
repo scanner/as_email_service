@@ -3,14 +3,18 @@
 import email.message
 import mailbox
 from collections.abc import Callable
+from email.message import EmailMessage
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
 import pytest
 from dirty_equals import Contains
+from django.conf import LazySettings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from faker import Faker
 from pytest_mock import MockerFixture
 
 # Project imports
@@ -21,6 +25,7 @@ from ..models import (
     InactiveEmail,
     LocalDelivery,
     MessageFilterRule,
+    Server,
 )
 from .conftest import assert_email_equal
 
@@ -31,7 +36,7 @@ pytestmark = pytest.mark.django_db
 
 ####################################################################
 #
-def test_server(server_factory):
+def test_server(server_factory: Callable[..., Server]) -> None:
     """
     Make sure we can create a server, and all of its dirs are setup properly.
     """
@@ -55,8 +60,10 @@ def test_server(server_factory):
 ####################################################################
 #
 def test_server_creates_admin_emailaccounts(
-    user_factory, server_factory, settings
-):
+    user_factory: Callable,
+    server_factory: Callable[..., Server],
+    settings: LazySettings,
+) -> None:
     """
     With the defaults from django settings, if a user account with the
     username 'admin' exists, then EmailAccounts defined by the list
@@ -112,7 +119,9 @@ def test_email_account_set_check_password(
 
 ####################################################################
 #
-def test_email_account_valid_email_address(email_account_factory):
+def test_email_account_valid_email_address(
+    email_account_factory: Callable[..., EmailAccount],
+) -> None:
     """
     The `email_address` must have the same domain name as the
     associated server.
@@ -136,7 +145,9 @@ def test_email_account_valid_email_address(email_account_factory):
 
 ####################################################################
 #
-def test_email_account_mail_dir(settings, email_account_factory) -> None:
+def test_email_account_mail_dir(
+    settings: LazySettings, email_account_factory: Callable[..., EmailAccount]
+) -> None:
     """
     make sure the mailbox.MH directory for the email account exists
     """
@@ -162,7 +173,9 @@ def test_email_account_mail_dir(settings, email_account_factory) -> None:
 ####################################################################
 #
 def test_alias_to_delivery_self_loop(
-    email_account_factory, email_factory, caplog
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     GIVEN an AliasToDelivery that points back to its own account (self-loop)
@@ -180,7 +193,11 @@ def test_alias_to_delivery_self_loop(
 
 ####################################################################
 #
-def test_server_send_email(email_account_factory, email_factory, smtp):
+def test_server_send_email(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    smtp: MagicMock,
+) -> None:
     """
     GIVEN: a server with a configured send provider
     WHEN:  send_email() is called with explicit email_from and rcpt_tos
@@ -212,8 +229,10 @@ def test_server_send_email(email_account_factory, email_factory, smtp):
 ####################################################################
 #
 def test_server_send_email_invalid_from(
-    email_account_factory, email_factory, faker
-):
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    faker: Faker,
+) -> None:
     """
     GIVEN: a server with a configured send provider
     WHEN:  send_email() is called with an email_from that doesn't match
@@ -232,7 +251,9 @@ def test_server_send_email_invalid_from(
 
 ####################################################################
 #
-def test_message_filter_rule_create_from_text(faker, email_account_factory):
+def test_message_filter_rule_create_from_text(
+    faker: Faker, email_account_factory: Callable[..., EmailAccount]
+) -> None:
     """
     message filter rules are all about filtering messages and are based on
     the `maildelivery` file from mh/nmh using slocal for delivery of messages
@@ -263,7 +284,9 @@ def test_message_filter_rule_create_from_text(faker, email_account_factory):
 
 ####################################################################
 #
-def test_message_filter_rule_match(faker, message_filter_rule_factory):
+def test_message_filter_rule_match(
+    faker: Faker, message_filter_rule_factory: Callable[..., MessageFilterRule]
+) -> None:
     # Generate a random file directory path
     #
     destination = str(Path(faker.file_path(faker.random_digit())).parent)
@@ -284,7 +307,9 @@ def test_message_filter_rule_match(faker, message_filter_rule_factory):
 
 ####################################################################
 #
-def test_inactive_email_inactives(inactive_email_factory, faker):
+def test_inactive_email_inactives(
+    inactive_email_factory: Callable[..., InactiveEmail], faker: Faker
+) -> None:
     """
     Make some inactive emails, make sure they show up when we query to see
     if any emails are inactive emails.
@@ -314,7 +339,9 @@ def test_inactive_email_inactives(inactive_email_factory, faker):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_async_inactive_email_inactives(inactive_email_factory, faker):
+async def test_async_inactive_email_inactives(
+    inactive_email_factory: Callable[..., InactiveEmail], faker: Faker
+) -> None:
     """
     Make some inactive emails, make sure they show up when we query to see
     if any emails are inactive emails.

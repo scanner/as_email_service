@@ -136,7 +136,7 @@ def _expected_for_message_filter_rule(mfr: MessageFilterRule) -> dict:
 @pytest.mark.parametrize("provider_name", ["postmark"])
 def test_get_provider_for_webhook(
     provider_factory, server_factory, provider_name
-):
+) -> None:
     """
     Test that _get_provider_for_webhook correctly retrieves providers configured
     for a server's receive_providers.
@@ -175,7 +175,7 @@ def test_get_provider_for_webhook(
 
 ####################################################################
 #
-def test_index(api_client, user_factory, email_account_factory, faker):
+def test_index(api_client, user_factory, email_account_factory, faker) -> None:
     password = faker.pystr(min_chars=8, max_chars=32)
     user = user_factory(password=password)
     user.save()
@@ -201,7 +201,7 @@ def test_index(api_client, user_factory, email_account_factory, faker):
 #
 def test_incoming_webhook(
     email_account_factory, api_client, faker, mock_webhook_provider
-):
+) -> None:
     """
     Test that the incoming webhook view correctly calls the provider backend's
     handle_incoming_webhook method with the correct arguments.
@@ -261,7 +261,7 @@ def test_incoming_webhook(
 def test_incoming_webhook_no_such_server(
     api_client,
     faker,
-):
+) -> None:
     domain_name = faker.domain_name()
     api_key = faker.pystr()
     addr = faker.email()
@@ -292,7 +292,7 @@ def test_incoming_webhook_no_such_server(
 def test_incoming_webhook_no_such_provider_backend(
     api_client,
     faker,
-):
+) -> None:
     domain_name = faker.domain_name()
     api_key = faker.pystr()
     addr = faker.email()
@@ -325,7 +325,7 @@ def test_bounce_webhook(
     api_client,
     faker,
     mock_webhook_provider,
-):
+) -> None:
     """
     Test that the bounce webhook view correctly calls the provider backend's
     handle_bounce_webhook method with the correct arguments.
@@ -404,7 +404,7 @@ def test_postmark_spam_webhook(
     api_client,
     faker,
     mock_webhook_provider,
-):
+) -> None:
     """
     Test that the spam webhook view correctly calls the provider backend's
     handle_spam_webhook method with the correct arguments.
@@ -518,7 +518,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_list(self, api_client, setup):
+    def test_list(self, api_client, setup) -> None:
         url = reverse("as_email:email-account-list")
         client = api_client()
         resp = client.get(url)
@@ -536,7 +536,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_create(self, api_client, faker, setup):
+    def test_create(self, api_client, faker, setup) -> None:
         """
         The REST API does not support creating users.
         """
@@ -568,7 +568,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_retrieve(self, api_client, setup):
+    def test_retrieve(self, api_client, setup) -> None:
         client = api_client()
         ea = setup["email_account"]
         url = reverse("as_email:email-account-detail", kwargs={"pk": ea.pk})
@@ -588,7 +588,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_update(self, setup):
+    def test_update(self, setup) -> None:
         """
         All EmailAccount fields are read-only via the REST API. A PUT
         returns 200 but the account is unchanged (enabled is admin-only).
@@ -607,7 +607,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_update_readonly_fields(self, faker, setup):
+    def test_update_readonly_fields(self, faker, setup) -> None:
         """
         All EmailAccount fields are read-only via the REST API. Attempting
         to change any of them via PUT should be silently ignored.
@@ -634,7 +634,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_set_password(self, faker, setup):
+    def test_set_password(self, faker, setup) -> None:
         client = setup["client"]
         ea = setup["email_account"]
         new_password = faker.pystr(min_chars=8, max_chars=32)
@@ -650,7 +650,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_partial_update(self, setup):
+    def test_partial_update(self, setup) -> None:
         """
         All EmailAccount fields are read-only via the REST API. A PATCH
         attempting to change any field should be silently ignored and
@@ -674,7 +674,7 @@ class TestEmailAccountEndpoints:
     #
     def test_partial_update_ro(
         self, api_client, faker, email_account_factory, setup
-    ):
+    ) -> None:
         """
         Make sure read-only fields are read-only.
         """
@@ -699,7 +699,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_delete(self, setup):
+    def test_delete(self, setup) -> None:
         """
         Can not delete EmailAccount's
         """
@@ -712,7 +712,7 @@ class TestEmailAccountEndpoints:
 
     ####################################################################
     #
-    def test_options(self, setup):
+    def test_options(self, setup) -> None:
         """
         Make sure that getting `options` for an EmailAccount works.
         """
@@ -798,7 +798,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_list(self, api_client, setup):
+    def test_list(self, api_client, setup) -> None:
         ea = setup["email_account"]
         url = reverse(
             "as_email:message-filter-rule-list",
@@ -830,7 +830,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_retrieve(self, api_client, setup):
+    def test_retrieve(self, api_client, setup) -> None:
         # Test unauthenticated access
         #
         client = api_client()
@@ -854,7 +854,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_create(self, setup):
+    def test_create(self, setup) -> None:
         ea = setup["email_account"]
         url = reverse(
             "as_email:message-filter-rule-list",
@@ -897,7 +897,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_update(self, setup):
+    def test_update(self, setup) -> None:
         ea = setup["email_account"]
         mfr = ea.message_filter_rules.all().first()
         assert mfr.email_account == ea
@@ -943,7 +943,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_update_ro_fields(self, setup):
+    def test_update_ro_fields(self, setup) -> None:
         ea = setup["email_account"]
         mfr = ea.message_filter_rules.all().first()
         original_mfr = _expected_for_message_filter_rule(mfr)
@@ -973,7 +973,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_partial_update(self, setup):
+    def test_partial_update(self, setup) -> None:
         client = setup["client"]
         ea = setup["email_account"]
         mfr = ea.message_filter_rules.all().first()
@@ -996,7 +996,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_delete(self, setup):
+    def test_delete(self, setup) -> None:
         ea = setup["email_account"]
         url = reverse(
             "as_email:message-filter-rule-list",
@@ -1052,7 +1052,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_move(self, setup):
+    def test_move(self, setup) -> None:
         """
         Test various values for the 'move' method.
         """
@@ -1128,7 +1128,7 @@ class TestMessageFilterRuleEndpoints:
 
     ####################################################################
     #
-    def test_options(self, setup):
+    def test_options(self, setup) -> None:
         """
         Make sure that getting `options` for an EmailAccount works.
         """
@@ -1212,7 +1212,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_list_unauthenticated_is_forbidden(self, api_client, setup):
+    def test_list_unauthenticated_is_forbidden(self, api_client, setup) -> None:
         """
         GIVEN an unauthenticated client
         WHEN  the delivery-method list endpoint is requested
@@ -1225,7 +1225,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_list_returns_own_delivery_methods(self, setup):
+    def test_list_returns_own_delivery_methods(self, setup) -> None:
         """
         GIVEN an authenticated user with one LocalDelivery on their account
         WHEN  the delivery-method list endpoint is requested
@@ -1248,7 +1248,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_list_does_not_return_other_users_methods(self, setup):
+    def test_list_does_not_return_other_users_methods(self, setup) -> None:
         """
         GIVEN two accounts owned by different users
         WHEN  the authenticated user lists delivery methods for the other account
@@ -1264,7 +1264,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_retrieve_local_delivery(self, setup):
+    def test_retrieve_local_delivery(self, setup) -> None:
         """
         GIVEN an account with a LocalDelivery
         WHEN  the detail endpoint is requested
@@ -1282,7 +1282,9 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_retrieve_unauthenticated_is_forbidden(self, api_client, setup):
+    def test_retrieve_unauthenticated_is_forbidden(
+        self, api_client, setup
+    ) -> None:
         """
         GIVEN an unauthenticated client
         WHEN  the delivery-method detail endpoint is requested
@@ -1296,7 +1298,9 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_create_alias_to_delivery(self, email_account_factory, setup):
+    def test_create_alias_to_delivery(
+        self, email_account_factory, setup
+    ) -> None:
         """
         GIVEN an account with no alias delivery methods
         WHEN  an AliasToDelivery is created via POST
@@ -1319,7 +1323,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_create_second_local_delivery_is_rejected(self, setup):
+    def test_create_second_local_delivery_is_rejected(self, setup) -> None:
         """
         GIVEN an account that already has a LocalDelivery
         WHEN  a second LocalDelivery is POSTed
@@ -1334,7 +1338,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_create_without_delivery_type_is_rejected(self, setup):
+    def test_create_without_delivery_type_is_rejected(self, setup) -> None:
         """
         GIVEN a POST body with no delivery_type field
         WHEN  the create endpoint is called
@@ -1350,7 +1354,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_create_with_invalid_delivery_type_is_rejected(self, setup):
+    def test_create_with_invalid_delivery_type_is_rejected(self, setup) -> None:
         """
         GIVEN a POST body with an unrecognised delivery_type
         WHEN  the create endpoint is called
@@ -1369,7 +1373,7 @@ class TestDeliveryMethodEndpoints:
     #
     def test_create_for_other_users_account_is_forbidden(
         self, email_account_factory, setup
-    ):
+    ) -> None:
         """
         GIVEN a user authenticated as user A
         WHEN  they try to POST a delivery method on user B's account
@@ -1387,7 +1391,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_update_local_delivery_spam_settings(self, setup):
+    def test_update_local_delivery_spam_settings(self, setup) -> None:
         """
         GIVEN a LocalDelivery
         WHEN  autofile_spam and spam_score_threshold are updated via PUT
@@ -1412,7 +1416,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_partial_update_local_delivery(self, setup):
+    def test_partial_update_local_delivery(self, setup) -> None:
         """
         GIVEN a LocalDelivery
         WHEN  only autofile_spam is patched
@@ -1434,7 +1438,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_maildir_path_is_read_only(self, setup):
+    def test_maildir_path_is_read_only(self, setup) -> None:
         """
         GIVEN a LocalDelivery
         WHEN  a PATCH attempt is made to change maildir_path
@@ -1455,7 +1459,9 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_update_alias_to_delivery(self, email_account_factory, setup):
+    def test_update_alias_to_delivery(
+        self, email_account_factory, setup
+    ) -> None:
         """
         GIVEN an AliasToDelivery pointing at target_a
         WHEN  it is updated via PUT to point at target_b
@@ -1480,7 +1486,9 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_delete_alias_to_delivery(self, email_account_factory, setup):
+    def test_delete_alias_to_delivery(
+        self, email_account_factory, setup
+    ) -> None:
         """
         GIVEN an AliasToDelivery
         WHEN  it is deleted via DELETE
@@ -1499,7 +1507,7 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_delete_local_delivery(self, setup):
+    def test_delete_local_delivery(self, setup) -> None:
         """
         GIVEN an account with a LocalDelivery
         WHEN  the LocalDelivery is deleted via DELETE
@@ -1515,7 +1523,9 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
-    def test_delete_other_users_delivery_method_is_forbidden(self, setup):
+    def test_delete_other_users_delivery_method_is_forbidden(
+        self, setup
+    ) -> None:
         """
         GIVEN a delivery method owned by another user
         WHEN  the current user tries to delete it

@@ -4,18 +4,22 @@
 Test our factories. Makes sure the factory does not fail and that
 it returns the correct type of object.
 """
+
 # system imports
 #
+from collections.abc import Callable
+from email.message import EmailMessage
+from typing import Any
 
 # 3rd party imports
 #
 import pytest
-
-# Project imports
-#
+from django.conf import LazySettings
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.test import RequestFactory
+from faker import Faker
+from pytest_mock import MockerFixture
 
 from ..models import (
     EmailAccount,
@@ -33,21 +37,21 @@ User = get_user_model()
 
 ####################################################################
 #
-def test_user_factory(user_factory):
+def test_user_factory(user_factory: Callable) -> None:
     user = user_factory()
     assert isinstance(user, User)
 
 
 ####################################################################
 #
-def test_provider_factory(provider_factory):
+def test_provider_factory(provider_factory: Callable[..., Provider]) -> None:
     provider = provider_factory()
     assert isinstance(provider, Provider)
 
 
 ####################################################################
 #
-def test_server_factory(server_factory):
+def test_server_factory(server_factory: Callable[..., Server]) -> None:
     server = server_factory()
     assert isinstance(server, Server)
 
@@ -55,8 +59,12 @@ def test_server_factory(server_factory):
 ####################################################################
 #
 def test_server_factory_client(
-    server_factory, settings, faker, postmark_client, email_factory
-):
+    server_factory: Callable[..., Server],
+    settings: LazySettings,
+    faker: Faker,
+    postmark_client: Any,
+    email_factory: Callable[..., EmailMessage],
+) -> None:
     """
     Test that server factory creates servers that can send email.
 
@@ -79,21 +87,27 @@ def test_server_factory_client(
 
 ####################################################################
 #
-def test_email_account_factory(email_account_factory):
+def test_email_account_factory(
+    email_account_factory: Callable[..., EmailAccount],
+) -> None:
     email_account = email_account_factory()
     assert isinstance(email_account, EmailAccount)
 
 
 ####################################################################
 #
-def test_message_filter_rule_factory(message_filter_rule_factory):
+def test_message_filter_rule_factory(
+    message_filter_rule_factory: Callable[..., MessageFilterRule],
+) -> None:
     message_filter_rule = message_filter_rule_factory()
     assert isinstance(message_filter_rule, MessageFilterRule)
 
 
 ####################################################################
 #
-def test_inactive_email_factory(inactive_email_factory):
+def test_inactive_email_factory(
+    inactive_email_factory: Callable[..., InactiveEmail],
+) -> None:
     inactive_email = inactive_email_factory()
     assert isinstance(inactive_email, InactiveEmail)
 
@@ -107,7 +121,9 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     @pytest.fixture
-    def mock_email_account(self, mocker, faker):
+    def mock_email_account(
+        self, mocker: MockerFixture, faker: Faker
+    ) -> Callable[..., Any]:
         """
         Fixture generator that creates mock email accounts.
 
@@ -117,7 +133,7 @@ class TestDummyProviderBackend:
             Otherwise generates a random email and extracts domain from it.
         """
 
-        def _make_account(domain_name=None):
+        def _make_account(domain_name: str | None = None) -> Any:
             account = mocker.Mock()
             if domain_name:
                 account.email_address = f"{faker.user_name()}@{domain_name}"
@@ -131,7 +147,7 @@ class TestDummyProviderBackend:
 
     ####################################################################
     #
-    def test_initialization(self, dummy_provider) -> None:
+    def test_initialization(self, dummy_provider: DummyProviderBackend) -> None:
         """
         Given a fresh dummy provider instance
         When it is created
@@ -154,9 +170,9 @@ class TestDummyProviderBackend:
     )
     def test_create_update_domain(
         self,
-        dummy_provider,
-        mocker,
-        faker,
+        dummy_provider: DummyProviderBackend,
+        mocker: MockerFixture,
+        faker: Faker,
         pre_create: bool,
         dry_run: bool,
         expected_return: bool,
@@ -184,7 +200,12 @@ class TestDummyProviderBackend:
 
     ####################################################################
     #
-    def test_delete_domain(self, dummy_provider, mocker, faker) -> None:
+    def test_delete_domain(
+        self,
+        dummy_provider: DummyProviderBackend,
+        mocker: MockerFixture,
+        faker: Faker,
+    ) -> None:
         """
         Given a domain that exists
         When delete_domain is called
@@ -202,9 +223,9 @@ class TestDummyProviderBackend:
     #
     def test_delete_domain_nonexistent(
         self,
-        dummy_provider,
-        mocker,
-        faker,
+        dummy_provider: DummyProviderBackend,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given a domain that does not exist
@@ -218,7 +239,9 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_create_email_account(
-        self, dummy_provider, mock_email_account
+        self,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
     ) -> None:
         """
         Given an email account
@@ -237,7 +260,9 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_create_email_account_duplicate_raises_error(
-        self, dummy_provider, mock_email_account
+        self,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
     ) -> None:
         """
         Given an email account that already exists
@@ -253,7 +278,9 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_create_update_email_account_creates_new(
-        self, dummy_provider, mock_email_account
+        self,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
     ) -> None:
         """
         Given an email account that does not exist
@@ -268,7 +295,9 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_create_update_email_account_updates_existing(
-        self, dummy_provider, mock_email_account
+        self,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
     ) -> None:
         """
         Given an email account that already exists
@@ -285,7 +314,9 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_delete_email_account(
-        self, dummy_provider, mock_email_account
+        self,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
     ) -> None:
         """
         Given an email account that exists
@@ -302,7 +333,9 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_delete_email_account_by_address(
-        self, dummy_provider, mock_email_account
+        self,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
     ) -> None:
         """
         Given an email account that exists
@@ -320,7 +353,10 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_list_email_accounts_empty(
-        self, dummy_provider, mocker, faker
+        self,
+        dummy_provider: DummyProviderBackend,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given a server with no email accounts
@@ -337,9 +373,9 @@ class TestDummyProviderBackend:
     #
     def test_list_email_accounts_filters_by_domain(
         self,
-        dummy_provider,
-        faker,
-        mock_email_account,
+        dummy_provider: DummyProviderBackend,
+        faker: Faker,
+        mock_email_account: Callable[..., Any],
     ) -> None:
         """
         Given multiple email accounts across different domains
@@ -373,7 +409,12 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_send_email_smtp_returns_true(
-        self, settings, dummy_provider, mock_email_account, email_factory, faker
+        self,
+        settings: LazySettings,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
     ) -> None:
         """
         Given a dummy provider
@@ -397,7 +438,10 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_send_email_api_returns_true(
-        self, dummy_provider, mock_email_account, email_factory
+        self,
+        dummy_provider: DummyProviderBackend,
+        mock_email_account: Callable[..., Any],
+        email_factory: Callable[..., EmailMessage],
     ) -> None:
         """
         Given a dummy provider
@@ -412,7 +456,10 @@ class TestDummyProviderBackend:
     ####################################################################
     #
     def test_webhook_handlers_return_json_response(
-        self, dummy_provider, mocker, faker
+        self,
+        dummy_provider: DummyProviderBackend,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given a dummy provider
@@ -448,7 +495,9 @@ class TestDummyProviderBackend:
 
     ####################################################################
     #
-    def test_state_shared_between_instances(self, mock_email_account) -> None:
+    def test_state_shared_between_instances(
+        self, mock_email_account: Callable[..., Any]
+    ) -> None:
         """
         Given two different DummyProviderBackend instances
         When state is modified in one

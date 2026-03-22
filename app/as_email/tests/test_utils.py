@@ -7,10 +7,13 @@ Test various functions in the utils module
 # system imports
 #
 from datetime import UTC, datetime
+from pathlib import Path
 
 # 3rd party imports
 #
+from django.conf import LazySettings
 from django.contrib.auth.hashers import make_password
+from faker import Faker
 
 # Project imports
 #
@@ -26,7 +29,7 @@ from ..utils import (
 
 ####################################################################
 #
-def test_split_hash():
+def test_split_hash() -> None:
     email_addrs = [
         ("foo@example.com", ("foo@example.com", None)),
         ("foo+inbox@example.com", ("foo@example.com", "inbox")),
@@ -39,7 +42,9 @@ def test_split_hash():
 
 ####################################################################
 #
-def test_write_read_emailaccount_pwfile(tmp_path, faker, settings):
+def test_write_read_emailaccount_pwfile(
+    tmp_path: Path, faker: Faker, settings: LazySettings
+) -> None:
     accounts = {}
     pw_file = settings.EXT_PW_FILE
     for _ in range(5):
