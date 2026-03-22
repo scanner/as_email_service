@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("as_email", "0012_backfill_polymorphic_ctype"),
     ]

@@ -10,6 +10,7 @@ These migrations add support for multiple providers by:
 4. (0005) Migrating data from provider to the new fields
 5. (0006) Removing the old provider field
 """
+
 # system imports
 #
 from typing import Any

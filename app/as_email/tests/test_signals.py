@@ -9,9 +9,11 @@ Covers:
 - delete_provider_email_accounts (post_delete on EmailAccount)
 - handle_receive_providers_changed (m2m_changed on Server.receive_providers)
 """
+
 # system imports
 #
 from collections.abc import Callable
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
@@ -34,7 +36,7 @@ class TestProviderSignals:
     ####################################################################
     #
     @pytest.fixture(autouse=True)
-    def suppress_tasks(self, mocker: MockerFixture):
+    def suppress_tasks(self, mocker: MockerFixture) -> MagicMock:
         """
         Prevent all signal-triggered task execution during factory setup.
         Returns the HUEY.enqueue mock so individual tests can inspect or
@@ -211,7 +213,7 @@ class TestProviderSignals:
         self,
         server_factory: Callable[..., Server],
         provider_factory: Callable[..., Provider],
-        suppress_tasks,
+        suppress_tasks: MagicMock,
     ) -> None:
         """
         GIVEN: a server and a provider not yet associated with it
@@ -233,7 +235,7 @@ class TestProviderSignals:
         self,
         server_factory: Callable[..., Server],
         provider_factory: Callable[..., Provider],
-        suppress_tasks,
+        suppress_tasks: MagicMock,
     ) -> None:
         """
         GIVEN: a server and two providers not yet associated with it
@@ -268,6 +270,7 @@ class TestProviderSignals:
             "as_email.signals.provider_sync_server_email_accounts"
         )
 
+        assert provider
         server.receive_providers.remove(provider)
 
         mock_sync.assert_called_once_with(

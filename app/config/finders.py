@@ -2,6 +2,9 @@
 Custom static file finders and compatibility shims.
 """
 
+# system imports
+from typing import Any
+
 # 3rd party imports
 from django.conf import settings
 from django.contrib.staticfiles.finders import get_finder
@@ -37,13 +40,14 @@ class SimpleBulmaFinder(_SimpleBulmaFinder):
     def __init__(self) -> None:
         """Initialize with the corrected STATICFILES_FINDERS reference."""
         try:
-            self.bulma_settings = settings.BULMA_SETTINGS
+            self.bulma_settings: dict[str, Any] = settings.BULMA_SETTINGS
         except AttributeError:
             self.bulma_settings = {}
 
         self.bulma_submodule_path = simple_bulma_path / "bulma" / "sass"
-        self.custom_scss = self.bulma_settings.get("custom_scss", [])
-        self.variables = self.bulma_settings.get("variables", {})
+        self.custom_scss = list(self.bulma_settings.get("custom_scss", []))
+        variables: Any = self.bulma_settings.get("variables", {})
+        self.variables: dict[str, str] = variables
         self.output_style = self.bulma_settings.get("output_style", "nested")
         self.storage = FileSystemStorage(simple_bulma_path)
 

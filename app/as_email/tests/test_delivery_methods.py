@@ -7,17 +7,19 @@ Delivery integration tests (loops, hop limits, alias chains) live in
 test_deliver.py.  This file covers model-level properties — maildir creation,
 spam routing, enabled/disabled dispatch, and multi-method fan-out.
 """
+
 # system imports
 #
 import socket
 import ssl
+from collections.abc import Callable
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Callable
 
 # 3rd party imports
 #
 import pytest
+from django.conf import LazySettings
 from faker import Faker
 from pytest_mock import MockerFixture
 
@@ -61,7 +63,7 @@ class TestLocalDeliveryModel:
     def test_maildir_path_preserved_when_set(
         self,
         email_account_factory: Callable[..., EmailAccount],
-        settings,
+        settings: LazySettings,
     ) -> None:
         """
         GIVEN a LocalDelivery created with an explicit maildir_path
@@ -80,7 +82,7 @@ class TestLocalDeliveryModel:
     def test_mh_creates_mailbox_directory(
         self,
         email_account_factory: Callable[..., EmailAccount],
-        settings,
+        settings: LazySettings,
     ) -> None:
         """
         GIVEN a LocalDelivery
@@ -89,6 +91,7 @@ class TestLocalDeliveryModel:
         """
         ea = email_account_factory()
         ld = LocalDelivery.objects.get(email_account=ea)
+        assert ld.maildir_path is not None
         assert Path(ld.maildir_path).is_dir()
         mh = ld.MH(create=False)
         for folder in settings.DEFAULT_FOLDERS:
@@ -401,12 +404,9 @@ class TestMultipleDeliveryMethods:
 
         assert DeliveryMethod.objects.filter(email_account=ea1).count() == 1
         assert DeliveryMethod.objects.filter(email_account=ea2).count() == 1
-        assert (
-            DeliveryMethod.objects.filter(email_account=ea1)
-            .first()
-            .email_account_id
-            == ea1.pk
-        )
+        dm = DeliveryMethod.objects.filter(email_account=ea1).first()
+        assert dm is not None
+        assert dm.email_account_id == ea1.pk
 
 
 ########################################################################

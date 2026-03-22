@@ -3,6 +3,7 @@
 """
 pytest fixtures for our tests
 """
+
 # system imports
 #
 import email
@@ -21,7 +22,8 @@ from unittest.mock import MagicMock
 #
 import pytest
 import redis
-from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
+from aiosmtpd.smtp import Envelope as SMTPEnvelope
+from aiosmtpd.smtp import Session as SMTPSession
 from django.conf import LazySettings
 from django.core import mail
 from faker import Faker
@@ -122,7 +124,11 @@ def huey_immediate_mode(settings: LazySettings) -> Iterator[Huey]:
 
 ####################################################################
 #
-def assert_email_equal(msg1, msg2, ignore_headers=False):
+def assert_email_equal(
+    msg1: EmailMessage,
+    msg2: EmailMessage,
+    ignore_headers: bool | list[str] = False,
+) -> None:
     """
     Because we can not directly compare a Message and EmailMessage object
     we need to compare their parts. Since an EmailMessage is a sub-class of
@@ -331,7 +337,7 @@ def mailbox_dir(settings: LazySettings, tmp_path: Path) -> Iterator[Path]:
 ####################################################################
 #
 @pytest.fixture
-def api_client():
+def api_client() -> type[APIClient]:
     """
     fixture for DRF's APIClient object.
     """
@@ -341,7 +347,7 @@ def api_client():
 ####################################################################
 #
 @pytest.fixture
-def requests_client():
+def requests_client() -> type[RequestsClient]:
     """
     fixture for DRF's RequestsClient object.
     """
@@ -367,7 +373,7 @@ def smtp(mocker: MockerFixture) -> MagicMock:
 ####################################################################
 #
 @pytest.fixture
-def aiosmtp_session(faker) -> SMTPSession:
+def aiosmtp_session(faker: Faker) -> SMTPSession:
     """
     When testing handlers and authenticators we need a aiosmtp.smtp.Session
 

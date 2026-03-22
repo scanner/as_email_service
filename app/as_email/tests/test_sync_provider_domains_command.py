@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 #
 """Tests for the sync_provider_domains management command."""
+
 # system imports
 #
+from collections.abc import Callable
 from io import StringIO
-from typing import Callable
 
 # 3rd party imports
 #

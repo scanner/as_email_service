@@ -6,6 +6,7 @@ Postmark provider backend implementation.
 Implements email sending via Postmark's SMTP and API, and webhook handlers
 for incoming email, bounces, and spam notifications.
 """
+
 # system imports
 #
 import email.message
@@ -153,6 +154,7 @@ class PostmarkBackend(ProviderBackend):
         del message["X-PM-Message-Stream"]
         message["X-PM-Message-Stream"] = "outbound"
 
+        assert server.send_provider is not None
         smtp_server, port = server.send_provider.smtp_server.split(":")
         smtp_client = get_smtp_client(smtp_server, int(port))
         try:
@@ -169,6 +171,7 @@ class PostmarkBackend(ProviderBackend):
                 exc,
             )
             if spool_on_retryable:
+                assert server.outgoing_spool_dir is not None
                 spool_message(server.outgoing_spool_dir, message.as_bytes())
             return False
         finally:
@@ -214,6 +217,7 @@ class PostmarkBackend(ProviderBackend):
                 "Failed to send email: %r. Spooling for retransmission", exc
             )
             if spool_on_retryable:
+                assert server.outgoing_spool_dir is not None
                 spool_message(server.outgoing_spool_dir, message.as_bytes())
             return False
         except ClientError as exc:
@@ -226,6 +230,7 @@ class PostmarkBackend(ProviderBackend):
                 429,  # Rate limit exceeded
             ):
                 if spool_on_retryable:
+                    assert server.outgoing_spool_dir is not None
                     spool_message(server.outgoing_spool_dir, message.as_bytes())
                     logger.warning("Spooling message for retry (%r)", exc)
                 else:
@@ -352,6 +357,7 @@ class PostmarkBackend(ProviderBackend):
                 }
             )
 
+        assert server.incoming_spool_dir is not None
         spooled_msg_path = write_spooled_email(
             incoming_msg["OriginalRecipient"],
             server.incoming_spool_dir,
@@ -408,7 +414,9 @@ class PostmarkBackend(ProviderBackend):
             except (ValueError, TypeError):
                 type_code = 2048  # Unknown
             if type_code in BOUNCE_TYPES_BY_TYPE_CODE:
-                transient = BOUNCE_TYPES_BY_TYPE_CODE[type_code]["transient"]
+                transient = bool(
+                    BOUNCE_TYPES_BY_TYPE_CODE[type_code]["transient"]
+                )
             else:
                 logger.warning(
                     "Received Postmark TypeCode %s which is not recognized. "

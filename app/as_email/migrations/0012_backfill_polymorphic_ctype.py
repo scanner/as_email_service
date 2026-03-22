@@ -9,6 +9,7 @@ apps.get_model() bypasses the model's save() method, so the original 0010
 migration left all rows with NULL.  This migration repairs those rows using
 raw SQL so it does not depend on the ORM's polymorphic machinery.
 """
+
 # system imports
 #
 from django.db import migrations
@@ -63,7 +64,6 @@ def noop(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("as_email", "0011_remove_legacy_delivery_fields"),
     ]

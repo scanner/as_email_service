@@ -8,7 +8,6 @@ import logging
 import random
 import string
 from pathlib import Path
-from typing import Type
 
 # 3rd party imports
 #
@@ -49,7 +48,7 @@ logger = logging.getLogger("as_email.models")
 #
 @receiver(pre_save, sender=EmailAccount)
 def email_account_pre_save(
-    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
+    sender: type[EmailAccount], instance: EmailAccount, **kwargs
 ) -> None:
     """
     Conduct pre-save EmailAccount actions.
@@ -61,7 +60,7 @@ def email_account_pre_save(
 #
 @receiver(post_save, sender=LocalDelivery)
 def create_local_delivery_mailbox(
-    sender: Type[LocalDelivery],
+    sender: type[LocalDelivery],
     instance: LocalDelivery,
     created: bool,
     **kwargs,
@@ -78,7 +77,7 @@ def create_local_delivery_mailbox(
 #
 @receiver(post_save, sender=EmailAccount)
 def fire_off_async_task_update_emailaccount_pwfile(
-    sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
+    sender: type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
 ):
     """
     Fire off an async task that will compare the email account entry in the
@@ -102,7 +101,7 @@ def fire_off_async_task_update_emailaccount_pwfile(
 #
 @receiver(post_save, sender=EmailAccount)
 def create_or_update_provider_email_accounts(
-    sender: Type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
+    sender: type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
 ):
     """
     When an EmailAccount is created or its enabled state changes, update
@@ -123,7 +122,7 @@ def create_or_update_provider_email_accounts(
 #
 @receiver(post_delete, sender=EmailAccount)
 def fire_off_async_task_delete_emailaccount_pwfile(
-    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
+    sender: type[EmailAccount], instance: EmailAccount, **kwargs
 ):
     """
     When an email account is deleted from the system make sure its entry in
@@ -136,7 +135,7 @@ def fire_off_async_task_delete_emailaccount_pwfile(
 #
 @receiver(post_delete, sender=EmailAccount)
 def delete_provider_email_accounts(
-    sender: Type[EmailAccount], instance: EmailAccount, **kwargs
+    sender: type[EmailAccount], instance: EmailAccount, **kwargs
 ):
     """
     When an EmailAccount is deleted, delete corresponding email accounts from
@@ -153,7 +152,7 @@ def delete_provider_email_accounts(
 #
 @receiver(post_save, sender=Server)
 def check_create_maintenance_email_accounts(
-    sender: Type[Server], instance: Server, created: bool, **kwargs
+    sender: type[Server], instance: Server, created: bool, **kwargs
 ):
     """
     - sender: The model class (`Server`)
@@ -229,7 +228,7 @@ def check_create_maintenance_email_accounts(
 ####################################################################
 #
 @receiver(pre_save, sender=Server)
-def server_pre_save(sender: Type[Server], instance: Server, **kwargs):
+def server_pre_save(sender: type[Server], instance: Server, **kwargs):
     """
     Pre-save signal handler for Server that:
     1. Sets initial values for spool directories, mail_dir_parent, and api_key
@@ -266,6 +265,9 @@ def server_pre_save(sender: Type[Server], instance: Server, **kwargs):
 
     # Create directories if this is a new instance
     if is_new:
+        assert instance.incoming_spool_dir is not None
+        assert instance.outgoing_spool_dir is not None
+        assert instance.mail_dir_parent is not None
         Path(instance.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(instance.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(instance.mail_dir_parent).mkdir(parents=True, exist_ok=True)
@@ -273,7 +275,7 @@ def server_pre_save(sender: Type[Server], instance: Server, **kwargs):
 
 @receiver(post_save, sender=Server)
 def handle_send_provider_changed(
-    sender: Type[Server], instance: Server, created: bool, **kwargs
+    sender: type[Server], instance: Server, created: bool, **kwargs
 ) -> None:
     """
     When a Server's send_provider is set or changed, trigger domain
@@ -295,6 +297,7 @@ def handle_send_provider_changed(
     if not instance.send_provider_id:
         return
 
+    assert instance.send_provider is not None
     provider_create_update_server(
         instance.pk, instance.send_provider.backend_name
     )

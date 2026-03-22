@@ -3,11 +3,17 @@
 """
 Test the various functions in the `deliver` module
 """
+
 # system imports
 #
+from collections.abc import Callable
+from email.message import EmailMessage
+
 # 3rd party imports
 #
 import pytest
+from faker import Faker
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -17,7 +23,12 @@ from ..deliver import (
     make_delivery_status_notification,
     report_failed_message,
 )
-from ..models import AliasToDelivery, LocalDelivery, MessageFilterRule
+from ..models import (
+    AliasToDelivery,
+    EmailAccount,
+    LocalDelivery,
+    MessageFilterRule,
+)
 from .conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
@@ -26,9 +37,9 @@ pytestmark = pytest.mark.django_db
 ####################################################################
 #
 def test_apply_message_filter_rules(
-    email_account_factory,
-    message_filter_rule_factory,
-    email_factory,
+    email_account_factory: Callable[..., EmailAccount],
+    message_filter_rule_factory: Callable[..., MessageFilterRule],
+    email_factory: Callable[..., EmailMessage],
 ) -> None:
     ea = email_account_factory()
     msg = email_factory()
@@ -55,7 +66,9 @@ def test_apply_message_filter_rules(
 ####################################################################
 #
 def test_deliver_message_locally(
-    email_account_factory, message_filter_rule_factory, email_factory
+    email_account_factory: Callable[..., EmailAccount],
+    message_filter_rule_factory: Callable[..., MessageFilterRule],
+    email_factory: Callable[..., EmailMessage],
 ) -> None:
     ea = email_account_factory()
     ld = LocalDelivery.objects.get(email_account=ea)
@@ -68,7 +81,7 @@ def test_deliver_message_locally(
     #
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     # Now create a mfr and make sure the message is delivered to the proper
@@ -85,13 +98,16 @@ def test_deliver_message_locally(
     )
     mfr.save()
     deliver_message_locally(ld, msg)
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
-def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
+def test_deliver_spam_locally(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+) -> None:
     ea = email_account_factory()
     ld = LocalDelivery.objects.get(email_account=ea)
 
@@ -104,7 +120,7 @@ def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
 
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     # Set the spam score over the limit configured on the LocalDelivery.
@@ -118,13 +134,16 @@ def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
     # The message should land in the spam folder.
     #
     folder = mh.get_folder(ld.spam_delivery_folder)
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
-def test_deliver_alias(email_account_factory, email_factory) -> None:
+def test_deliver_alias(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+) -> None:
     """
     Messages delivered to an alias-only account are forwarded to the target.
     """
@@ -142,7 +161,7 @@ def test_deliver_alias(email_account_factory, email_factory) -> None:
     ld_2 = LocalDelivery.objects.get(email_account=ea_2)
     mh = ld_2.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     # Create another level of aliasing: ea_2 (alias-only) → ea_3 (local).
@@ -159,14 +178,15 @@ def test_deliver_alias(email_account_factory, email_factory) -> None:
     ld_3 = LocalDelivery.objects.get(email_account=ea_3)
     mh = ld_3.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
 def test_deliver_to_multiple_aliases(
-    email_account_factory, email_factory
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
 ) -> None:
     """
     An account with multiple AliasToDelivery entries delivers to all targets.
@@ -182,19 +202,21 @@ def test_deliver_to_multiple_aliases(
 
     ld_2 = LocalDelivery.objects.get(email_account=ea_2)
     folder = ld_2.MH().get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     ld_3 = LocalDelivery.objects.get(email_account=ea_3)
     folder = ld_3.MH().get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
 ####################################################################
 #
 def test_deliver_alias_loop_detection(
-    email_account_factory, email_factory, caplog
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     GIVEN a cycle in alias targets (A → B → A)
@@ -216,7 +238,10 @@ def test_deliver_alias_loop_detection(
 ####################################################################
 #
 def test_deliver_alias_hop_limit(
-    email_account_factory, email_factory, caplog, mocker
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    caplog: pytest.LogCaptureFixture,
+    mocker: MockerFixture,
 ) -> None:
     """
     GIVEN a chain of alias accounts longer than MAX_HOPS
@@ -243,7 +268,10 @@ def test_deliver_alias_hop_limit(
 
 ####################################################################
 #
-def test_generate_dsn(email_account_factory, email_factory) -> None:
+def test_generate_dsn(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+) -> None:
     ea = email_account_factory()
     msg = email_factory()
 
@@ -287,7 +315,10 @@ def test_generate_dsn(email_account_factory, email_factory) -> None:
 ####################################################################
 #
 def test_report_failed_message(
-    email_account_factory, email_factory, caplog, faker
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    caplog: pytest.LogCaptureFixture,
+    faker: Faker,
 ) -> None:
     ea = email_account_factory()
     ld = LocalDelivery.objects.get(email_account=ea)
@@ -307,7 +338,8 @@ def test_report_failed_message(
     #
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
+    assert stored_msg is not None
     assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
 
     # Passing the email address as a string should also work.
@@ -323,7 +355,8 @@ def test_report_failed_message(
     )
 
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(2)
+    stored_msg = folder.get(str(2))
+    assert stored_msg is not None
     assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
 
     # An invalid email address should log an error and not raise.

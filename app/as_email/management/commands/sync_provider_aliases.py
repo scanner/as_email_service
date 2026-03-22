@@ -12,6 +12,7 @@ Typical use after changing SITE_NAME or any other per-alias setting:
 
     python manage.py sync_provider_aliases --provider forwardemail
 """
+
 # system imports
 #
 import logging

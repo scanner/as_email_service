@@ -11,6 +11,12 @@ Tests for migrations 0009–0011 (the multiple-delivery-methods feature).
 Each migration is tested forward-only, plus reverse paths for the two
 data/schema migrations that are new and non-trivial (0010 and 0011).
 """
+
+# system imports
+#
+from collections.abc import Callable
+from typing import Any
+
 # 3rd party imports
 #
 import pytest
@@ -21,7 +27,7 @@ from django.utils import timezone
 ########################################################################
 #
 @pytest.fixture
-def make_migration_context():
+def make_migration_context() -> Callable:
     """
     Factory fixture that creates the prerequisite objects for migration tests.
 
@@ -30,7 +36,7 @@ def make_migration_context():
     historical model class from that migration state).
     """
 
-    def _factory(apps, domain_name: str):
+    def _factory(apps: Any, domain_name: str) -> dict[str, Any]:
         Provider = apps.get_model("as_email", "Provider")
         Server = apps.get_model("as_email", "Server")
 
@@ -73,7 +79,9 @@ def make_migration_context():
 ########################################################################
 #
 @pytest.mark.django_db(transaction=True)
-def test_0009_creates_delivery_method_tables(migrator_factory) -> None:
+def test_0009_creates_delivery_method_tables(
+    migrator_factory: Callable,
+) -> None:
     """
     GIVEN  the database at migration 0008
     WHEN   migration 0009 is applied
@@ -107,7 +115,7 @@ def test_0009_creates_delivery_method_tables(migrator_factory) -> None:
 #
 @pytest.mark.django_db(transaction=True)
 def test_0010_local_delivery_account_gets_local_delivery(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  an EmailAccount with delivery_method='LD' at migration 0009
@@ -143,7 +151,7 @@ def test_0010_local_delivery_account_gets_local_delivery(
 #
 @pytest.mark.django_db(transaction=True)
 def test_0010_forwarding_account_gets_local_delivery(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  an EmailAccount with delivery_method='FW' at migration 0009
@@ -177,7 +185,7 @@ def test_0010_forwarding_account_gets_local_delivery(
 #
 @pytest.mark.django_db(transaction=True)
 def test_0010_alias_account_gets_alias_to_delivery(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  an EmailAccount with delivery_method='AL' and one alias_for target
@@ -220,7 +228,7 @@ def test_0010_alias_account_gets_alias_to_delivery(
 #
 @pytest.mark.django_db(transaction=True)
 def test_0010_alias_with_no_targets_falls_back_to_local(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  an EmailAccount with delivery_method='AL' but no alias_for entries
@@ -257,7 +265,7 @@ def test_0010_alias_with_no_targets_falls_back_to_local(
 #
 @pytest.mark.django_db(transaction=True)
 def test_0010_skips_accounts_with_existing_delivery_methods(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  an EmailAccount that already has a DeliveryMethod row at 0009
@@ -296,7 +304,7 @@ def test_0010_skips_accounts_with_existing_delivery_methods(
 #
 @pytest.mark.django_db(transaction=True)
 def test_0010_reverse_removes_delivery_methods(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  migration 0010 has been applied (with delivery method rows)
@@ -331,7 +339,7 @@ def test_0010_reverse_removes_delivery_methods(
 ########################################################################
 #
 @pytest.mark.django_db(transaction=True)
-def test_0011_removes_legacy_fields(migrator_factory) -> None:
+def test_0011_removes_legacy_fields(migrator_factory: Callable) -> None:
     """
     GIVEN  the database at migration 0010
     WHEN   migration 0011 is applied
@@ -360,9 +368,9 @@ def test_0011_removes_legacy_fields(migrator_factory) -> None:
     ]
     ea_field_names = {f.name for f in EmailAccount._meta.get_fields()}
     for field_name in removed_fields:
-        assert (
-            field_name not in ea_field_names
-        ), f"Field '{field_name}' should have been removed from EmailAccount"
+        assert field_name not in ea_field_names, (
+            f"Field '{field_name}' should have been removed from EmailAccount"
+        )
 
     # The Alias through-model should no longer exist.
     #
@@ -375,7 +383,7 @@ def test_0011_removes_legacy_fields(migrator_factory) -> None:
 #
 @pytest.mark.django_db(transaction=True)
 def test_0011_reverse_restores_local_delivery_fields(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  an account with a LocalDelivery row at migration 0010
@@ -433,7 +441,7 @@ def test_0011_reverse_restores_local_delivery_fields(
 #
 @pytest.mark.django_db(transaction=True)
 def test_0011_reverse_restores_alias_delivery_fields(
-    migrator_factory, make_migration_context
+    migrator_factory: Callable, make_migration_context: Callable
 ) -> None:
     """
     GIVEN  an account with an AliasToDelivery row at migration 0010

@@ -5,6 +5,7 @@ Read messages from files as strings.
 Encode them in an EmailMessage.
 Decode them to string. Look for unicode errors.
 """
+
 import email
 import email.policy
 import sys
@@ -19,8 +20,8 @@ def _string_to_bytes(message):
         return message.encode("ascii")
     except UnicodeError:
         raise ValueError(
-            "String input must be ASCII-only; " "use bytes or a Message instead"
-        )
+            "String input must be ASCII-only; use bytes or a Message instead"
+        ) from None
 
 
 #############################################################################
@@ -36,7 +37,7 @@ def main():
     print(f"Looking at messages in '{top_dir}'")
     bad_charsets = []
     try:
-        for dir_path, dir_names, file_names in top_dir.walk():
+        for dir_path, _dir_names, file_names in top_dir.walk():
             file_names = sorted(
                 [x for x in file_names if x.isnumeric()], key=lambda x: int(x)
             )
@@ -46,7 +47,7 @@ def main():
                     msg_text, policy=email.policy.default
                 )
                 try:
-                    msg_text = msg.as_string(policy=email.policy.default)
+                    _ = msg.as_string(policy=email.policy.default)
                 except Exception as e:
                     bad_charsets.append(
                         f"*** Unable to parse message as string: {dir_path / file_name}: {e}"

@@ -3,10 +3,11 @@
 """
 Tests for the manage_provider_domains management command.
 """
+
 # system imports
 #
+from collections.abc import Callable
 from io import StringIO
-from typing import Callable
 
 # 3rd party imports
 #
@@ -157,9 +158,9 @@ def test_list_unused_domain_with_only_disabled_aliases(
     # Create email account (automatically created on provider via signal)
     email_account = email_account_factory(server=server)
     # Disable it on the provider directly (enable_email_account was removed)
-    dummy_provider.email_accounts[email_account.email_address][
-        "enabled"
-    ] = False
+    dummy_provider.email_accounts[email_account.email_address]["enabled"] = (
+        False
+    )
 
     out = StringIO()
     call_command("manage_provider_domains", "--list", stdout=out)

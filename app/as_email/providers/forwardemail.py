@@ -62,6 +62,7 @@ References:
 - Webhook Documentation: https://forwardemail.net/en/faq#do-you-support-webhooks
 - SMTP Integration Guide: https://forwardemail.net/en/guides/smtp-integration#python-integration
 """
+
 # system imports
 #
 import email.message
@@ -70,12 +71,14 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum, StrEnum
+from http.client import HTTPMessage
 from io import BytesIO
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Iterator, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urljoin
 
@@ -114,7 +117,7 @@ from .base import (
 )
 
 if TYPE_CHECKING:
-    from django.contrib.auth.base_user import AbstractBaseUser
+    from django.contrib.auth.models import AbstractUser
 
     from as_email.models import Server
 
@@ -300,7 +303,7 @@ class RateLimiter:
 
     ####################################################################
     #
-    def update_from_headers(self, headers: dict[str, str]) -> None:
+    def update_from_headers(self, headers: Mapping[str, str]) -> None:
         """Update rate limit state from response headers."""
         try:
             # Only update if all headers are present
@@ -425,7 +428,11 @@ class APIClient:
 
         if r.status_code != 200:
             raw = BytesIO(r.content)
-            raise HTTPError(u, r.status_code, r.reason, r.headers, raw)
+            # HTTPError expects an HTTPMessage, not requests' CaseInsensitiveDict.
+            hdrs = HTTPMessage()
+            for key, value in r.headers.items():
+                hdrs[key] = value
+            raise HTTPError(u, r.status_code, r.reason, hdrs, raw)
 
         return r
 
@@ -438,7 +445,7 @@ class APIClient:
 
 ########################################################################
 #
-def _owner_display_name(owner: "AbstractBaseUser") -> str:
+def _owner_display_name(owner: "AbstractUser") -> str:
     """
     Return a human-readable display string for an email account owner.
 
@@ -572,7 +579,7 @@ class ForwardEmailCache:
 
     ####################################################################
     #
-    def get_alias_data(self, email_address: str) -> Optional[dict]:
+    def get_alias_data(self, email_address: str) -> dict | None:
         """
         Return the cached full alias dict for email_address, or None on miss.
 
@@ -613,21 +620,21 @@ class ForwardEmailCache:
 
     ####################################################################
     #
-    def get_all_domains_fetched(self) -> Optional[str]:
+    def get_all_domains_fetched(self) -> str | None:
         """Return the timestamp of the last full domain-list refresh, or None."""
         val = self.r.get(self._key(ObjType.DOMAIN, "all_domains"))
         return val.decode("utf-8") if val is not None else None
 
     ####################################################################
     #
-    def get_cached_domain_id(self, domain_name: str) -> Optional[str]:
+    def get_cached_domain_id(self, domain_name: str) -> str | None:
         """Return the cached domain ID without falling back to the API."""
         val = self.r.get(self._key(ObjType.DOMAIN, domain_name))
         return val.decode("utf-8") if val is not None else None
 
     ####################################################################
     #
-    def get_cached_alias_id(self, email_address: str) -> Optional[str]:
+    def get_cached_alias_id(self, email_address: str) -> str | None:
         """Return the cached alias ID without falling back to the API."""
         val = self.r.get(self._key(ObjType.ALIAS, email_address))
         return val.decode("utf-8") if val is not None else None
@@ -662,7 +669,7 @@ class ForwardEmailCache:
             if e.code == 404:
                 raise KeyError(
                     f"Domain '{domain_name}' does not exist on forwardemail.net"
-                )
+                ) from e
             raise
 
     ####################################################################
@@ -702,7 +709,7 @@ class ForwardEmailCache:
             if e.code == 404:
                 raise KeyError(
                     f"Alias '{email_address}' does not exist on forwardemail.net"
-                )
+                ) from e
             raise
 
 
@@ -864,6 +871,7 @@ class ForwardEmailBackend(ProviderBackend):
                     ),
                 )
                 if spool_on_retryable:
+                    assert server.outgoing_spool_dir is not None
                     spool_message(server.outgoing_spool_dir, message.as_bytes())
                 return False
             logger.error(
@@ -1006,6 +1014,7 @@ class ForwardEmailBackend(ProviderBackend):
 
             # Write the email to the spool directory
             #
+            assert server.incoming_spool_dir is not None
             spooled_msg_path = write_spooled_email(
                 recipient,
                 server.incoming_spool_dir,
@@ -1230,8 +1239,7 @@ class ForwardEmailBackend(ProviderBackend):
             response = self.api.req(HTTPMethod.GET, next_url)
             response.raise_for_status()
 
-            for item in response.json():
-                yield item
+            yield from response.json()
 
             # The header 'Link' gets the next page of results.
             #

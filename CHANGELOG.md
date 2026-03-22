@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace black + isort with ruff for formatting and import sorting (GH-199)
+- Enable stricter mypy settings (`check_untyped_defs`, `warn_unused_ignores`, `warn_redundant_casts`) and fix all resulting type errors
+- Fix real bug in `handle_RCPT` where a redundant `.lower()` call on a `None` value would raise at runtime
+
+### Removed
+
+- Drop black, isort, yapf, autopep8, and flake8 from dev dependencies
+
 ## [0.6.2] - 2026-03-18
 
 ### Fixed

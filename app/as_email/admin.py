@@ -84,6 +84,8 @@ class ProviderAdminForm(forms.ModelForm):
     #
     def clean(self) -> dict:
         cleaned_data = super().clean()
+        if cleaned_data is None:
+            return {}
         provider_type = cleaned_data.get("provider_type")
         smtp_host = (cleaned_data.get("smtp_host") or "").strip()
         smtp_port = cleaned_data.get("smtp_port") or 25
@@ -193,7 +195,7 @@ class AliasToDeliveryAdmin(PolymorphicChildModelAdmin):
 @admin.register(DeliveryMethod)
 class DeliveryMethodAdmin(PolymorphicParentModelAdmin):
     base_model = DeliveryMethod
-    child_models = (LocalDelivery, AliasToDelivery)
+    child_models = [LocalDelivery, AliasToDelivery]
     list_display = (
         "id",
         "email_account",

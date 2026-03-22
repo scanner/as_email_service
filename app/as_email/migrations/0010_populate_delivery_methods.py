@@ -10,6 +10,7 @@ based on their legacy `delivery_method` field.
 
 Accounts that already have at least one DeliveryMethod are left untouched.
 """
+
 # system imports
 #
 from django.apps import apps as real_apps
@@ -99,7 +100,6 @@ def remove_delivery_methods(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("as_email", "0009_add_delivery_methods"),
     ]

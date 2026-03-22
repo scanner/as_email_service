@@ -3,25 +3,34 @@
 """
 Test the ForwardEmail provider backend.
 """
+
 # system imports
 #
 import email.policy
 import json
 import time
+from collections.abc import Callable
+from email.message import EmailMessage
+from http.client import HTTPMessage
 from io import BytesIO
+from unittest.mock import MagicMock
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 
 # 3rd party imports
 #
 import pytest
+import redis
 from dirty_equals import IsPartialDict
 from django.conf import settings
 from django.http import HttpRequest
 from django.urls import reverse
+from faker import Faker
+from pytest_mock import MockerFixture
 
 # Project imports
 #
+from as_email.models import EmailAccount, Server
 from as_email.providers.base import BounceType
 from as_email.providers.forwardemail import (
     APIClient,
@@ -40,9 +49,7 @@ pytestmark = pytest.mark.django_db
 ########################################################################
 #
 class TestForwardEmailBackend:
-    """"""
-
-    "Tests for ForwardEmail provider backend." ""
+    "Tests for ForwardEmail provider backend."
 
     ####################################################################
     #
@@ -58,7 +65,9 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_send_email_smtp_not_supported(
-        self, server_factory, email_factory
+        self,
+        server_factory: Callable[..., Server],
+        email_factory: Callable[..., EmailMessage],
     ) -> None:
         """
         GIVEN: a ForwardEmail backend
@@ -82,7 +91,10 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_handle_bounce_webhook_invalid_json(
-        self, server_factory, mocker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         GIVEN: a bounce webhook request with invalid JSON body
@@ -128,7 +140,11 @@ class TestForwardEmailBackend:
         ],
     )
     def test_handle_bounce_webhook_missing_keys(
-        self, server_factory, mocker, payload, expected_error
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        payload: dict,
+        expected_error: str,
     ) -> None:
         """
         GIVEN: a bounce webhook request with required keys missing
@@ -148,7 +164,11 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_handle_bounce_webhook_missing_from_header(
-        self, server_factory, mocker, faker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         GIVEN: a bounce webhook with no From header in the payload
@@ -175,7 +195,11 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_handle_bounce_webhook_unknown_from_address(
-        self, server_factory, mocker, faker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         GIVEN: a bounce webhook whose From address is not a known EmailAccount
@@ -223,14 +247,14 @@ class TestForwardEmailBackend:
     )
     def test_handle_bounce_webhook_dispatches_process_bounce(
         self,
-        server_factory,
-        email_account_factory,
-        mocker,
-        faker,
-        action,
-        category,
-        expected_transient,
-        expected_bounce_type,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        mocker: MockerFixture,
+        faker: Faker,
+        action: str,
+        category: str,
+        expected_transient: bool,
+        expected_bounce_type: BounceType,
     ) -> None:
         """
         GIVEN: a valid bounce webhook for a known EmailAccount
@@ -285,7 +309,10 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_handle_spam_webhook_not_applicable(
-        self, server_factory, mocker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         GIVEN: a ForwardEmail backend
@@ -309,7 +336,10 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_handle_incoming_webhook_invalid_json(
-        self, server_factory, mocker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an incoming webhook with invalid JSON
@@ -336,7 +366,11 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_handle_incoming_webhook_missing_raw_field(
-        self, server_factory, faker, mocker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        faker: Faker,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an incoming webhook without the "raw" email field
@@ -372,7 +406,12 @@ class TestForwardEmailBackend:
     ####################################################################
     #
     def test_handle_incoming_webhook_no_recipients(
-        self, server_factory, email_factory, faker, mocker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an incoming webhook with no recipients
@@ -428,15 +467,15 @@ class TestForwardEmailBackend:
     )
     def test_handle_incoming_webhook_no_delivery(
         self,
-        server_factory,
-        email_account_factory,
-        email_factory,
-        faker,
-        mocker,
-        caplog,
-        account_exists,
-        account_enabled,
-        expected_log,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        account_exists: bool,
+        account_enabled: bool,
+        expected_log: str,
     ) -> None:
         """
         GIVEN: an incoming webhook for an account that does not exist OR is disabled
@@ -485,12 +524,12 @@ class TestForwardEmailBackend:
     #
     def test_handle_incoming_webhook_successful_delivery(
         self,
-        server_factory,
-        email_account_factory,
-        email_factory,
-        faker,
-        mocker,
-        caplog,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an incoming webhook for a valid EmailAccount
@@ -537,12 +576,12 @@ class TestForwardEmailBackend:
     #
     def test_handle_incoming_webhook_multiple_recipients(
         self,
-        server_factory,
-        email_account_factory,
-        email_factory,
-        faker,
-        mocker,
-        caplog,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an incoming webhook with multiple recipients
@@ -599,12 +638,12 @@ class TestForwardEmailBackend:
     #
     def test_handle_incoming_webhook_with_hash_addressing(
         self,
-        server_factory,
-        email_account_factory,
-        email_factory,
-        faker,
-        mocker,
-        caplog,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an incoming webhook with +hash addressing
@@ -654,7 +693,7 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     @pytest.fixture(autouse=True)
-    def mock_signal_tasks(self, mocker):
+    def mock_signal_tasks(self, mocker: MockerFixture):
         """
         Mock HUEY.enqueue to prevent signals from executing tasks during
         test setup when factories create model instances.
@@ -663,7 +702,9 @@ class TestForwardEmailAPIMethods:
 
     ####################################################################
     #
-    def test_get_bounce_webhook_url(self, server_factory) -> None:
+    def test_get_bounce_webhook_url(
+        self, server_factory: Callable[..., Server]
+    ) -> None:
         """
         GIVEN: a server
         WHEN:  get_bounce_webhook_url is called
@@ -690,7 +731,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_update_domain_creates_new_domain(
-        self, server_factory, use_fakeredis, mocker, faker
+        self,
+        server_factory: Callable[..., Server],
+        use_fakeredis: redis.StrictRedis,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         GIVEN: a server whose domain does not exist on forwardemail.net
@@ -704,7 +749,7 @@ class TestForwardEmailAPIMethods:
         mock_redis = use_fakeredis
         bounce_url = backend.get_bounce_webhook_url(server)
 
-        mocker.patch.object(
+        mock_get_domain_id = mocker.patch.object(
             backend.cache, "get_domain_id", side_effect=KeyError()
         )
 
@@ -721,7 +766,7 @@ class TestForwardEmailAPIMethods:
         result = backend.create_update_domain(server)
 
         assert result is True
-        backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
+        mock_get_domain_id.assert_called_once_with(server.domain_name)
 
         mock_req.assert_called_once()
         call_args = mock_req.call_args
@@ -742,7 +787,10 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_update_domain_no_put_when_settings_match(
-        self, server_factory, mocker, faker
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         GIVEN: a domain that already exists with all settings matching,
@@ -755,7 +803,7 @@ class TestForwardEmailAPIMethods:
         existing_domain_id = faker.uuid4()
         bounce_url = backend.get_bounce_webhook_url(server)
 
-        mocker.patch.object(
+        mock_get_domain_id = mocker.patch.object(
             backend.cache, "get_domain_id", return_value=existing_domain_id
         )
 
@@ -775,14 +823,18 @@ class TestForwardEmailAPIMethods:
         result = backend.create_update_domain(server)
 
         assert result is False
-        backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
+        mock_get_domain_id.assert_called_once_with(server.domain_name)
         mock_req.assert_called_once()
         assert mock_req.call_args[0][0] == HTTPMethod.GET
 
     ####################################################################
     #
     def test_create_update_domain_puts_updated_settings(
-        self, server_factory, mocker, faker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         GIVEN: a domain that already exists but with one setting out of date
@@ -848,10 +900,10 @@ class TestForwardEmailAPIMethods:
     )
     def test_create_update_domain_dry_run_skips_writes(
         self,
-        server_factory,
-        mocker,
-        faker,
-        caplog,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
         domain_exists: bool,
         settings_drifted: bool,
     ) -> None:
@@ -907,7 +959,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_delete_domain_exists_in_cache(
-        self, server_factory, use_fakeredis, mocker, faker
+        self,
+        server_factory: Callable[..., Server],
+        use_fakeredis: redis.StrictRedis,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given a domain that exists in Redis cache
@@ -940,7 +996,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_delete_domain_not_in_cache_fetches_from_api(
-        self, server_factory, use_fakeredis, mocker, faker
+        self,
+        server_factory: Callable[..., Server],
+        use_fakeredis: redis.StrictRedis,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given a domain not in Redis cache but exists on forwardemail.net
@@ -955,7 +1015,9 @@ class TestForwardEmailAPIMethods:
         mock_redis = use_fakeredis
 
         # Mock API request - first GET to get domain ID, then DELETE
-        def api_request_side_effect(method, url, data=None):
+        def api_request_side_effect(
+            method: str, url: str, data: dict | None = None
+        ):
             if method == HTTPMethod.GET:
                 # GET returns domain info
                 mock_response = mocker.MagicMock()
@@ -995,7 +1057,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_delete_domain_does_not_exist(
-        self, server_factory, mocker, faker, caplog
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given a domain that doesn't exist on forwardemail.net
@@ -1027,7 +1093,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_email_account(
-        self, email_account_factory, use_fakeredis, mocker, faker
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        use_fakeredis: redis.StrictRedis,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given an EmailAccount
@@ -1089,7 +1159,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_delete_email_account_by_address(
-        self, server_factory, use_fakeredis, mocker, faker
+        self,
+        server_factory: Callable[..., Server],
+        use_fakeredis: redis.StrictRedis,
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given an email address with cached alias ID
@@ -1123,7 +1197,12 @@ class TestForwardEmailAPIMethods:
 
     ####################################################################
     #
-    def test_list_email_accounts(self, server_factory, mocker, faker) -> None:
+    def test_list_email_accounts(
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+        faker: Faker,
+    ) -> None:
         """
         Given a server
         When list_email_accounts is called
@@ -1171,7 +1250,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_update_email_account_creates_new_alias(
-        self, email_account_factory, mocker, faker, caplog
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an EmailAccount that doesn't exist on forwardemail.net
@@ -1197,7 +1280,7 @@ class TestForwardEmailAPIMethods:
         )
 
         # Mock get_alias_id to raise KeyError (alias doesn't exist)
-        mocker.patch.object(
+        mock_get_alias_id = mocker.patch.object(
             backend.cache, "get_alias_id", side_effect=KeyError()
         )
 
@@ -1218,7 +1301,7 @@ class TestForwardEmailAPIMethods:
         backend.create_update_email_account(email_account)
 
         # Verify get_alias_id was called
-        backend.cache.get_alias_id.assert_called_once_with(
+        mock_get_alias_id.assert_called_once_with(
             domain_id, email_account.email_address
         )
 
@@ -1244,7 +1327,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_update_email_account_updates_existing_alias(
-        self, email_account_factory, mocker, faker, caplog
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an EmailAccount that already exists on forwardemail.net with a
@@ -1267,7 +1354,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(
             backend, "get_webhook_url", return_value=webhook_url
         )
-        mocker.patch.object(
+        mock_get_alias_id = mocker.patch.object(
             backend.cache, "get_alias_id", return_value=alias_id
         )
 
@@ -1294,7 +1381,7 @@ class TestForwardEmailAPIMethods:
 
         backend.create_update_email_account(email_account)
 
-        backend.cache.get_alias_id.assert_called_once_with(
+        mock_get_alias_id.assert_called_once_with(
             domain_id, email_account.email_address
         )
 
@@ -1327,7 +1414,11 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_update_email_account_no_put_when_settings_match(
-        self, email_account_factory, mocker, faker, caplog
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        mocker: MockerFixture,
+        faker: Faker,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given an EmailAccount whose live alias already matches DEFAULT_ALIAS_SETTINGS
@@ -1378,7 +1469,10 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_update_email_account_raises_on_non_404_error(
-        self, email_account_factory, mocker, faker
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given an EmailAccount
@@ -1408,7 +1502,7 @@ class TestForwardEmailAPIMethods:
             url="http://test.com",
             code=500,
             msg="Internal Server Error",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
         mocker.patch.object(
@@ -1424,7 +1518,10 @@ class TestForwardEmailAPIMethods:
     ####################################################################
     #
     def test_create_update_email_account_constructs_correct_alias_data(
-        self, email_account_factory, mocker, faker
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        mocker: MockerFixture,
+        faker: Faker,
     ) -> None:
         """
         Given an EmailAccount that does not yet exist on forwardemail.net
@@ -1490,18 +1587,18 @@ class TestForwardEmailCache:
     ####################################################################
     #
     @pytest.fixture
-    def mock_api(self, mocker):
+    def mock_api(self, mocker: MockerFixture):
         return mocker.MagicMock(spec=APIClient)
 
     ####################################################################
     #
     @pytest.fixture
-    def cache(self, use_fakeredis, mock_api):
+    def cache(self, use_fakeredis: redis.StrictRedis, mock_api: MagicMock):
         return ForwardEmailCache(use_fakeredis, mock_api)
 
     ####################################################################
     #
-    def test_key_format(self, cache, faker) -> None:
+    def test_key_format(self, cache: ForwardEmailCache, faker: Faker) -> None:
         """
         GIVEN: a ForwardEmailCache instance
         WHEN:  _key() is called with an ObjType and a name
@@ -1521,7 +1618,12 @@ class TestForwardEmailCache:
 
     ####################################################################
     #
-    def test_set_domain_caches_id(self, cache, use_fakeredis, faker) -> None:
+    def test_set_domain_caches_id(
+        self,
+        cache: ForwardEmailCache,
+        use_fakeredis: redis.StrictRedis,
+        faker: Faker,
+    ) -> None:
         """
         GIVEN: a domain info dict from the forwardemail.net API
         WHEN:  set_domain() is called
@@ -1536,7 +1638,12 @@ class TestForwardEmailCache:
 
     ####################################################################
     #
-    def test_set_alias_caches_id(self, cache, use_fakeredis, faker) -> None:
+    def test_set_alias_caches_id(
+        self,
+        cache: ForwardEmailCache,
+        use_fakeredis: redis.StrictRedis,
+        faker: Faker,
+    ) -> None:
         """
         GIVEN: an alias info dict and the domain name it belongs to
         WHEN:  set_alias() is called
@@ -1553,7 +1660,10 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_delete_domain_removes_from_cache(
-        self, cache, use_fakeredis, faker
+        self,
+        cache: ForwardEmailCache,
+        use_fakeredis: redis.StrictRedis,
+        faker: Faker,
     ) -> None:
         """
         GIVEN: a domain ID already in the cache
@@ -1571,7 +1681,10 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_delete_alias_removes_from_cache(
-        self, cache, use_fakeredis, faker
+        self,
+        cache: ForwardEmailCache,
+        use_fakeredis: redis.StrictRedis,
+        faker: Faker,
     ) -> None:
         """
         GIVEN: an alias ID already in the cache
@@ -1590,7 +1703,9 @@ class TestForwardEmailCache:
 
     ####################################################################
     #
-    def test_all_domains_fetched_timestamp(self, cache, use_fakeredis) -> None:
+    def test_all_domains_fetched_timestamp(
+        self, cache: ForwardEmailCache, use_fakeredis: redis.StrictRedis
+    ) -> None:
         """
         GIVEN: a fresh cache with no refresh timestamp
         WHEN:  set_all_domains_fetched() is called
@@ -1608,7 +1723,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_cached_domain_id_returns_none_on_miss(
-        self, cache, faker
+        self, cache: ForwardEmailCache, faker: Faker
     ) -> None:
         """
         GIVEN: a domain name not in the cache
@@ -1620,7 +1735,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_cached_alias_id_returns_none_on_miss(
-        self, cache, faker
+        self, cache: ForwardEmailCache, faker: Faker
     ) -> None:
         """
         GIVEN: an email address not in the cache
@@ -1632,7 +1747,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_domain_id_returns_cached_value(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: a domain ID already in the cache
@@ -1651,7 +1766,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_domain_id_fetches_from_api_on_miss(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: a domain not in the cache but existing on forwardemail.net
@@ -1677,7 +1792,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_domain_id_raises_key_error_when_not_found(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: a domain that does not exist on forwardemail.net
@@ -1689,7 +1804,7 @@ class TestForwardEmailCache:
             url=f"https://api.forwardemail.net/v1/domains/{domain_name}",
             code=404,
             msg="Not Found",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -1702,7 +1817,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_domain_id_reraises_non_404_errors(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: the forwardemail.net API returns a non-404 error
@@ -1714,7 +1829,7 @@ class TestForwardEmailCache:
             url="http://test.com",
             code=500,
             msg="Internal Server Error",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -1726,7 +1841,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_alias_id_returns_cached_value(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: an alias ID already in the cache
@@ -1747,7 +1862,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_alias_id_fetches_from_api_on_miss(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: an alias not in the cache but existing on forwardemail.net
@@ -1776,7 +1891,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_alias_id_raises_key_error_when_not_found(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: an alias that does not exist on forwardemail.net
@@ -1789,7 +1904,7 @@ class TestForwardEmailCache:
             url=f"https://api.forwardemail.net/v1/domains/{domain_id}/alias",
             code=404,
             msg="Not Found",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -1802,7 +1917,7 @@ class TestForwardEmailCache:
     ####################################################################
     #
     def test_get_alias_id_reraises_non_404_errors(
-        self, cache, mock_api, faker
+        self, cache: ForwardEmailCache, mock_api: MagicMock, faker: Faker
     ) -> None:
         """
         GIVEN: the forwardemail.net API returns a non-404 error
@@ -1815,7 +1930,7 @@ class TestForwardEmailCache:
             url="http://test.com",
             code=503,
             msg="Service Unavailable",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -1923,7 +2038,9 @@ class TestRateLimiter:
 
     ####################################################################
     #
-    def test_update_from_headers_sets_rate_limit(self, limiter) -> None:
+    def test_update_from_headers_sets_rate_limit(
+        self, limiter: RateLimiter
+    ) -> None:
         """
         GIVEN: a response with all three X-RateLimit-* headers present
         WHEN:  update_from_headers is called
@@ -1960,7 +2077,7 @@ class TestRateLimiter:
         ],
     )
     def test_update_from_headers_noop_when_headers_incomplete(
-        self, limiter, headers: dict
+        self, limiter: RateLimiter, headers: dict
     ) -> None:
         """
         GIVEN: a response missing at least one of the three X-RateLimit-* headers
@@ -1974,7 +2091,7 @@ class TestRateLimiter:
     ####################################################################
     #
     def test_update_from_headers_handles_malformed_values(
-        self, limiter, caplog
+        self, limiter: RateLimiter, caplog: pytest.LogCaptureFixture
     ) -> None:
         """
         GIVEN: X-RateLimit-* headers containing a non-integer value
@@ -2002,7 +2119,11 @@ class TestRateLimiter:
         ],
     )
     def test_update_from_headers_low_capacity_warning(
-        self, limiter, caplog, remaining: int, expect_warning: bool
+        self,
+        limiter: RateLimiter,
+        caplog: pytest.LogCaptureFixture,
+        remaining: int,
+        expect_warning: bool,
     ) -> None:
         """
         GIVEN: X-RateLimit-* headers with varying remaining capacity
@@ -2026,7 +2147,9 @@ class TestRateLimiter:
 
     ####################################################################
     #
-    def test_should_throttle_false_when_no_rate_limit(self, limiter) -> None:
+    def test_should_throttle_false_when_no_rate_limit(
+        self, limiter: RateLimiter
+    ) -> None:
         """
         GIVEN: a RateLimiter with no rate limit info yet (_info is None)
         WHEN:  _should_throttle is called
@@ -2047,7 +2170,11 @@ class TestRateLimiter:
         ],
     )
     def test_should_throttle_with_active_rate_limit(
-        self, limiter, remaining: int, seconds_offset: int, expected: bool
+        self,
+        limiter: RateLimiter,
+        remaining: int,
+        seconds_offset: int,
+        expected: bool,
     ) -> None:
         """
         GIVEN: a RateLimiter with a RateLimitInfo at various remaining levels
@@ -2069,7 +2196,9 @@ class TestRateLimiter:
 
     ####################################################################
     #
-    def test_calculate_sleep_zero_when_no_rate_limit(self, limiter) -> None:
+    def test_calculate_sleep_zero_when_no_rate_limit(
+        self, limiter: RateLimiter
+    ) -> None:
         """
         GIVEN: a RateLimiter with no rate limit info (_info is None)
         WHEN:  _calculate_sleep_time is called
@@ -2080,7 +2209,9 @@ class TestRateLimiter:
 
     ####################################################################
     #
-    def test_calculate_sleep_zero_when_expired(self, limiter) -> None:
+    def test_calculate_sleep_zero_when_expired(
+        self, limiter: RateLimiter
+    ) -> None:
         """
         GIVEN: a RateLimiter whose rate limit window has already expired
         WHEN:  _calculate_sleep_time is called
@@ -2127,8 +2258,8 @@ class TestRateLimiter:
     )
     def test_calculate_sleep_time_with_active_rate_limit(
         self,
-        limiter,
-        mocker,
+        limiter: RateLimiter,
+        mocker: MockerFixture,
         remaining: int,
         reset_offset: int,
         expected: float,
@@ -2157,7 +2288,7 @@ class TestRateLimiter:
     ####################################################################
     #
     def test_wait_if_needed_sleeps_when_throttling(
-        self, limiter, mocker
+        self, limiter: RateLimiter, mocker: MockerFixture
     ) -> None:
         """
         GIVEN: a RateLimiter that needs throttling with a 2.0s calculated sleep
@@ -2189,7 +2320,11 @@ class TestRateLimiter:
         ],
     )
     def test_wait_if_needed_no_sleep(
-        self, limiter, mocker, should_throttle: bool, sleep_time: float
+        self,
+        limiter: RateLimiter,
+        mocker: MockerFixture,
+        should_throttle: bool,
+        sleep_time: float,
     ) -> None:
         """
         GIVEN: either throttling is not needed, or the calculated sleep time is 0
@@ -2248,7 +2383,9 @@ class TestPaginatedRequest:
 
     ####################################################################
     #
-    def _make_response(self, mocker, items: list, link_header: str = ""):
+    def _make_response(
+        self, mocker: MockerFixture, items: list, link_header: str = ""
+    ):
         """Create a mock HTTP response with items and optional Link header."""
         resp = mocker.MagicMock()
         resp.json.return_value = items
@@ -2265,7 +2402,7 @@ class TestPaginatedRequest:
         ],
     )
     def test_single_page_returns_items(
-        self, backend, mocker, items: list
+        self, backend: ForwardEmailBackend, mocker: MockerFixture, items: list
     ) -> None:
         """
         GIVEN: a single-page endpoint (no Link: next header)
@@ -2282,7 +2419,9 @@ class TestPaginatedRequest:
 
     ####################################################################
     #
-    def test_two_pages_follows_next_link(self, backend, mocker) -> None:
+    def test_two_pages_follows_next_link(
+        self, backend: ForwardEmailBackend, mocker: MockerFixture
+    ) -> None:
         """
         GIVEN: an endpoint that returns two pages via a Link: next header
         WHEN:  paginated_request is called
@@ -2311,7 +2450,9 @@ class TestPaginatedRequest:
 
     ####################################################################
     #
-    def test_http_error_propagates(self, backend, mocker) -> None:
+    def test_http_error_propagates(
+        self, backend: ForwardEmailBackend, mocker: MockerFixture
+    ) -> None:
         """
         GIVEN: an endpoint that returns a non-200 HTTP response
         WHEN:  paginated_request is called
@@ -2319,7 +2460,7 @@ class TestPaginatedRequest:
         """
         mock_req = mocker.patch.object(backend.api, "req")
         mock_req.return_value.raise_for_status.side_effect = HTTPError(
-            "http://test.com", 404, "Not Found", {}, BytesIO(b"")
+            "http://test.com", 404, "Not Found", HTTPMessage(), BytesIO(b"")
         )
 
         with pytest.raises(HTTPError):
@@ -2351,8 +2492,8 @@ class TestPaginatedRequest:
     )
     def test_link_header_parsing(
         self,
-        backend,
-        mocker,
+        backend: ForwardEmailBackend,
+        mocker: MockerFixture,
         link_header: str,
         expect_second_call: bool,
     ) -> None:
@@ -2387,7 +2528,9 @@ class TestAPIClientReq:
 
     ####################################################################
     #
-    def test_req_sends_json_not_form_encoded(self, client, mocker) -> None:
+    def test_req_sends_json_not_form_encoded(
+        self, client: APIClient, mocker: MockerFixture
+    ) -> None:
         """
         GIVEN: an APIClient and a data dict containing Python booleans
         WHEN:  req() is called with that data
@@ -2417,9 +2560,9 @@ class TestAPIClientReq:
 
         _, kwargs = mock_requests.call_args
         assert "json" in kwargs, "req() must use json= not data="
-        assert (
-            "data" not in kwargs
-        ), "req() must not use data= (causes bool serialisation as 'True'/'False')"
+        assert "data" not in kwargs, (
+            "req() must not use data= (causes bool serialisation as 'True'/'False')"
+        )
         assert kwargs["json"] == payload
 
 
@@ -2432,19 +2575,23 @@ class TestForwardEmailSendEmailAPI:
     ####################################################################
     #
     @pytest.fixture(autouse=True)
-    def mock_spool_message(self, mocker):
+    def mock_spool_message(self, mocker: MockerFixture):
         return mocker.patch("as_email.providers.forwardemail.spool_message")
 
     ####################################################################
     #
     @pytest.fixture(autouse=True)
-    def mock_signal_tasks(self, mocker):
+    def mock_signal_tasks(self, mocker: MockerFixture):
         mocker.patch("as_email.signals.HUEY.enqueue")
 
     ####################################################################
     #
     def test_send_email_api_success(
-        self, server_factory, email_factory, mocker, mock_spool_message
+        self,
+        server_factory: Callable[..., Server],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+        mock_spool_message: MagicMock,
     ) -> None:
         """
         GIVEN: a ForwardEmailBackend and a valid email message
@@ -2471,12 +2618,12 @@ class TestForwardEmailSendEmailAPI:
     @pytest.mark.parametrize("status_code", [408, 429, 500, 502, 503, 504])
     def test_send_email_api_retryable_spools(
         self,
-        server_factory,
-        email_factory,
-        mocker,
-        mock_spool_message,
-        caplog,
-        status_code,
+        server_factory: Callable[..., Server],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+        mock_spool_message: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+        status_code: int,
     ) -> None:
         """
         GIVEN: a ForwardEmailBackend and a retryable HTTP error from the API
@@ -2486,7 +2633,9 @@ class TestForwardEmailSendEmailAPI:
         backend = ForwardEmailBackend()
         server = server_factory()
         msg = email_factory()
-        error = HTTPError("url", status_code, "reason", {}, BytesIO(b""))
+        error = HTTPError(
+            "url", status_code, "reason", HTTPMessage(), BytesIO(b"")
+        )
         mocker.patch.object(backend.api, "req", side_effect=error)
 
         result = backend.send_email_api(
@@ -2505,12 +2654,12 @@ class TestForwardEmailSendEmailAPI:
     @pytest.mark.parametrize("status_code", [408, 500])
     def test_send_email_api_retryable_no_spool(
         self,
-        server_factory,
-        email_factory,
-        mocker,
-        mock_spool_message,
-        caplog,
-        status_code,
+        server_factory: Callable[..., Server],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+        mock_spool_message: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+        status_code: int,
     ) -> None:
         """
         GIVEN: a ForwardEmailBackend and a retryable HTTP error from the API
@@ -2520,7 +2669,9 @@ class TestForwardEmailSendEmailAPI:
         backend = ForwardEmailBackend()
         server = server_factory()
         msg = email_factory()
-        error = HTTPError("url", status_code, "reason", {}, BytesIO(b""))
+        error = HTTPError(
+            "url", status_code, "reason", HTTPMessage(), BytesIO(b"")
+        )
         mocker.patch.object(backend.api, "req", side_effect=error)
 
         result = backend.send_email_api(
@@ -2535,11 +2686,11 @@ class TestForwardEmailSendEmailAPI:
     #
     def test_send_email_api_non_retryable_raises(
         self,
-        server_factory,
-        email_factory,
-        mocker,
-        mock_spool_message,
-        caplog,
+        server_factory: Callable[..., Server],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+        mock_spool_message: MagicMock,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         GIVEN: a ForwardEmailBackend and a non-retryable HTTP error (e.g. 422)
@@ -2549,7 +2700,9 @@ class TestForwardEmailSendEmailAPI:
         backend = ForwardEmailBackend()
         server = server_factory()
         msg = email_factory()
-        error = HTTPError("url", 422, "Unprocessable Entity", {}, BytesIO(b""))
+        error = HTTPError(
+            "url", 422, "Unprocessable Entity", HTTPMessage(), BytesIO(b"")
+        )
         mocker.patch.object(backend.api, "req", side_effect=error)
 
         with pytest.raises(HTTPError) as exc_info:
@@ -2562,7 +2715,11 @@ class TestForwardEmailSendEmailAPI:
     ####################################################################
     #
     def test_send_email_dispatches_to_api(
-        self, server_factory, email_factory, mocker, mock_spool_message
+        self,
+        server_factory: Callable[..., Server],
+        email_factory: Callable[..., EmailMessage],
+        mocker: MockerFixture,
+        mock_spool_message: MagicMock,
     ) -> None:
         """
         GIVEN: a ForwardEmailBackend

@@ -6,6 +6,7 @@ Provider backends for different email service providers.
 Each provider backend implements the logic for sending emails and handling
 webhooks for a specific email service provider (e.g., Postmark, ForwardEmail).
 """
+
 # system imports
 #
 import importlib
@@ -74,14 +75,14 @@ def _get_backend(backend_name: str) -> "ProviderBackend":
         )
     except ImportError as exc:
         raise ImportError(
-            f"Failed to import provider backend '{backend_name}': {exc}"
-        )
+            f"Failed to import provider backend '{backend_name}': {exc!r}"
+        ) from exc
 
     # Construct the expected class name using the mapping
     # e.g., "forwardemail" -> "ForwardEmailBackend"
     #
     class_prefix = PROVIDER_NAME_TO_BACKEND_MAPPING.get(
-        backend_name, backend_name.capitalize()
+        ProviderName(backend_name), backend_name.capitalize()
     )
     class_name = f"{class_prefix}Backend"
 
@@ -92,7 +93,7 @@ def _get_backend(backend_name: str) -> "ProviderBackend":
     except AttributeError:
         raise AttributeError(
             f"Provider module '{backend_name}' does not have a '{class_name}' class"
-        )
+        ) from None
 
     # Instantiate and return the backend
     #

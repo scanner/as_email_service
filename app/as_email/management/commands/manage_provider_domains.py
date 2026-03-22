@@ -6,6 +6,7 @@ Management command to list and delete unused domains across email providers.
 This command helps identify and clean up domains that have no active email
 aliases on configured providers (forwardemail.net, postmark, etc.).
 """
+
 # system imports
 #
 import logging
@@ -218,7 +219,7 @@ class Command(BaseCommand):
         except Provider.DoesNotExist:
             raise CommandError(
                 f"Provider '{provider_name}' not found in the system"
-            )
+            ) from None
 
         # Verify server exists
         try:
@@ -226,7 +227,7 @@ class Command(BaseCommand):
         except Server.DoesNotExist:
             raise CommandError(
                 f"Server with domain '{domain_name}' not found in the system"
-            )
+            ) from None
 
         # Verify provider is configured for this server
         if provider not in server.receive_providers.all():
@@ -240,7 +241,7 @@ class Command(BaseCommand):
         except Exception as e:
             raise CommandError(
                 f"Failed to get backend for provider '{provider_name}': {e}"
-            )
+            ) from e
 
         # Check current state
         alias_count = EmailAccount.objects.filter(server=server).count()
@@ -251,7 +252,7 @@ class Command(BaseCommand):
         except Exception as e:
             raise CommandError(
                 f"Failed to check aliases for domain '{domain_name}': {e}"
-            )
+            ) from e
 
         # Show current state
         self.stdout.write(
@@ -305,4 +306,4 @@ class Command(BaseCommand):
         except Exception as e:
             raise CommandError(
                 f"Failed to delete domain '{domain_name}' from provider '{provider_name}': {e}"
-            )
+            ) from e

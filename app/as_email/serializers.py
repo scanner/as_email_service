@@ -3,6 +3,7 @@
 """
 Serializers for the rest framework of our models
 """
+
 # 3rd party imports
 #
 from rest_framework import serializers
@@ -76,9 +77,11 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
     )
     server = serializers.StringRelatedField(read_only=True)
     owner = serializers.StringRelatedField(read_only=True)
-    message_filter_rules = NestedHyperlinkedIdentityField(
-        view_name="as_email:message-filter-rule-list",
-        lookup_url_kwarg="email_account_pk",
+    message_filter_rules: NestedHyperlinkedIdentityField = (
+        NestedHyperlinkedIdentityField(
+            view_name="as_email:message-filter-rule-list",
+            lookup_url_kwarg="email_account_pk",
+        )
     )
     aliased_from = serializers.SerializerMethodField()
 
@@ -129,15 +132,17 @@ class EmailAccountSerializer(serializers.HyperlinkedModelSerializer):
 class MessageFilterRuleSerializer(NestedHyperlinkedModelSerializer):
     parent_lookup_kwargs = {"email_account_pk": "email_account__pk"}
 
-    url = NestedHyperlinkedIdentityField(
+    url: NestedHyperlinkedIdentityField = NestedHyperlinkedIdentityField(
         view_name="as_email:message-filter-rule-detail",
         lookup_field="pk",
         parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
     )
-    email_account = NestedHyperlinkedRelatedField(
-        view_name="as_email:email-account-detail",
-        parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
-        read_only=True,
+    email_account: NestedHyperlinkedRelatedField = (
+        NestedHyperlinkedRelatedField(
+            view_name="as_email:email-account-detail",
+            parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
+            read_only=True,
+        )
     )
 
     class Meta:
@@ -204,7 +209,7 @@ class DeliveryMethodSerializer(NestedHyperlinkedModelSerializer):
 
     parent_lookup_kwargs = {"email_account_pk": "email_account__pk"}
 
-    url = NestedHyperlinkedIdentityField(
+    url: NestedHyperlinkedIdentityField = NestedHyperlinkedIdentityField(
         view_name="as_email:delivery-method-detail",
         lookup_field="pk",
         parent_lookup_kwargs={"email_account_pk": "email_account__pk"},
@@ -366,15 +371,18 @@ class ImapDeliverySerializer(DeliveryMethodSerializer):
     ####################################################################
     #
     def update(
-        self, instance: ImapDelivery, validated_data: dict
+        self, instance: DeliveryMethod, validated_data: dict
     ) -> ImapDelivery:
         """
         Remove `password` from validated_data when it is absent so a PATCH
         without a password field does not overwrite the stored credential.
         """
+        assert isinstance(instance, ImapDelivery)
         if "password" not in self.initial_data:
             validated_data.pop("password", None)
-        return super().update(instance, validated_data)
+        result = super().update(instance, validated_data)
+        assert isinstance(result, ImapDelivery)
+        return result
 
 
 ########################################################################

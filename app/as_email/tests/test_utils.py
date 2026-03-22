@@ -3,13 +3,17 @@
 """
 Test various functions in the utils module
 """
+
 # system imports
 #
 from datetime import UTC, datetime
+from pathlib import Path
 
 # 3rd party imports
 #
+from django.conf import LazySettings
 from django.contrib.auth.hashers import make_password
+from faker import Faker
 
 # Project imports
 #
@@ -25,7 +29,7 @@ from ..utils import (
 
 ####################################################################
 #
-def test_split_hash():
+def test_split_hash() -> None:
     email_addrs = [
         ("foo@example.com", ("foo@example.com", None)),
         ("foo+inbox@example.com", ("foo@example.com", "inbox")),
@@ -38,7 +42,9 @@ def test_split_hash():
 
 ####################################################################
 #
-def test_write_read_emailaccount_pwfile(tmp_path, faker, settings):
+def test_write_read_emailaccount_pwfile(
+    tmp_path: Path, faker: Faker, settings: LazySettings
+) -> None:
     accounts = {}
     pw_file = settings.EXT_PW_FILE
     for _ in range(5):
@@ -73,7 +79,9 @@ def test_utc_now_str() -> None:
     # Assert - verify format by parsing it back
     parsed = datetime.strptime(result, "%Y.%m.%d-%H.%M.%S.%f%z")
     assert parsed.tzinfo is not None
-    assert parsed.tzinfo.utcoffset(None).total_seconds() == 0  # UTC offset is 0
+    utcoffset = parsed.tzinfo.utcoffset(None)
+    assert utcoffset is not None
+    assert utcoffset.total_seconds() == 0  # UTC offset is 0
 
 
 ####################################################################
@@ -100,7 +108,10 @@ def test_now_str_datetime() -> None:
     assert result.minute == 30
     assert result.second == 45
     assert result.microsecond == 123456
-    assert result.tzinfo.utcoffset(None).total_seconds() == 0
+    assert result.tzinfo is not None
+    utcoffset = result.tzinfo.utcoffset(None)
+    assert utcoffset is not None
+    assert utcoffset.total_seconds() == 0
 
 
 ####################################################################

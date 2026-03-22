@@ -42,7 +42,8 @@ from dry_rest_permissions.generics import (
     DRYPermissionFiltersBase,
     DRYPermissions,
 )
-from rest_framework import fields as drf_fields, mixins, serializers, status
+from rest_framework import fields as drf_fields
+from rest_framework import mixins, serializers, status
 from rest_framework.authentication import (
     BasicAuthentication,
     SessionAuthentication,
@@ -90,7 +91,9 @@ def _validate_server_api_key(request, domain_name: str) -> Server:
     try:
         server = Server.objects.get(domain_name=domain_name)
     except Server.DoesNotExist:
-        raise Http404(f"No server found for domain_name `{domain_name}`")
+        raise Http404(
+            f"No server found for domain_name `{domain_name}`"
+        ) from None
 
     if "api_key" not in request.GET:
         raise PermissionDenied("no api_key specified in request")

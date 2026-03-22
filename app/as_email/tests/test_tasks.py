@@ -3,6 +3,7 @@
 """
 Test the huey tasks
 """
+
 # system imports
 #
 import json
@@ -18,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 #
 import pytest
 import requests.exceptions
+import requests_mock as rm_module
 from _pytest.logging import LogCaptureFixture
 from dirty_equals import Contains
 from django.conf import LazySettings
@@ -26,7 +28,13 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..models import EmailAccount, InactiveEmail, LocalDelivery
+from ..models import (
+    EmailAccount,
+    InactiveEmail,
+    LocalDelivery,
+    Provider,
+    Server,
+)
 from ..providers.base import (
     BounceEvent,
     BounceType,
@@ -231,10 +239,7 @@ def test_scan_message_for_spam_success(
     """
     original = email_factory()
     scanned_bytes = (
-        b"X-Spam-Status: No, score=2.0\r\n"
-        b"X-Spam-Score: 2.0\r\n"
-        b"\r\n"
-        b"body text"
+        b"X-Spam-Status: No, score=2.0\r\nX-Spam-Score: 2.0\r\n\r\nbody text"
     )
     mock_result = mocker.MagicMock()
     mock_result.body = scanned_bytes
@@ -291,10 +296,7 @@ def test_scan_message_for_spam_non_ascii(
     THEN  the message is serialized to spamd without UnicodeEncodeError
     """
     scanned_bytes = (
-        b"X-Spam-Status: Yes, score=9.0\r\n"
-        b"X-Spam-Score: 9.0\r\n"
-        b"\r\n"
-        b"body text"
+        b"X-Spam-Status: Yes, score=9.0\r\nX-Spam-Score: 9.0\r\n\r\nbody text"
     )
     mock_result = mocker.MagicMock()
     mock_result.body = scanned_bytes
@@ -986,9 +988,9 @@ class TestProviderCreateDomain:
     def test_create_update_domain_success(
         self,
         mocker: MockerFixture,
-        server_factory,
-        provider_factory,
-        requests_mock,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        requests_mock: rm_module.Mocker,
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
@@ -1019,9 +1021,9 @@ class TestProviderCreateDomain:
     def test_create_update_domain_backend_exception(
         self,
         mocker: MockerFixture,
-        server_factory,
-        provider_factory,
-        caplog,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        caplog: pytest.LogCaptureFixture,
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
@@ -1061,8 +1063,8 @@ class TestProviderCreateAlias:
     def test_create_alias_success(
         self,
         mocker: MockerFixture,
-        email_account_factory,
-        server_factory,
+        email_account_factory: Callable[..., EmailAccount],
+        server_factory: Callable[..., Server],
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
@@ -1087,11 +1089,11 @@ class TestProviderCreateAlias:
     def test_create_alias_backend_exception(
         self,
         mocker: MockerFixture,
-        email_account_factory,
-        server_factory,
-        provider_factory,
+        email_account_factory: Callable[..., EmailAccount],
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
         dummy_provider: DummyProviderBackend,
-        caplog,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given a backend that raises an exception
@@ -1130,8 +1132,8 @@ class TestProviderDeleteAlias:
     def test_delete_alias_success(
         self,
         mocker: MockerFixture,
-        email_account_factory,
-        server_factory,
+        email_account_factory: Callable[..., EmailAccount],
+        server_factory: Callable[..., Server],
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
@@ -1165,7 +1167,11 @@ class TestProviderDeleteAlias:
     ####################################################################
     #
     def test_delete_alias_server_does_not_exist(
-        self, mocker: MockerFixture, faker, provider_factory, caplog
+        self,
+        mocker: MockerFixture,
+        faker: Faker,
+        provider_factory: Callable[..., Provider],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given a domain name that doesn't exist
@@ -1189,11 +1195,11 @@ class TestProviderDeleteAlias:
     def test_delete_alias_backend_exception(
         self,
         mocker: MockerFixture,
-        email_account_factory,
-        provider_factory,
-        server_factory,
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        server_factory: Callable[..., Server],
         dummy_provider: DummyProviderBackend,
-        caplog,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given a backend that raises an exception
@@ -1234,9 +1240,9 @@ class TestProviderSyncServerEmailAccounts:
     def test_creates_missing_email_accounts(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
-        provider_factory,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
@@ -1268,8 +1274,8 @@ class TestProviderSyncServerEmailAccounts:
     def test_enables_disabled_email_accounts(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
         dummy_provider: DummyProviderBackend,
     ) -> None:
         """
@@ -1300,9 +1306,9 @@ class TestProviderSyncServerEmailAccounts:
     def test_skips_already_correct_email_accounts(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
-        provider_factory,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
     ) -> None:
         """
         Given email accounts already correct on the provider
@@ -1347,9 +1353,9 @@ class TestProviderSyncServerEmailAccounts:
     def test_deletes_orphaned_email_accounts(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
-        provider_factory,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
     ) -> None:
         """
         Given email accounts on the provider with no corresponding local EmailAccount
@@ -1404,9 +1410,9 @@ class TestProviderSyncServerEmailAccounts:
     def test_mixed_operations(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
-        provider_factory,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
     ) -> None:
         """
         Given a mix of missing, needing-update, correct, and orphaned email accounts
@@ -1480,9 +1486,9 @@ class TestProviderSyncServerEmailAccounts:
     def test_enabled_false_deletes_all_email_accounts(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
-        provider_factory,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
     ) -> None:
         """
         Given a server with email accounts on the provider
@@ -1542,9 +1548,9 @@ class TestProviderSyncServerEmailAccounts:
     def test_enabled_false_noop_for_provider_without_capabilities(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
-        provider_factory,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
     ) -> None:
         """
         GIVEN: a server with email accounts on a provider that lacks MANAGES_EMAIL_ACCOUNTS
@@ -1595,9 +1601,9 @@ class TestProviderSyncServerEmailAccounts:
     def test_list_email_accounts_key_error_logs_error_and_returns(
         self,
         mocker: MockerFixture,
-        server_factory,
-        provider_factory,
-        caplog,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        caplog: pytest.LogCaptureFixture,
         enabled: bool,
     ) -> None:
         """
@@ -1638,10 +1644,10 @@ class TestProviderSyncAllEmailAccounts:
         self,
         mocker: MockerFixture,
         dummy_provider: DummyProviderBackend,
-        server_factory,
-        email_account_factory,
-        provider_factory,
-        requests_mock,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        requests_mock: rm_module.Mocker,
     ) -> None:
         """
         GIVEN: 4 server/provider pairs, none synced yet
@@ -1681,7 +1687,11 @@ class TestProviderSyncAllEmailAccounts:
     ####################################################################
     #
     def test_sync_all_email_accounts_handles_backend_errors(
-        self, mocker: MockerFixture, server_factory, provider_factory, caplog
+        self,
+        mocker: MockerFixture,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
         Given a provider that raises an exception getting backend
@@ -1697,7 +1707,7 @@ class TestProviderSyncAllEmailAccounts:
         server.receive_providers.add(provider2)
 
         # Mock get_backend to fail for invalid_backend
-        def get_backend_side_effect(name):
+        def get_backend_side_effect(name: str):
             if name == "invalid_backend":
                 raise Exception("Unknown backend")
             return mocker.Mock()
@@ -1751,10 +1761,10 @@ class TestAliasSyncStaleness:
         expected_log: str | None,
         mocker: MockerFixture,
         dummy_provider: DummyProviderBackend,
-        server_factory,
-        email_account_factory,
-        provider_factory,
-        requests_mock,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        requests_mock: rm_module.Mocker,
         caplog: LogCaptureFixture,
     ) -> None:
         """
@@ -1795,10 +1805,10 @@ class TestAliasSyncStaleness:
         self,
         mocker: MockerFixture,
         dummy_provider: DummyProviderBackend,
-        server_factory,
-        email_account_factory,
-        provider_factory,
-        requests_mock,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        requests_mock: rm_module.Mocker,
     ) -> None:
         """
         GIVEN: multiple due pairs with different last_ok timestamps
@@ -1843,10 +1853,10 @@ class TestAliasSyncStaleness:
     def test_successful_sync_sets_last_ok(
         self,
         dummy_provider: DummyProviderBackend,
-        server_factory,
-        email_account_factory,
-        provider_factory,
-        requests_mock,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        requests_mock: rm_module.Mocker,
     ) -> None:
         """
         GIVEN: a server/provider pair with no prior sync
@@ -1880,10 +1890,10 @@ class TestAliasSyncStaleness:
         self,
         mocker: MockerFixture,
         dummy_provider: DummyProviderBackend,
-        server_factory,
-        email_account_factory,
-        provider_factory,
-        requests_mock,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        requests_mock: rm_module.Mocker,
         caplog: LogCaptureFixture,
     ) -> None:
         """
@@ -1935,9 +1945,9 @@ class TestProviderReportUnusedDomains:
     def test_report_unused_domains_no_aliases(
         self,
         mocker: MockerFixture,
-        server_factory,
-        provider_factory,
-        django_outbox,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        django_outbox: list[Any],
     ) -> None:
         """
         Given a server with no email accounts
@@ -1969,10 +1979,10 @@ class TestProviderReportUnusedDomains:
     def test_report_unused_domains_all_disabled(
         self,
         mocker: MockerFixture,
-        server_factory,
-        email_account_factory,
-        provider_factory,
-        django_outbox,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        django_outbox: list[Any],
     ) -> None:
         """
         Given a server with email accounts but all disabled on provider
@@ -2016,10 +2026,10 @@ class TestProviderReportUnusedDomains:
         self,
         mocker: MockerFixture,
         dummy_provider: DummyProviderBackend,
-        server_factory,
-        email_account_factory,
-        provider_factory,
-        django_outbox,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        provider_factory: Callable[..., Provider],
+        django_outbox: list[Any],
     ) -> None:
         """
         Given a server with an active alias
@@ -2054,8 +2064,8 @@ class TestProviderReportUnusedDomains:
     #
     def test_report_unused_domains_provider_no_servers(
         self,
-        provider_factory,
-        django_outbox,
+        provider_factory: Callable[..., Provider],
+        django_outbox: list[Any],
     ) -> None:
         """
         Given a provider with no receiving servers
@@ -2074,9 +2084,9 @@ class TestProviderReportUnusedDomains:
     def test_report_unused_domains_multiple_providers(
         self,
         mocker: MockerFixture,
-        server_factory,
-        provider_factory,
-        django_outbox,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        django_outbox: list[Any],
     ) -> None:
         """
         Given multiple providers with unused domains
