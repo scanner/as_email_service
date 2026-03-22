@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-03-22
+
 ### Fixed
 
 - Fix race condition where signal-dispatched Huey tasks could run before the DB transaction committed, causing `DoesNotExist` errors (AS-EMAIL-SERVICE-3E)
