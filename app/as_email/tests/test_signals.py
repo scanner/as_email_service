@@ -31,7 +31,14 @@ pytestmark = pytest.mark.django_db
 ########################################################################
 #
 class TestProviderSignals:
-    """Tests for provider-related signal handlers."""
+    """
+    Tests for provider-related signal handlers.
+
+    NOTE: Signal handlers defer huey task dispatch via transaction.on_commit()
+    so that huey workers only see committed rows (see AS-EMAIL-SERVICE-3E).
+    Tests use django_capture_on_commit_callbacks(execute=True) to flush those deferred
+    callbacks within the test transaction, which never actually commits.
+    """
 
     ####################################################################
     #
@@ -51,6 +58,7 @@ class TestProviderSignals:
         server_factory: Callable[..., Server],
         user_factory: Callable,
         mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: a server with one receive provider
@@ -64,11 +72,12 @@ class TestProviderSignals:
         )
 
         user = user_factory()
-        ea = EmailAccount.objects.create(
-            owner=user,
-            server=server,
-            email_address=f"newuser@{server.domain_name}",
-        )
+        with django_capture_on_commit_callbacks(execute=True):
+            ea = EmailAccount.objects.create(
+                owner=user,
+                server=server,
+                email_address=f"newuser@{server.domain_name}",
+            )
 
         assert mock_create.call_count == server.receive_providers.count()
         for provider in server.receive_providers.all():
@@ -109,6 +118,7 @@ class TestProviderSignals:
         server_factory: Callable[..., Server],
         user_factory: Callable,
         mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: an existing EmailAccount with enabled=True
@@ -126,8 +136,9 @@ class TestProviderSignals:
         mock_create = mocker.patch(
             "as_email.signals.provider_create_or_update_email_account"
         )
-        ea.enabled = False
-        ea.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            ea.enabled = False
+            ea.save()
 
         assert mock_create.call_count == server.receive_providers.count()
         for provider in server.receive_providers.all():
@@ -140,6 +151,7 @@ class TestProviderSignals:
         server_factory: Callable[..., Server],
         user_factory: Callable,
         mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: an EmailAccount on a server with one receive provider
@@ -161,7 +173,8 @@ class TestProviderSignals:
         email_address = ea.email_address
         domain_name = server.domain_name
 
-        ea.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            ea.delete()
 
         assert mock_delete.call_count == server.receive_providers.count()
         for provider in server.receive_providers.all():
@@ -177,6 +190,7 @@ class TestProviderSignals:
         provider_factory: Callable[..., Provider],
         user_factory: Callable,
         mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: an EmailAccount on a server with two receive providers
@@ -199,7 +213,8 @@ class TestProviderSignals:
         )
         email_address = ea.email_address
 
-        ea.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            ea.delete()
 
         assert mock_delete.call_count == 2
         for provider in server.receive_providers.all():
@@ -214,6 +229,7 @@ class TestProviderSignals:
         server_factory: Callable[..., Server],
         provider_factory: Callable[..., Provider],
         suppress_tasks: MagicMock,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: a server and a provider not yet associated with it
@@ -225,7 +241,8 @@ class TestProviderSignals:
         new_provider = provider_factory()
         suppress_tasks.reset_mock()
 
-        server.receive_providers.add(new_provider)
+        with django_capture_on_commit_callbacks(execute=True):
+            server.receive_providers.add(new_provider)
 
         suppress_tasks.assert_called_once()
 
@@ -236,6 +253,7 @@ class TestProviderSignals:
         server_factory: Callable[..., Server],
         provider_factory: Callable[..., Provider],
         suppress_tasks: MagicMock,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: a server and two providers not yet associated with it
@@ -247,7 +265,8 @@ class TestProviderSignals:
         provider_b = provider_factory()
         suppress_tasks.reset_mock()
 
-        server.receive_providers.add(provider_a, provider_b)
+        with django_capture_on_commit_callbacks(execute=True):
+            server.receive_providers.add(provider_a, provider_b)
 
         assert suppress_tasks.call_count == 2
 
@@ -257,6 +276,7 @@ class TestProviderSignals:
         self,
         server_factory: Callable[..., Server],
         mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: a server with one receive provider
@@ -271,7 +291,8 @@ class TestProviderSignals:
         )
 
         assert provider
-        server.receive_providers.remove(provider)
+        with django_capture_on_commit_callbacks(execute=True):
+            server.receive_providers.remove(provider)
 
         mock_sync.assert_called_once_with(
             server.pk, provider.backend_name, enabled=False
@@ -284,6 +305,7 @@ class TestProviderSignals:
         server_factory: Callable[..., Server],
         provider_factory: Callable[..., Provider],
         mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: a server with two receive providers
@@ -299,7 +321,8 @@ class TestProviderSignals:
         )
 
         providers = list(server.receive_providers.all())
-        server.receive_providers.remove(*providers)
+        with django_capture_on_commit_callbacks(execute=True):
+            server.receive_providers.remove(*providers)
 
         assert mock_sync.call_count == 2
         for provider in providers:
@@ -314,6 +337,7 @@ class TestProviderSignals:
         server_factory: Callable[..., Server],
         provider_factory: Callable[..., Provider],
         mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         GIVEN: a server with no send_provider
@@ -327,8 +351,9 @@ class TestProviderSignals:
         mock_task = mocker.patch(
             "as_email.signals.provider_create_update_server"
         )
-        server.send_provider = new_provider
-        server.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            server.send_provider = new_provider
+            server.save()
 
         mock_task.assert_called_once_with(server.pk, new_provider.backend_name)
 

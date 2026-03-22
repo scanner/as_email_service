@@ -95,6 +95,7 @@ def test_email_account_set_check_password(
     settings,
     email_account_factory: Callable[..., EmailAccount],
     mocker: MockerFixture,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given an email account
@@ -109,11 +110,14 @@ def test_email_account_set_check_password(
     ea = email_account_factory()
     password = faker.pystr(min_chars=8, max_chars=32)
     assert ea.check_password(password) is False
-    ea.set_password(password)
+
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        ea.set_password(password)
     assert ea.check_password(password)
 
-    # The signal handler should have triggered the task with ea.pk
-    # Note: With huey immediate mode, the task runs immediately
     mock_task.assert_called_once_with(ea.pk)
 
 
