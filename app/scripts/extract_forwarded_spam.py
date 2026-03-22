@@ -33,6 +33,7 @@ Notes:
 import email
 import sys
 from email import policy
+from email.message import EmailMessage
 from pathlib import Path
 
 # 3rd party imports
@@ -61,7 +62,9 @@ def extract_forwarded_message(msg_path: Path, output_dir: Path) -> bool:
         for part in msg.walk():
             if part.get_content_type() == "message/rfc822":
                 # Extract the attached message
-                attached_msg = part.get_payload(0)
+                payload = part.get_payload(0)
+                assert isinstance(payload, EmailMessage)
+                attached_msg = payload
 
                 # Generate output filename
                 output_path = (

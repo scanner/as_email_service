@@ -334,7 +334,7 @@ class Server(models.Model):
 ########################################################################
 ########################################################################
 #
-class EmailAccount(models.Model):
+class EmailAccount(models.Model):  # type: ignore[django-manager-missing]
     """
     User's can have multiple mail accounts. A single mail account
     maps to an email address that can receive and store email.
@@ -706,26 +706,35 @@ class MessageFilterRule(OrderedModel):
         (TO, TO),
     ]
 
-    email_account = models.ForeignKey(
+    # NOTE: These fields are intentionally left without explicit type
+    # annotations.  django-stubs infers descriptor types (e.g.
+    # self.email_account → EmailAccount) from the field assignments;
+    # adding annotations breaks that inference and causes _ST errors
+    # on attribute access.  The [var-annotated] suppressions silence
+    # mypy's "Need type annotation" warnings, which are a django-stubs
+    # limitation with OrderedModel.
+    email_account = models.ForeignKey(  # type: ignore[var-annotated]
         EmailAccount,
         on_delete=models.CASCADE,
         related_name="message_filter_rules",
     )
-    header = models.CharField(
+    header = models.CharField(  # type: ignore[var-annotated]
         max_length=32,
         choices=HEADER_CHOICES,
         default=DEFAULT,
     )
-    pattern = models.CharField(blank=True, max_length=256)
-    action = models.CharField(
+    pattern = models.CharField(blank=True, max_length=256)  # type: ignore[var-annotated]
+    action = models.CharField(  # type: ignore[var-annotated]
         max_length=10,
         choices=ACTION_CHOICES,
         default=FOLDER,
     )
-    destination = models.CharField(blank=True, max_length=1024)
+    destination = models.CharField(  # type: ignore[var-annotated]
+        blank=True, max_length=1024
+    )
     order_with_respect_to = "email_account"
-    created_at = models.DateTimeField(auto_now_add=True)
-    modified_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)  # type: ignore[var-annotated]
+    modified_at = models.DateTimeField(auto_now=True)  # type: ignore[var-annotated]
 
     class Meta:
         indexes = [
@@ -1159,9 +1168,14 @@ class LocalDelivery(DeliveryMethod):
         Return a mailbox.MH instance for this delivery method's maildir.
         Creates the mailbox and default folders if `create` is True.
         """
+        assert self.maildir_path is not None
+        # NOTE: The factory returns EmailMessage (not MHMessage) because
+        # policy=email.policy.default produces the richer EmailMessage type
+        # that the rest of the codebase expects. MH works fine with this
+        # factory at runtime; the type mismatch is only in the stubs.
         mh = mailbox.MH(
             self.maildir_path,
-            factory=lambda x: email.message_from_binary_file(
+            factory=lambda x: email.message_from_binary_file(  # type: ignore[arg-type,return-value]
                 x, policy=email.policy.default
             ),
             create=create,

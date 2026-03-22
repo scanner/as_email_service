@@ -227,11 +227,21 @@ class AsyncioAuthSMTP(SMTP):
     server that calls the authenticator via await.
     """
 
-    async def _authenticate(self, mechanism: str, auth_data: Any):
+    # NOTE: aiosmtpd's stubs type _authenticate as sync returning
+    # AuthResult, but the library supports async authenticators at
+    # runtime.  We need async here for Django's async ORM.
+    # XXX: Investigate whether a sync_to_async wrapper around a sync
+    #      override would satisfy both mypy and aiosmtpd without
+    #      adding measurable overhead.
+    async def _authenticate(  # type: ignore[override]
+        self, mechanism: str, auth_data: Any
+    ):
         if self._authenticator is not None:
             # self.envelope is likely still empty, but we'll pass it anyways to
             # make the invocation similar to the one in _call_handler_hook
-            auth_result = await self._authenticator(
+            assert self.session is not None
+            assert self.envelope is not None
+            auth_result = await self._authenticator(  # type: ignore[misc]
                 self, self.session, self.envelope, mechanism, auth_data
             )
             return auth_result
@@ -270,12 +280,14 @@ class AsyncioAuthSMTP(SMTP):
                     or isinstance(error.__cause__, ConnectionResetError)
                 )
             ):
+                assert self.session is not None
                 logger.warning(
                     "%r SMTP session exception: %s",
                     self.session.peer,
                     error.__cause__,
                 )
             else:
+                assert self.session is not None
                 logger.warning(
                     "%r SMTP session exception",
                     self.session.peer,
@@ -448,7 +460,9 @@ class Command(BaseCommand):
         tls_context.check_hostname = False
         tls_context.load_cert_chain(ssl_cert_file, ssl_key_file)
         authenticator = Authenticator()
-        handler = RelayHandler(spool_dir=spool_dir, authenticator=authenticator)
+        handler = RelayHandler(
+            spool_dir=str(spool_dir), authenticator=authenticator
+        )
 
         controllers = []
 
@@ -728,6 +742,7 @@ class RelayHandler:
         #     (But what if someone's credentaisl get stolen and suddenly they
         #     are used for spam?)
         #
+        assert session.peer is not None
         if self.authenticator.check_deny(session.peer):
             logger.info(
                 "Denying %s due to too many failed auth attempts",
@@ -736,7 +751,10 @@ class RelayHandler:
             await tarpit_delay()
             return "554 Too many failed attempts"
 
-        peer_ip, _ = session.peer
+        # NOTE: aiosmtpd types peer as str, but at runtime it is a
+        # (host, port) tuple from socket.getpeername().
+        peer_ip: str
+        peer_ip, _ = session.peer  # type: ignore[misc]
         result = await self.dnsbl.check(peer_ip)
         if result.blacklisted:
             detected_by = format_dnsbl_providers(result.detected_by)
@@ -798,12 +816,15 @@ class RelayHandler:
         # Note: We don't need to preload 'server' here since handle_RCPT
         # only checks deactivated status, not server-related fields
         _, from_addr = parseaddr(address)
+        # NOTE: mail_from_account is a custom attribute we attach to the
+        # Envelope at runtime to cache the MAIL FROM account lookup for
+        # use in handle_RCPT. aiosmtpd's Envelope stubs don't know about it.
         try:
-            envelope.mail_from_account = await EmailAccount.objects.aget(
+            envelope.mail_from_account = await EmailAccount.objects.aget(  # type: ignore[attr-defined]
                 email_address=from_addr.lower()
             )
         except EmailAccount.DoesNotExist:
-            envelope.mail_from_account = None
+            envelope.mail_from_account = None  # type: ignore[attr-defined]
 
         return "250 OK"
 
@@ -829,7 +850,7 @@ class RelayHandler:
         _, email_addr = parseaddr(address)
         domain = (
             email_addr.split("@")[-1].lower() if "@" in email_addr else None
-        ).lower()
+        )
 
         # Check if this domain is managed by us
         is_local_domain = False
@@ -910,6 +931,7 @@ class RelayHandler:
 
         # Parse the message
         msg_bytes = envelope.original_content
+        assert msg_bytes is not None
         msg = email.message_from_bytes(msg_bytes, policy=email.policy.default)
 
         # Validate FROM header for authenticated sessions
@@ -924,8 +946,9 @@ class RelayHandler:
                 logger.error("Local delivery failed: %r", exc)
                 return f"500 Local delivery error: {exc!r}"
 
-        # Relay to remote addresses if any
+        # Relay to remote addresses if any (requires authentication)
         if remote_addrs:
+            assert account is not None
             try:
                 await relay_email_to_provider(account, remote_addrs, msg)
             except Exception as exc:
@@ -938,7 +961,7 @@ class RelayHandler:
 ####################################################################
 #
 async def deliver_email_locally(
-    account: EmailAccount, rcpt_tos: list[str], msg_bytes: bytes
+    account: EmailAccount | None, rcpt_tos: list[str], msg_bytes: bytes
 ) -> None:
     """
     Create delivery email files for each entry in rcpt_tos, and store the
@@ -980,6 +1003,7 @@ async def deliver_email_locally(
         # Write the message to the recipient's incoming spool directory
         #
         spool_dir = recipient_account.server.incoming_spool_dir
+        assert spool_dir is not None
         fname = write_spooled_email(
             rcpt_to,
             spool_dir,
@@ -1072,6 +1096,7 @@ async def relay_email_to_provider(
         diagnostic="smtp; Destination is an inactive email address",
         reported_msg=msg,
     )
+    assert account.server.incoming_spool_dir is not None
     fname = write_spooled_email(
         account.email_address,
         account.server.incoming_spool_dir,

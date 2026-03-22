@@ -12,7 +12,7 @@ import logging
 import smtplib
 from collections.abc import Sequence
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 # 3rd party imports
 #
@@ -53,6 +53,9 @@ from ..utils import (
     split_email_mailbox_hash,
     spool_message,
 )
+
+if TYPE_CHECKING:
+    from django.contrib.auth.models import AbstractUser
 
 User = get_user_model()
 fake = Faker()
@@ -184,6 +187,7 @@ class DummyProviderBackend(ProviderBackend):
                 exc,
             )
             if spool_on_retryable:
+                assert server.outgoing_spool_dir is not None
                 spool_message(server.outgoing_spool_dir, message.as_bytes())
             return False
         finally:
@@ -381,7 +385,7 @@ class UserFactory(DjangoModelFactory):
 
     @post_generation
     def password(
-        self: User, create: bool, extracted: Sequence[Any], **kwargs: Any
+        self: "AbstractUser", create: bool, extracted: str | None, **kwargs: Any
     ) -> None:
         password = extracted if extracted else fake.password(length=16)
         self.set_password(password)
@@ -474,7 +478,7 @@ class EmailAccountFactory(DjangoModelFactory):
     def password(
         self: EmailAccount,
         create: bool,
-        extracted: Sequence[Any],
+        extracted: str | None,
         **kwargs: Any,
     ) -> None:
         password = extracted if extracted else "XXX"

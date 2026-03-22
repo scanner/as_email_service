@@ -265,6 +265,9 @@ def server_pre_save(sender: type[Server], instance: Server, **kwargs):
 
     # Create directories if this is a new instance
     if is_new:
+        assert instance.incoming_spool_dir is not None
+        assert instance.outgoing_spool_dir is not None
+        assert instance.mail_dir_parent is not None
         Path(instance.incoming_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(instance.outgoing_spool_dir).mkdir(parents=True, exist_ok=True)
         Path(instance.mail_dir_parent).mkdir(parents=True, exist_ok=True)
@@ -294,6 +297,7 @@ def handle_send_provider_changed(
     if not instance.send_provider_id:
         return
 
+    assert instance.send_provider is not None
     provider_create_update_server(
         instance.pk, instance.send_provider.backend_name
     )

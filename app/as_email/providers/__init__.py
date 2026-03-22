@@ -82,7 +82,7 @@ def _get_backend(backend_name: str) -> "ProviderBackend":
     # e.g., "forwardemail" -> "ForwardEmailBackend"
     #
     class_prefix = PROVIDER_NAME_TO_BACKEND_MAPPING.get(
-        backend_name, backend_name.capitalize()
+        ProviderName(backend_name), backend_name.capitalize()
     )
     class_name = f"{class_prefix}Backend"
 

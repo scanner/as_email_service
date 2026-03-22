@@ -352,6 +352,7 @@ class Latin1BytesGenerator(email.generator.BytesGenerator):
     and if 'ascii' does not work, it tries 'latin-1'
     """
 
+    _fp: io.BytesIO
     ENCODINGS = ("ascii", "utf-8", "latin-1")
 
     ####################################################################
@@ -413,17 +414,16 @@ def sendmail(
     messages that have stuff like the `©` in them. We get it, we send it.
     """
     international = False
-    mail_options = ()
-    rcpt_options = ()
+    mail_options: tuple[str, ...] = ()
+    rcpt_options: tuple[str, ...] = ()
     try:
         "".join([from_addr, *to_addrs]).encode("ascii")
     except UnicodeEncodeError:
         international = True
     with io.BytesIO() as bytesmsg:
         if international:
-            g = email.generator.BytesGenerator(
-                bytesmsg, policy=msg.policy.clone(utf8=True)
-            )
+            utf8_policy = email.policy.EmailPolicy(utf8=True)
+            g = email.generator.BytesGenerator(bytesmsg, policy=utf8_policy)
             mail_options = (*mail_options, "SMTPUTF8", "BODY=8BITMIME")
         else:
             # g = email.generator.BytesGenerator(bytesmsg)

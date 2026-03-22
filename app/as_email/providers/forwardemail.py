@@ -71,10 +71,11 @@ import json
 import logging
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum, StrEnum
+from http.client import HTTPMessage
 from io import BytesIO
 from threading import Lock
 from typing import TYPE_CHECKING, Any
@@ -116,7 +117,7 @@ from .base import (
 )
 
 if TYPE_CHECKING:
-    from django.contrib.auth.base_user import AbstractBaseUser
+    from django.contrib.auth.models import AbstractUser
 
     from as_email.models import Server
 
@@ -302,7 +303,7 @@ class RateLimiter:
 
     ####################################################################
     #
-    def update_from_headers(self, headers: dict[str, str]) -> None:
+    def update_from_headers(self, headers: Mapping[str, str]) -> None:
         """Update rate limit state from response headers."""
         try:
             # Only update if all headers are present
@@ -427,7 +428,11 @@ class APIClient:
 
         if r.status_code != 200:
             raw = BytesIO(r.content)
-            raise HTTPError(u, r.status_code, r.reason, r.headers, raw)
+            # HTTPError expects an HTTPMessage, not requests' CaseInsensitiveDict.
+            hdrs = HTTPMessage()
+            for key, value in r.headers.items():
+                hdrs[key] = value
+            raise HTTPError(u, r.status_code, r.reason, hdrs, raw)
 
         return r
 
@@ -440,7 +445,7 @@ class APIClient:
 
 ########################################################################
 #
-def _owner_display_name(owner: "AbstractBaseUser") -> str:
+def _owner_display_name(owner: "AbstractUser") -> str:
     """
     Return a human-readable display string for an email account owner.
 
@@ -866,6 +871,7 @@ class ForwardEmailBackend(ProviderBackend):
                     ),
                 )
                 if spool_on_retryable:
+                    assert server.outgoing_spool_dir is not None
                     spool_message(server.outgoing_spool_dir, message.as_bytes())
                 return False
             logger.error(
@@ -1008,6 +1014,7 @@ class ForwardEmailBackend(ProviderBackend):
 
             # Write the email to the spool directory
             #
+            assert server.incoming_spool_dir is not None
             spooled_msg_path = write_spooled_email(
                 recipient,
                 server.incoming_spool_dir,

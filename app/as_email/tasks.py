@@ -13,9 +13,7 @@ import json
 import logging
 import time
 from datetime import UTC, datetime, timedelta
-from email.message import EmailMessage
 from pathlib import Path
-from typing import cast
 
 # 3rd party imports
 #
@@ -332,7 +330,7 @@ def retry_failed_incoming_email():
                     "Corrupt retry record for '%s'; treating as legacy file",
                     email_file,
                 )
-                retry_data = {}  # type: ignore[assignment]
+                retry_data = {}
                 failed_pks = None
                 first_failure = datetime.now(UTC)
                 attempt_count = 0
@@ -454,10 +452,10 @@ def retry_failed_incoming_email():
                 # and set a safety-net TTL of twice the retry window.
                 #
                 new_mapping["first_failure"] = datetime.now(UTC).isoformat()
-                r.hset(redis_key, mapping=new_mapping)
+                r.hset(redis_key, mapping=new_mapping)  # type: ignore[arg-type]
                 r.expire(redis_key, retry_days * 86400 * 2)
             else:
-                r.hset(redis_key, mapping=new_mapping)
+                r.hset(redis_key, mapping=new_mapping)  # type: ignore[arg-type]
             logger.warning(
                 "Retry failed for '%s': %d method(s) still failing (next "
                 "attempt in %ds): %s",
@@ -528,13 +526,7 @@ def dispatch_spooled_outgoing_email():
                 #
                 delete_message = True
                 logger.exception(f"Unable to retry sending email: {exc}")
-                failed_message = cast(
-                    EmailMessage,
-                    email.message_from_bytes(
-                        message,
-                        policy=email.policy.default,
-                    ),
-                )
+                failed_message = message
 
                 report_failed_message(
                     failed_message["From"],

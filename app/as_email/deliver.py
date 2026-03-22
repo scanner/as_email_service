@@ -37,7 +37,6 @@ from contextlib import contextmanager
 from email.message import EmailMessage
 from email.mime.text import MIMEText
 from mailbox import MH, ExternalClashError, NoSuchMailboxError
-from typing import cast
 
 # Project imports
 #
@@ -366,20 +365,14 @@ def report_failed_message(
     # Message. We use cast to make mypy understand this.
     #
     if isinstance(failed_message, bytes):
-        message = cast(
-            EmailMessage,
-            email.message_from_bytes(
-                failed_message,
-                policy=email.policy.default,
-            ),
+        message = email.message_from_bytes(
+            failed_message,
+            policy=email.policy.default,
         )
     elif isinstance(failed_message, str):
-        message = cast(
-            EmailMessage,
-            email.message_from_string(
-                failed_message,
-                policy=email.policy.default,
-            ),
+        message = email.message_from_string(
+            failed_message,
+            policy=email.policy.default,
         )
     else:
         message = failed_message
