@@ -6,16 +6,22 @@ Test the aiosmtpd daemon/django command.
 
 # system imports
 #
+from collections.abc import Callable
 from datetime import UTC, datetime
 from email.message import EmailMessage
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 # 3rd party imports
 #
 import pytest
 from aiosmtpd.smtp import SMTP, LoginPassword
+from aiosmtpd.smtp import Envelope as SMTPEnvelope
+from aiosmtpd.smtp import Session as SMTPSession
 from asgiref.sync import sync_to_async
 from dirty_equals import Contains
+from faker import Faker
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -29,7 +35,7 @@ from ..management.commands.aiosmtpd import (
     relay_email_to_provider,
     validate_from_header,
 )
-from ..models import InactiveEmail
+from ..models import EmailAccount, InactiveEmail, Server
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -39,7 +45,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 ####################################################################
 #
 @pytest.fixture
-def mock_tarpit_delay(mocker):
+def mock_tarpit_delay(mocker: MockerFixture) -> AsyncMock:
     """
     Fixture to mock tarpit_delay to avoid waiting during tests.
     Returns the mock so tests can verify it was called if needed.
@@ -113,7 +119,9 @@ class TestHelperFunctions:
 
     ####################################################################
     #
-    def test_validate_from_header_unauthenticated(self, email_factory) -> None:
+    def test_validate_from_header_unauthenticated(
+        self, email_factory: Callable[..., EmailMessage]
+    ) -> None:
         """
         Given an unauthenticated session (no account)
         When validate_from_header is called
@@ -126,7 +134,7 @@ class TestHelperFunctions:
     ####################################################################
     #
     def test_validate_from_header_no_from_headers(
-        self, email_account_factory
+        self, email_account_factory: Callable[..., EmailAccount]
     ) -> None:
         """
         Given a message with no FROM headers
@@ -141,7 +149,9 @@ class TestHelperFunctions:
     ####################################################################
     #
     def test_validate_from_header_valid_match(
-        self, email_account_factory, email_factory
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
     ) -> None:
         """
         Given a message with FROM matching the authenticated account
@@ -156,7 +166,10 @@ class TestHelperFunctions:
     ####################################################################
     #
     def test_validate_from_header_with_display_name(
-        self, email_account_factory, email_factory, faker
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
     ) -> None:
         """
         Given a message with display name but valid email in FROM
@@ -172,7 +185,10 @@ class TestHelperFunctions:
     ####################################################################
     #
     def test_validate_from_header_invalid_mismatch(
-        self, email_account_factory, email_factory, faker
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
     ) -> None:
         """
         Given a message with FROM not matching the authenticated account
@@ -189,7 +205,7 @@ class TestHelperFunctions:
     #
     @pytest.mark.asyncio
     async def test_categorize_recipients_all_local(
-        self, email_account_factory
+        self, email_account_factory: Callable[..., EmailAccount]
     ) -> None:
         """
         Given a list of email addresses that all have local EmailAccounts
@@ -215,7 +231,7 @@ class TestHelperFunctions:
     ####################################################################
     #
     @pytest.mark.asyncio
-    async def test_categorize_recipients_all_remote(self, faker) -> None:
+    async def test_categorize_recipients_all_remote(self, faker: Faker) -> None:
         """
         Given a list of email addresses on external domains
         When categorize_recipients is called
@@ -234,7 +250,7 @@ class TestHelperFunctions:
     #
     @pytest.mark.asyncio
     async def test_categorize_recipients_mixed(
-        self, email_account_factory, faker
+        self, email_account_factory: Callable[..., EmailAccount], faker: Faker
     ) -> None:
         """
         Given a list with both local and remote email addresses
@@ -259,7 +275,7 @@ class TestHelperFunctions:
     #
     @pytest.mark.asyncio
     async def test_categorize_recipients_invalid_local(
-        self, server_factory, faker
+        self, server_factory: Callable[..., Server], faker: Faker
     ) -> None:
         """
         Given an email address on our domain but with no EmailAccount
@@ -281,7 +297,7 @@ class TestHelperFunctions:
     #
     @pytest.mark.asyncio
     async def test_categorize_recipients_case_insensitive(
-        self, email_account_factory
+        self, email_account_factory: Callable[..., EmailAccount]
     ) -> None:
         """
         Given an email address with uppercase characters
@@ -311,7 +327,10 @@ class TestAuthentication:
     #
     @pytest.mark.asyncio
     async def test_authenticator_authenticate_success(
-        self, email_account_factory, faker, aiosmtp_session
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
     ) -> None:
         """
         Given valid credentials for an active EmailAccount
@@ -338,7 +357,10 @@ class TestAuthentication:
     #
     @pytest.mark.asyncio
     async def test_authenticator_invalid_password(
-        self, email_account_factory, faker, aiosmtp_session
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
     ) -> None:
         """
         Given valid account credentials with incorrect password
@@ -362,7 +384,10 @@ class TestAuthentication:
     #
     @pytest.mark.asyncio
     async def test_authenticator_invalid_account(
-        self, email_account_factory, faker, aiosmtp_session
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
     ) -> None:
         """
         Given credentials for a non-existent account
@@ -386,7 +411,10 @@ class TestAuthentication:
     #
     @pytest.mark.asyncio
     async def test_authenticator_deactivated_account(
-        self, email_account_factory, faker, aiosmtp_session
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
     ) -> None:
         """
         Given valid credentials for a deactivated account
@@ -416,7 +444,10 @@ class TestAuthentication:
     #
     @pytest.mark.asyncio
     async def test_authenticator_unsupported_mechanisms(
-        self, email_account_factory, faker, aiosmtp_session
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
     ) -> None:
         """
         Given valid credentials but unsupported authentication mechanism
@@ -449,7 +480,10 @@ class TestAuthentication:
     #
     @pytest.mark.asyncio
     async def test_authenticator_blacklist_mechanism(
-        self, email_account_factory, faker, aiosmtp_session
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
     ) -> None:
         """
         Given a peer with repeated authentication failures
@@ -501,12 +535,12 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_relayhandler_handle_CONNECT_denies_blacklisted(
         self,
-        tmp_path,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mock_tarpit_delay,
-        mocker,
+        tmp_path: Path,
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        mock_tarpit_delay: AsyncMock,
+        mocker: MockerFixture,
     ) -> None:
         """
         Given a peer that has been blacklisted for auth failures
@@ -570,15 +604,15 @@ class TestHandleMAIL:
     )
     async def test_handle_MAIL_caches_from_account(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        tmp_path,
-        from_type,
-        deactivated,
-        case_transform,
-        expected_account,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        from_type: str,
+        deactivated: bool,
+        case_transform: Callable | None,
+        expected_account: str | None,
     ) -> None:
         """
         Given MAIL FROM with various address types
@@ -629,7 +663,11 @@ class TestHandleRCPT:
     #
     @pytest.mark.asyncio
     async def test_handle_RCPT_local_valid_recipient(
-        self, email_account_factory, aiosmtp_session, aiosmtp_envelope, tmp_path
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
     ) -> None:
         """
         Given RCPT TO with a valid local EmailAccount
@@ -657,7 +695,12 @@ class TestHandleRCPT:
     #
     @pytest.mark.asyncio
     async def test_handle_RCPT_local_invalid_recipient(
-        self, server_factory, faker, aiosmtp_session, aiosmtp_envelope, tmp_path
+        self,
+        server_factory: Callable[..., Server],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
     ) -> None:
         """
         Given RCPT TO with an address on our domain but no EmailAccount exists
@@ -685,7 +728,11 @@ class TestHandleRCPT:
     #
     @pytest.mark.asyncio
     async def test_handle_RCPT_remote_unauthenticated(
-        self, faker, aiosmtp_session, aiosmtp_envelope, tmp_path
+        self,
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
     ) -> None:
         """
         Given RCPT TO with a remote address and no authentication
@@ -711,11 +758,11 @@ class TestHandleRCPT:
     @pytest.mark.asyncio
     async def test_handle_RCPT_remote_authenticated(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
     ) -> None:
         """
         Given RCPT TO with a remote address and authenticated session
@@ -745,11 +792,11 @@ class TestHandleRCPT:
     @pytest.mark.asyncio
     async def test_handle_RCPT_remote_from_deactivated_local_account(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
     ) -> None:
         """
         Given MAIL FROM is a deactivated local account
@@ -786,11 +833,11 @@ class TestHandleRCPT:
     @pytest.mark.asyncio
     async def test_handle_RCPT_remote_from_active_local_account_unauthenticated(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
     ) -> None:
         """
         Given MAIL FROM is an active local account but session is not authenticated
@@ -824,11 +871,11 @@ class TestHandleRCPT:
     @pytest.mark.asyncio
     async def test_handle_RCPT_multiple_recipients(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
     ) -> None:
         """
         Given multiple RCPT TO commands (local and remote)
@@ -879,12 +926,12 @@ class TestHandleDATA:
     @pytest.mark.asyncio
     async def test_handle_DATA_local_delivery(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mocker,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        mocker: MockerFixture,
+        tmp_path: Path,
     ) -> None:
         """
         Given a valid SMTP transaction with local recipient
@@ -927,11 +974,11 @@ class TestHandleDATA:
     @pytest.mark.asyncio
     async def test_handle_DATA_no_valid_recipients(
         self,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        tmp_path,
-        mocker,
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        mocker: MockerFixture,
     ) -> None:
         """
         Given an envelope with no valid recipients (all rejected in RCPT)
@@ -963,13 +1010,13 @@ class TestHandleDATA:
     @pytest.mark.asyncio
     async def test_handle_DATA_relay_to_remote(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        smtp,
-        mocker,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        smtp: MagicMock,
+        mocker: MockerFixture,
+        tmp_path: Path,
     ) -> None:
         """
         Given an authenticated session sending to a remote address
@@ -1005,13 +1052,13 @@ class TestHandleDATA:
     @pytest.mark.asyncio
     async def test_handle_DATA_mixed_local_and_remote(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        smtp,
-        mocker,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        smtp: MagicMock,
+        mocker: MockerFixture,
+        tmp_path: Path,
     ) -> None:
         """
         Given an authenticated session sending to both local and remote addresses
@@ -1067,13 +1114,13 @@ class TestFromHeaderValidation:
     @pytest.mark.asyncio
     async def test_handle_DATA_authenticated_valid_from(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        smtp,
-        mocker,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        smtp: MagicMock,
+        mocker: MockerFixture,
+        tmp_path: Path,
     ) -> None:
         """
         Given an authenticated session with correct FROM header
@@ -1108,13 +1155,13 @@ class TestFromHeaderValidation:
     @pytest.mark.asyncio
     async def test_handle_DATA_authenticated_invalid_from(
         self,
-        email_account_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        smtp,
-        mocker,
-        tmp_path,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        smtp: MagicMock,
+        mocker: MockerFixture,
+        tmp_path: Path,
     ) -> None:
         """
         Given an authenticated session with wrong FROM header
@@ -1158,7 +1205,11 @@ class TestDNSBL:
     #
     @pytest.mark.asyncio
     async def test_handle_CONNECT_not_blacklisted(
-        self, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
+        self,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        mocker: MockerFixture,
     ) -> None:
         """
         Given a connecting IP that is not on any DNSBL
@@ -1188,7 +1239,11 @@ class TestDNSBL:
     #
     @pytest.mark.asyncio
     async def test_handle_CONNECT_blacklisted(
-        self, aiosmtp_session, aiosmtp_envelope, tmp_path, mocker
+        self,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        mocker: MockerFixture,
     ) -> None:
         """
         Given a connecting IP that is on a DNSBL
@@ -1324,21 +1379,21 @@ class TestSMTPIntegration:
     )
     async def test_smtp_transaction_flow(
         self,
-        scenario,
-        mail_from_type,
-        rcpt_to_type,
-        authenticated,
-        from_deactivated,
-        expected_rcpt_result,
-        expected_data_result,
-        email_account_factory,
-        server_factory,
-        faker,
-        aiosmtp_session,
-        aiosmtp_envelope,
-        mocker,
-        smtp,
-        tmp_path,
+        scenario: str,
+        mail_from_type: str,
+        rcpt_to_type: str,
+        authenticated: bool,
+        from_deactivated: bool,
+        expected_rcpt_result: str,
+        expected_data_result: str | None,
+        email_account_factory: Callable[..., EmailAccount],
+        server_factory: Callable[..., Server],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        mocker: MockerFixture,
+        smtp: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """
         Test complete SMTP transaction flows for various scenarios.
@@ -1465,7 +1520,9 @@ class TestCommandArguments:
             ("Off", "off"),
         ],
     )
-    def test_port_or_off_accepts_valid_input(self, value, expected) -> None:
+    def test_port_or_off_accepts_valid_input(
+        self, value: str, expected: int | str
+    ) -> None:
         """
         Given a valid port number string or 'off' in any case
         When port_or_off is called
@@ -1499,7 +1556,7 @@ class TestCommandArguments:
     ####################################################################
     #
     def test_handle_with_both_ports_enabled(
-        self, mocker, tmp_path, faker
+        self, mocker: MockerFixture, tmp_path: Path, faker: Faker
     ) -> None:
         """
         Given both submission_port and smtp_port are valid integers
@@ -1553,7 +1610,9 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_handle_with_submission_port_off(self, mocker, tmp_path) -> None:
+    def test_handle_with_submission_port_off(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """
         Given submission_port is "off" and smtp_port is a valid integer
         When handle() is called
@@ -1603,7 +1662,9 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_handle_with_smtp_port_off(self, mocker, tmp_path) -> None:
+    def test_handle_with_smtp_port_off(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """
         Given smtp_port is "off" and submission_port is a valid integer
         When handle() is called
@@ -1653,7 +1714,9 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_handle_with_both_ports_off(self, mocker, tmp_path) -> None:
+    def test_handle_with_both_ports_off(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """
         Given both submission_port and smtp_port are "off"
         When handle() is called
@@ -1703,12 +1766,12 @@ class TestRelayToProvider:
     @pytest.mark.asyncio
     async def test_relay_email_to_provider_filters_inactives(
         self,
-        email_account_factory,
-        email_factory,
-        inactive_email_factory,
-        faker,
-        smtp,
-        mocker,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        inactive_email_factory: Callable[..., InactiveEmail],
+        faker: Faker,
+        smtp: MagicMock,
+        mocker: MockerFixture,
     ) -> None:
         """
         Given a message sent only to inactive email addresses
@@ -1756,12 +1819,12 @@ class TestRelayToProvider:
     @pytest.mark.asyncio
     async def test_relay_email_to_provider_mixed_valid_inactive(
         self,
-        email_account_factory,
-        email_factory,
-        inactive_email_factory,
-        faker,
-        smtp,
-        mocker,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        inactive_email_factory: Callable[..., InactiveEmail],
+        faker: Faker,
+        smtp: MagicMock,
+        mocker: MockerFixture,
     ) -> None:
         """
         Given a message sent to both valid and inactive addresses
@@ -1806,10 +1869,10 @@ class TestRelayToProvider:
     @pytest.mark.asyncio
     async def test_relay_with_smtp_backend(
         self,
-        email_account_factory,
-        email_factory,
-        faker,
-        smtp,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        smtp: MagicMock,
     ) -> None:
         """
         GIVEN: an EmailAccount whose server uses a provider with SMTP_RELAY
@@ -1835,11 +1898,11 @@ class TestRelayToProvider:
     @pytest.mark.asyncio
     async def test_relay_with_api_only_backend(
         self,
-        email_account_factory,
-        email_factory,
-        faker,
-        smtp,
-        mocker,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        smtp: MagicMock,
+        mocker: MockerFixture,
     ) -> None:
         """
         GIVEN: an EmailAccount whose server uses a provider without

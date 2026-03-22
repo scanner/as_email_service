@@ -10,10 +10,12 @@ import json
 from collections.abc import Callable
 from email.message import EmailMessage
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
 import pytest
+from django.conf import LazySettings
 from django.test import RequestFactory
 from postmarker.exceptions import ClientError
 from pytest_mock import MockerFixture
@@ -40,7 +42,7 @@ def _make_text_message(body: str = "Test message") -> EmailMessage:
 ########################################################################
 #
 def test_postmark_backend_send_email_smtp_success(
-    server_with_token, smtp
+    server_with_token: Callable[..., Server], smtp: MagicMock
 ) -> None:
     """
     Test successful SMTP email sending via Postmark backend.
@@ -75,7 +77,7 @@ def test_postmark_backend_send_email_smtp_success(
 ########################################################################
 #
 def test_postmark_backend_send_email_smtp_wrong_domain(
-    server_with_token,
+    server_with_token: Callable[..., Server],
 ) -> None:
     """
     Test SMTP sending fails when email domain doesn't match server.
@@ -106,7 +108,7 @@ def test_postmark_backend_send_email_smtp_wrong_domain(
 ########################################################################
 #
 def test_postmark_backend_send_email_smtp_missing_token(
-    server_factory, settings
+    server_factory: Callable[..., Server], settings: LazySettings
 ) -> None:
     """
     Test SMTP sending fails when server token is missing.
@@ -143,7 +145,9 @@ def test_postmark_backend_send_email_smtp_missing_token(
 ########################################################################
 #
 def test_postmark_backend_send_email_smtp_exception_spools(
-    server_with_token, smtp, email_spool_dir
+    server_with_token: Callable[..., Server],
+    smtp: MagicMock,
+    email_spool_dir: Path,
 ) -> None:
     """
     Test SMTP exception causes message to be spooled.
@@ -182,7 +186,7 @@ def test_postmark_backend_send_email_smtp_exception_spools(
 ########################################################################
 #
 def test_postmark_backend_send_email_api_success(
-    server_with_token, mocker
+    server_with_token: Callable[..., Server], mocker: MockerFixture
 ) -> None:
     """
     Test successful API email sending via Postmark backend.
@@ -216,7 +220,9 @@ def test_postmark_backend_send_email_api_success(
 ########################################################################
 #
 def test_postmark_backend_send_email_api_request_exception(
-    server_with_token, email_spool_dir, mocker
+    server_with_token: Callable[..., Server],
+    email_spool_dir: Path,
+    mocker: MockerFixture,
 ) -> None:
     """
     Test API sending handles RequestException gracefully.
@@ -253,7 +259,9 @@ def test_postmark_backend_send_email_api_request_exception(
 ########################################################################
 #
 def test_postmark_backend_send_email_api_retryable_client_error(
-    server_with_token, email_spool_dir, mocker
+    server_with_token: Callable[..., Server],
+    email_spool_dir: Path,
+    mocker: MockerFixture,
 ) -> None:
     """
     Test API sending spools on retryable ClientError codes.
@@ -292,7 +300,7 @@ def test_postmark_backend_send_email_api_retryable_client_error(
 ########################################################################
 #
 def test_postmark_backend_send_email_api_non_retryable_client_error(
-    server_with_token, mocker
+    server_with_token: Callable[..., Server], mocker: MockerFixture
 ) -> None:
     """
     Test API sending raises on non-retryable ClientError.
@@ -325,7 +333,11 @@ def test_postmark_backend_send_email_api_non_retryable_client_error(
 ########################################################################
 #
 def test_postmark_backend_handle_incoming_webhook_success(
-    rf, server_factory, email_account_factory, email_spool_dir, mocker
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    email_account_factory: Callable[..., EmailAccount],
+    email_spool_dir: Path,
+    mocker: MockerFixture,
 ) -> None:
     """
     Test successful incoming email webhook handling.
@@ -397,15 +409,15 @@ def test_postmark_backend_handle_incoming_webhook_success(
     ],
 )
 def test_postmark_backend_handle_incoming_webhook_no_delivery(
-    rf,
-    server_factory,
-    email_account_factory,
-    email_spool_dir,
-    mocker,
-    caplog,
-    account_exists,
-    account_enabled,
-    expected_log,
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    email_account_factory: Callable[..., EmailAccount],
+    email_spool_dir: Path,
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+    account_exists: bool,
+    account_enabled: bool,
+    expected_log: str,
 ) -> None:
     """
     Test incoming webhook when delivery should not occur.
@@ -462,7 +474,7 @@ def test_postmark_backend_handle_incoming_webhook_no_delivery(
 ########################################################################
 #
 def test_postmark_backend_handle_incoming_webhook_bad_json(
-    rf, server_factory
+    rf: RequestFactory, server_factory: Callable[..., Server]
 ) -> None:
     """
     Test incoming webhook with invalid JSON.
@@ -489,7 +501,10 @@ def test_postmark_backend_handle_incoming_webhook_bad_json(
 ########################################################################
 #
 def test_postmark_backend_handle_bounce_webhook_success(
-    rf, server_factory, email_account_factory, mocker
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    email_account_factory: Callable[..., EmailAccount],
+    mocker: MockerFixture,
 ) -> None:
     """
     Test successful bounce webhook handling.
@@ -549,7 +564,9 @@ def test_postmark_backend_handle_bounce_webhook_success(
 ########################################################################
 #
 def test_postmark_backend_handle_bounce_webhook_no_account(
-    rf, server_factory, mocker
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    mocker: MockerFixture,
 ) -> None:
     """
     Test bounce webhook for non-existent email account.
@@ -595,7 +612,7 @@ def test_postmark_backend_handle_bounce_webhook_no_account(
 ########################################################################
 #
 def test_postmark_backend_handle_bounce_webhook_missing_keys(
-    rf, server_factory
+    rf: RequestFactory, server_factory: Callable[..., Server]
 ) -> None:
     """
     Test bounce webhook with missing required keys.
@@ -630,7 +647,10 @@ def test_postmark_backend_handle_bounce_webhook_missing_keys(
 ########################################################################
 #
 def test_postmark_backend_handle_spam_webhook_success(
-    rf, server_factory, email_account_factory, mocker
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    email_account_factory: Callable[..., EmailAccount],
+    mocker: MockerFixture,
 ) -> None:
     """
     Test successful spam webhook handling.
@@ -689,7 +709,10 @@ def test_postmark_backend_handle_spam_webhook_success(
 ########################################################################
 #
 def test_postmark_backend_handle_spam_webhook_invalid_typecode(
-    rf, server_factory, email_account_factory, mocker
+    rf: RequestFactory,
+    server_factory: Callable[..., Server],
+    email_account_factory: Callable[..., EmailAccount],
+    mocker: MockerFixture,
 ) -> None:
     """
     Test spam webhook with invalid TypeCode.
@@ -854,7 +877,9 @@ def test_postmark_backend_handle_bounce_webhook_all_fields_mapped(
 
 ########################################################################
 #
-def test_postmark_backend_get_client(server_with_token) -> None:
+def test_postmark_backend_get_client(
+    server_with_token: Callable[..., Server],
+) -> None:
     """
     Test _get_client() returns configured PostmarkClient.
 
@@ -873,7 +898,7 @@ def test_postmark_backend_get_client(server_with_token) -> None:
 ########################################################################
 #
 def test_postmark_backend_get_client_missing_token(
-    server_factory, settings
+    server_factory: Callable[..., Server], settings: LazySettings
 ) -> None:
     """
     Test _get_client() raises KeyError when token is missing.
