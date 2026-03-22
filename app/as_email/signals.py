@@ -13,6 +13,7 @@ from pathlib import Path
 #
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models.signals import (
     m2m_changed,
     post_delete,
@@ -94,7 +95,12 @@ def fire_off_async_task_update_emailaccount_pwfile(
         # created.
         #
         if not (created and instance.password == "XXX"):
-            check_update_pwfile_for_emailaccount(instance.pk)
+            # Defer until the transaction commits so the huey worker can
+            # see the committed row when it looks up this EmailAccount by pk.
+            #
+            transaction.on_commit(
+                lambda pk=instance.pk: check_update_pwfile_for_emailaccount(pk)
+            )
 
 
 ####################################################################
@@ -111,10 +117,17 @@ def create_or_update_provider_email_accounts(
     if not created and not instance.tracker.has_changed("enabled"):
         return
 
+    # Defer task dispatch until the transaction commits. post_save fires
+    # inside the transaction, so the new/updated row is not yet visible to
+    # other DB connections (i.e., the huey worker process). on_commit
+    # guarantees the row is committed before the task runs.
+    #
     server = instance.server
     for provider in server.receive_providers.all():
-        provider_create_or_update_email_account(
-            instance.pk, provider.backend_name
+        transaction.on_commit(
+            lambda pk=instance.pk, name=provider.backend_name: (
+                provider_create_or_update_email_account(pk, name)
+            )
         )
 
 
@@ -128,7 +141,14 @@ def fire_off_async_task_delete_emailaccount_pwfile(
     When an email account is deleted from the system make sure its entry in
     the generated pwfile is also removed.
     """
-    delete_emailaccount_from_pwfile(instance.email_address)
+    # Defer until the delete transaction commits so the pwfile update
+    # reflects the final committed state of the database.
+    #
+    transaction.on_commit(
+        lambda addr=instance.email_address: delete_emailaccount_from_pwfile(
+            addr
+        )
+    )
 
 
 ####################################################################
@@ -141,10 +161,17 @@ def delete_provider_email_accounts(
     When an EmailAccount is deleted, delete corresponding email accounts from
     all receive providers configured for the account's server.
     """
+    # Defer until the delete transaction commits so the provider API call
+    # reflects the final committed state of the database.
+    #
     server = instance.server
     for provider in server.receive_providers.all():
-        provider_delete_email_account(
-            instance.email_address, server.domain_name, provider.backend_name
+        transaction.on_commit(
+            lambda addr=instance.email_address,
+            domain=server.domain_name,
+            name=provider.backend_name: (
+                provider_delete_email_account(addr, domain, name)
+            )
         )
 
 
@@ -297,9 +324,14 @@ def handle_send_provider_changed(
     if not instance.send_provider_id:
         return
 
+    # Defer until the transaction commits so the huey worker sees the
+    # committed Server row when it looks it up by pk.
+    #
     assert instance.send_provider is not None
-    provider_create_update_server(
-        instance.pk, instance.send_provider.backend_name
+    transaction.on_commit(
+        lambda pk=instance.pk, name=instance.send_provider.backend_name: (
+            provider_create_update_server(pk, name)
+        )
     )
 
 
@@ -318,26 +350,37 @@ def handle_receive_providers_changed(
         action: The m2m action ('post_add', 'post_remove', etc.)
         pk_set: Set of primary keys being added/removed
     """
+    # Defer task dispatch until the m2m transaction commits so the huey
+    # worker sees the committed m2m relationship when it runs.
+    #
     match action:
         case "post_add":
-            # Provider(s) added to server - register server then sync email accounts
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
-                # Chain tasks: register server first, then sync email accounts
-                pipeline = provider_create_update_server.s(
-                    instance.pk, provider.backend_name
-                ).then(
-                    provider_sync_server_email_accounts,
-                    instance.pk,
-                    provider.backend_name,
-                    True,
-                )
-                HUEY.enqueue(pipeline)
+
+                def _enqueue_add(
+                    server_pk=instance.pk, backend=provider.backend_name
+                ):
+                    pipeline = provider_create_update_server.s(
+                        server_pk, backend
+                    ).then(
+                        provider_sync_server_email_accounts,
+                        server_pk,
+                        backend,
+                        True,
+                    )
+                    HUEY.enqueue(pipeline)
+
+                transaction.on_commit(_enqueue_add)
 
         case "post_remove":
-            # Provider(s) removed from server - delete all email accounts on the provider
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
-                provider_sync_server_email_accounts(
-                    instance.pk, provider.backend_name, enabled=False
+                transaction.on_commit(
+                    lambda server_pk=instance.pk,
+                    backend=provider.backend_name: (
+                        provider_sync_server_email_accounts(
+                            server_pk, backend, enabled=False
+                        )
+                    )
                 )

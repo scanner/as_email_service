@@ -146,6 +146,7 @@ def test_list_unused_domain_with_only_disabled_aliases(
     server_factory: Callable[..., Server],
     email_account_factory: Callable[..., EmailAccount],
     dummy_provider: DummyProviderBackend,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given a server with aliases but all disabled
@@ -153,10 +154,16 @@ def test_list_unused_domain_with_only_disabled_aliases(
     Then it should show the domain as unused
     """
     provider = provider_factory(backend_name="dummy")
-    server = server_factory(receive_providers=[provider])
 
-    # Create email account (automatically created on provider via signal)
-    email_account = email_account_factory(server=server)
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        server = server_factory(receive_providers=[provider])
+
+        # Create email account (automatically created on provider via signal)
+        email_account = email_account_factory(server=server)
+
     # Disable it on the provider directly (enable_email_account was removed)
     dummy_provider.email_accounts[email_account.email_address]["enabled"] = (
         False
@@ -177,6 +184,7 @@ def test_list_used_domain_with_enabled_aliases(
     provider_factory: Callable[..., Provider],
     server_factory: Callable[..., Server],
     email_account_factory: Callable[..., EmailAccount],
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given a server with enabled aliases
@@ -184,10 +192,15 @@ def test_list_used_domain_with_enabled_aliases(
     Then it should not show the domain as unused
     """
     provider = provider_factory(backend_name="dummy")
-    server = server_factory(receive_providers=[provider])
 
-    # Create email account (enabled by default, automatically created on provider via signal)
-    email_account_factory(server=server)
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        server = server_factory(receive_providers=[provider])
+
+        # Create email account (enabled by default, automatically created on provider via signal)
+        email_account_factory(server=server)
 
     out = StringIO()
     call_command("manage_provider_domains", "--list", stdout=out)
@@ -438,6 +451,7 @@ def test_delete_domain_with_enabled_aliases_shows_warning(
     provider_factory: Callable[..., Provider],
     server_factory: Callable[..., Server],
     email_account_factory: Callable[..., EmailAccount],
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given a domain with enabled aliases
@@ -445,12 +459,17 @@ def test_delete_domain_with_enabled_aliases_shows_warning(
     Then it should show a warning about enabled aliases
     """
     provider = provider_factory(backend_name="dummy")
-    server = server_factory(
-        send_provider=provider, receive_providers=[provider]
-    )
 
-    # Create enabled email account (automatically created on provider via signal)
-    email_account_factory(server=server)
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        server = server_factory(
+            send_provider=provider, receive_providers=[provider]
+        )
+
+        # Create enabled email account (automatically created on provider via signal)
+        email_account_factory(server=server)
 
     out = StringIO()
     call_command(
@@ -514,6 +533,7 @@ def test_delete_domain_cancel_confirmation(
     server_factory: Callable[..., Server],
     dummy_provider: DummyProviderBackend,
     mocker: MockerFixture,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given a valid domain and provider
@@ -521,9 +541,15 @@ def test_delete_domain_cancel_confirmation(
     Then it should not delete the domain
     """
     provider = provider_factory(backend_name="dummy")
-    server = server_factory(
-        send_provider=provider, receive_providers=[provider]
-    )
+
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    # The m2m signal registers the domain on the provider backend.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        server = server_factory(
+            send_provider=provider, receive_providers=[provider]
+        )
 
     out = StringIO()
 
@@ -630,6 +656,7 @@ def test_list_multiple_providers_with_mixed_states(
     provider_factory: Callable[..., Provider],
     server_factory: Callable[..., Server],
     email_account_factory: Callable[..., EmailAccount],
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given multiple providers with different states
@@ -639,12 +666,16 @@ def test_list_multiple_providers_with_mixed_states(
     provider1 = provider_factory(backend_name="dummy", name="Provider 1")
     provider2 = provider_factory(backend_name="dummy", name="Provider 2")
 
-    # Server 1: No aliases (unused)
-    server1 = server_factory(receive_providers=[provider1])
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        # Server 1: No aliases (unused)
+        server1 = server_factory(receive_providers=[provider1])
 
-    # Server 2: Has enabled aliases (used, automatically created on provider via signal)
-    server2 = server_factory(receive_providers=[provider2])
-    email_account_factory(server=server2)
+        # Server 2: Has enabled aliases (used, automatically created on provider via signal)
+        server2 = server_factory(receive_providers=[provider2])
+        email_account_factory(server=server2)
 
     out = StringIO()
     call_command("manage_provider_domains", "--list", stdout=out)

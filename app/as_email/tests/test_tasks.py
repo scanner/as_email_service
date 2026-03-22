@@ -825,15 +825,19 @@ def test_delete_email_account_removes_pwfile_entry(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given an email account exists in pwfile
     When the account is deleted
     Then its pwfile entry is removed
     """
-    # Create account with a non-default password so signal fires
-    ea = email_account_factory(password=faker.password())
-    ea.save()
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        ea = email_account_factory(password=faker.password())
+        ea.save()
 
     # It should exist in the pwfile after we save it.
     #
@@ -843,7 +847,8 @@ def test_delete_email_account_removes_pwfile_entry(
     # And now if we delete the email address, it should be deleted from the
     # external pw file via the signal-triggered task.
     #
-    ea.delete()
+    with django_capture_on_commit_callbacks(execute=True):
+        ea.delete()
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     assert ea.email_address not in accounts
 
@@ -854,15 +859,19 @@ def test_check_update_pwfile_for_emailaccount_creates_new_entry(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given a new email account with password
     When the account is saved
     Then a new entry is added to the pwfile via signal
     """
-    # Create account with a non-default password so signal fires
-    ea = email_account_factory(password=faker.password())
-    ea.save()
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        ea = email_account_factory(password=faker.password())
+        ea.save()
 
     ld = LocalDelivery.objects.get(email_account=ea)
 
@@ -885,15 +894,19 @@ def test_check_update_pwfile_for_emailaccount_updates_password(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given an email account with password in pwfile
     When the password is changed and saved
     Then the pwfile entry is updated with new password hash via signal
     """
-    # Create account with a non-default password so signal fires
-    ea = email_account_factory(password=faker.password())
-    ea.save()
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        ea = email_account_factory(password=faker.password())
+        ea.save()
 
     # Verify initial state
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
@@ -902,7 +915,8 @@ def test_check_update_pwfile_for_emailaccount_updates_password(
 
     # Change the password
     new_password = faker.password()
-    ea.set_password(new_password, save=True)
+    with django_capture_on_commit_callbacks(execute=True):
+        ea.set_password(new_password, save=True)
 
     # Verify password was updated in pwfile via signal
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
@@ -916,15 +930,19 @@ def test_check_update_pwfile_for_emailaccount_updates_maildir(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given an email account with password in pwfile
     When the maildir_path on LocalDelivery is changed and task is invoked
     Then the pwfile entry is updated with new maildir path
     """
-    # Create account with a non-default password so it's in pwfile
-    ea = email_account_factory(password=faker.password())
-    ea.save()
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        ea = email_account_factory(password=faker.password())
+        ea.save()
 
     ld = LocalDelivery.objects.get(email_account=ea)
 
@@ -957,14 +975,21 @@ def test_check_update_pwfile_for_emailaccount_no_change(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     mocker: MockerFixture,
+    django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
     Given an email account with no changes
     When check_update_pwfile_for_emailaccount is invoked
     Then the pwfile is not rewritten
     """
-    ea = email_account_factory()
-    ea.save()
+    # Signal handlers defer huey tasks via transaction.on_commit(), so the
+    # test transaction (which never commits) must be flushed explicitly.
+    # The factory's save populates the pwfile; without flushing, the direct
+    # task call below would see the EA as "new" and write it.
+    #
+    with django_capture_on_commit_callbacks(execute=True):
+        ea = email_account_factory()
+        ea.save()
 
     # Mock write_emailaccount_pwfile to track if it's called
     mock_write = mocker.patch("as_email.tasks.write_emailaccount_pwfile")
@@ -1135,6 +1160,7 @@ class TestProviderDeleteAlias:
         email_account_factory: Callable[..., EmailAccount],
         server_factory: Callable[..., Server],
         dummy_provider: DummyProviderBackend,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         Given an email address and domain
@@ -1148,8 +1174,12 @@ class TestProviderDeleteAlias:
         # email account by address it should no longer exist in the dummy
         # provider backend.
         #
-        server = server_factory()
-        email_account = email_account_factory(server=server)
+        # Signal handlers defer huey tasks via transaction.on_commit(), so the
+        # test transaction (which never commits) must be flushed explicitly.
+        #
+        with django_capture_on_commit_callbacks(execute=True):
+            server = server_factory()
+            email_account = email_account_factory(server=server)
         assert email_account.email_address in dummy_provider.email_accounts
 
         res = provider_delete_email_account(
@@ -1277,16 +1307,21 @@ class TestProviderSyncServerEmailAccounts:
         server_factory: Callable[..., Server],
         email_account_factory: Callable[..., EmailAccount],
         dummy_provider: DummyProviderBackend,
+        django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
         Given email accounts that exist but are disabled on the provider
         When provider_sync_server_email_accounts is called with enabled=True
         Then they should be re-enabled
         """
-        server = server_factory()
-        email_accounts = [
-            email_account_factory(server=server) for _ in range(3)
-        ]
+        # Signal handlers defer huey tasks via transaction.on_commit(), so the
+        # test transaction (which never commits) must be flushed explicitly.
+        #
+        with django_capture_on_commit_callbacks(execute=True):
+            server = server_factory()
+            email_accounts = [
+                email_account_factory(server=server) for _ in range(3)
+            ]
         for ea in email_accounts:
             dummy_provider.email_accounts[ea.email_address]["enabled"] = False
 

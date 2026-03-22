@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix race condition where signal-dispatched Huey tasks could run before the DB transaction committed, causing `DoesNotExist` errors (AS-EMAIL-SERVICE-3E)
+
 ### Changed
 
 - Replace black + isort with ruff for formatting and import sorting (GH-199)
