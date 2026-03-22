@@ -11,6 +11,7 @@ Tests for migrations 0009–0011 (the multiple-delivery-methods feature).
 Each migration is tested forward-only, plus reverse paths for the two
 data/schema migrations that are new and non-trivial (0010 and 0011).
 """
+
 # 3rd party imports
 #
 import pytest
@@ -360,9 +361,9 @@ def test_0011_removes_legacy_fields(migrator_factory) -> None:
     ]
     ea_field_names = {f.name for f in EmailAccount._meta.get_fields()}
     for field_name in removed_fields:
-        assert (
-            field_name not in ea_field_names
-        ), f"Field '{field_name}' should have been removed from EmailAccount"
+        assert field_name not in ea_field_names, (
+            f"Field '{field_name}' should have been removed from EmailAccount"
+        )
 
     # The Alias through-model should no longer exist.
     #

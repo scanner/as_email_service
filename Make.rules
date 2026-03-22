@@ -16,7 +16,7 @@ clean::	## Swab the decks! Does not touch docker images or volumes.
 	@rm -rf build bdist cover dist sdist distribute-* *.egg *.egg-info
 	@rm -rf node_modules
 	@rm -rf *.tar.gz junit.xml coverage.xml .cache
-	@rm -rf .tox .eggs .blackened .isorted .ruff_cache
+	@rm -rf .tox .eggs .ruff_formatted .ruff_cache
 	@rm -rf venv* .venv
 	@rm -rf ./app/staticfiles
 	@rm -rf ./ssl/*.pem
@@ -36,7 +36,7 @@ $(ROOT_DIR)/.venv: pyproject.toml uv.lock $(ROOT_DIR)/.python-version
 # need done for the pre-commit hook to pass. Squeegee runs the various
 # linting and formatting commands directly. It also runs mypy.
 #
-squeegee: .venv isort black mypy	## Run isort, black, mypy, and ruff over all files
+squeegee: .venv ruff-format mypy	## Manually run ruff format, mypy, and ruff check over all project files
 	@$(UV_RUN) ruff check $(ROOT_DIR)/app/
 
 lint: .venv .git/hooks/pre-commit	## Run pre-commit hooks over tracked and staged files
@@ -45,21 +45,16 @@ lint: .venv .git/hooks/pre-commit	## Run pre-commit hooks over tracked and stage
 PY_FILES=$(shell find $(ROOT_DIR)/app/ -type f -name '*.py' 2>/dev/null)
 JS_FILES=$(shell find $(ROOT_DIR)/app/ -type f -name '*.js' 2>/dev/null)
 
-.blackened: $(PY_FILES) .venv
-	@$(UV_RUN) black $(ROOT_DIR)/app/
-	@touch .blackened
-
-.isorted: $(PY_FILES) .venv
-	@$(UV_RUN) isort $(ROOT_DIR)/app/
-	@touch .isorted
+.ruff_formatted: $(PY_FILES) .venv
+	@$(UV_RUN) ruff format $(ROOT_DIR)/app/
+	@touch .ruff_formatted
 
 .prettier: $(JS_FILES)
 	@npx prettier --write $(ROOT_DIR)/app
 	@touch .prettier
 
-formatting: isort black prettier	## Run `isort`, `black`, `prettier` over all files in project.
-isort: .isorted
-black: .blackened
+formatting: ruff-format prettier	## Run `ruff format`, `prettier` over all files in project.
+ruff-format: .ruff_formatted	## Run `ruff format` over all Python files
 prettier: .prettier
 
 mypy: .venv  ## Run `mypy` over `app/`
@@ -69,4 +64,4 @@ version: .venv  ## Print the current project version from pyproject.toml
 	$(eval VERSION := $(shell $(UV_RUN) python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"))
 	@echo "Version: $(VERSION)"
 
-.PHONY: formatting lint squeegee isort black mypy version
+.PHONY: formatting lint squeegee ruff-format mypy version

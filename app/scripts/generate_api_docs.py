@@ -192,7 +192,7 @@ def generate_markdown(spec: dict) -> str:
                 desc = resp.get("description", "")
                 sections.append(f"**Response {resp_code}:** {desc}")
                 content = resp.get("content", {})
-                for content_type, media in content.items():
+                for _content_type, media in content.items():
                     schema = media.get("schema", {})
                     lines = _format_schema_properties(schema, components)
                     if lines:

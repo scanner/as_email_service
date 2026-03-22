@@ -3,6 +3,7 @@
 """
 Test the various functions in the `deliver` module
 """
+
 # system imports
 #
 # 3rd party imports
@@ -68,7 +69,7 @@ def test_deliver_message_locally(
     #
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     # Now create a mfr and make sure the message is delivered to the proper
@@ -85,7 +86,7 @@ def test_deliver_message_locally(
     )
     mfr.save()
     deliver_message_locally(ld, msg)
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
@@ -104,7 +105,7 @@ def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
 
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     # Set the spam score over the limit configured on the LocalDelivery.
@@ -118,7 +119,7 @@ def test_deliver_spam_locally(email_account_factory, email_factory) -> None:
     # The message should land in the spam folder.
     #
     folder = mh.get_folder(ld.spam_delivery_folder)
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
@@ -142,7 +143,7 @@ def test_deliver_alias(email_account_factory, email_factory) -> None:
     ld_2 = LocalDelivery.objects.get(email_account=ea_2)
     mh = ld_2.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     # Create another level of aliasing: ea_2 (alias-only) → ea_3 (local).
@@ -159,7 +160,7 @@ def test_deliver_alias(email_account_factory, email_factory) -> None:
     ld_3 = LocalDelivery.objects.get(email_account=ea_3)
     mh = ld_3.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
@@ -182,12 +183,12 @@ def test_deliver_to_multiple_aliases(
 
     ld_2 = LocalDelivery.objects.get(email_account=ea_2)
     folder = ld_2.MH().get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
     ld_3 = LocalDelivery.objects.get(email_account=ea_3)
     folder = ld_3.MH().get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
     assert_email_equal(msg, stored_msg)
 
 
@@ -307,7 +308,8 @@ def test_report_failed_message(
     #
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(1)
+    stored_msg = folder.get(str(1))
+    assert stored_msg is not None
     assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
 
     # Passing the email address as a string should also work.
@@ -323,7 +325,8 @@ def test_report_failed_message(
     )
 
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(2)
+    stored_msg = folder.get(str(2))
+    assert stored_msg is not None
     assert stored_msg["From"] == f"mailer-daemon@{ea.server.domain_name}"
 
     # An invalid email address should log an error and not raise.

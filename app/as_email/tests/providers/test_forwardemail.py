@@ -3,11 +3,13 @@
 """
 Test the ForwardEmail provider backend.
 """
+
 # system imports
 #
 import email.policy
 import json
 import time
+from http.client import HTTPMessage
 from io import BytesIO
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -42,7 +44,7 @@ pytestmark = pytest.mark.django_db
 class TestForwardEmailBackend:
     """"""
 
-    "Tests for ForwardEmail provider backend." ""
+    "Tests for ForwardEmail provider backend."
 
     ####################################################################
     #
@@ -704,7 +706,7 @@ class TestForwardEmailAPIMethods:
         mock_redis = use_fakeredis
         bounce_url = backend.get_bounce_webhook_url(server)
 
-        mocker.patch.object(
+        mock_get_domain_id = mocker.patch.object(
             backend.cache, "get_domain_id", side_effect=KeyError()
         )
 
@@ -721,7 +723,7 @@ class TestForwardEmailAPIMethods:
         result = backend.create_update_domain(server)
 
         assert result is True
-        backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
+        mock_get_domain_id.assert_called_once_with(server.domain_name)
 
         mock_req.assert_called_once()
         call_args = mock_req.call_args
@@ -755,7 +757,7 @@ class TestForwardEmailAPIMethods:
         existing_domain_id = faker.uuid4()
         bounce_url = backend.get_bounce_webhook_url(server)
 
-        mocker.patch.object(
+        mock_get_domain_id = mocker.patch.object(
             backend.cache, "get_domain_id", return_value=existing_domain_id
         )
 
@@ -775,7 +777,7 @@ class TestForwardEmailAPIMethods:
         result = backend.create_update_domain(server)
 
         assert result is False
-        backend.cache.get_domain_id.assert_called_once_with(server.domain_name)
+        mock_get_domain_id.assert_called_once_with(server.domain_name)
         mock_req.assert_called_once()
         assert mock_req.call_args[0][0] == HTTPMethod.GET
 
@@ -1197,7 +1199,7 @@ class TestForwardEmailAPIMethods:
         )
 
         # Mock get_alias_id to raise KeyError (alias doesn't exist)
-        mocker.patch.object(
+        mock_get_alias_id = mocker.patch.object(
             backend.cache, "get_alias_id", side_effect=KeyError()
         )
 
@@ -1218,7 +1220,7 @@ class TestForwardEmailAPIMethods:
         backend.create_update_email_account(email_account)
 
         # Verify get_alias_id was called
-        backend.cache.get_alias_id.assert_called_once_with(
+        mock_get_alias_id.assert_called_once_with(
             domain_id, email_account.email_address
         )
 
@@ -1267,7 +1269,7 @@ class TestForwardEmailAPIMethods:
         mocker.patch.object(
             backend, "get_webhook_url", return_value=webhook_url
         )
-        mocker.patch.object(
+        mock_get_alias_id = mocker.patch.object(
             backend.cache, "get_alias_id", return_value=alias_id
         )
 
@@ -1294,7 +1296,7 @@ class TestForwardEmailAPIMethods:
 
         backend.create_update_email_account(email_account)
 
-        backend.cache.get_alias_id.assert_called_once_with(
+        mock_get_alias_id.assert_called_once_with(
             domain_id, email_account.email_address
         )
 
@@ -1408,7 +1410,7 @@ class TestForwardEmailAPIMethods:
             url="http://test.com",
             code=500,
             msg="Internal Server Error",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
         mocker.patch.object(
@@ -1689,7 +1691,7 @@ class TestForwardEmailCache:
             url=f"https://api.forwardemail.net/v1/domains/{domain_name}",
             code=404,
             msg="Not Found",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -1714,7 +1716,7 @@ class TestForwardEmailCache:
             url="http://test.com",
             code=500,
             msg="Internal Server Error",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -1789,7 +1791,7 @@ class TestForwardEmailCache:
             url=f"https://api.forwardemail.net/v1/domains/{domain_id}/alias",
             code=404,
             msg="Not Found",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -1815,7 +1817,7 @@ class TestForwardEmailCache:
             url="http://test.com",
             code=503,
             msg="Service Unavailable",
-            hdrs={},
+            hdrs=HTTPMessage(),
             fp=BytesIO(b""),
         )
 
@@ -2319,7 +2321,7 @@ class TestPaginatedRequest:
         """
         mock_req = mocker.patch.object(backend.api, "req")
         mock_req.return_value.raise_for_status.side_effect = HTTPError(
-            "http://test.com", 404, "Not Found", {}, BytesIO(b"")
+            "http://test.com", 404, "Not Found", HTTPMessage(), BytesIO(b"")
         )
 
         with pytest.raises(HTTPError):
@@ -2417,9 +2419,9 @@ class TestAPIClientReq:
 
         _, kwargs = mock_requests.call_args
         assert "json" in kwargs, "req() must use json= not data="
-        assert (
-            "data" not in kwargs
-        ), "req() must not use data= (causes bool serialisation as 'True'/'False')"
+        assert "data" not in kwargs, (
+            "req() must not use data= (causes bool serialisation as 'True'/'False')"
+        )
         assert kwargs["json"] == payload
 
 
@@ -2486,7 +2488,9 @@ class TestForwardEmailSendEmailAPI:
         backend = ForwardEmailBackend()
         server = server_factory()
         msg = email_factory()
-        error = HTTPError("url", status_code, "reason", {}, BytesIO(b""))
+        error = HTTPError(
+            "url", status_code, "reason", HTTPMessage(), BytesIO(b"")
+        )
         mocker.patch.object(backend.api, "req", side_effect=error)
 
         result = backend.send_email_api(
@@ -2520,7 +2524,9 @@ class TestForwardEmailSendEmailAPI:
         backend = ForwardEmailBackend()
         server = server_factory()
         msg = email_factory()
-        error = HTTPError("url", status_code, "reason", {}, BytesIO(b""))
+        error = HTTPError(
+            "url", status_code, "reason", HTTPMessage(), BytesIO(b"")
+        )
         mocker.patch.object(backend.api, "req", side_effect=error)
 
         result = backend.send_email_api(
@@ -2549,7 +2555,9 @@ class TestForwardEmailSendEmailAPI:
         backend = ForwardEmailBackend()
         server = server_factory()
         msg = email_factory()
-        error = HTTPError("url", 422, "Unprocessable Entity", {}, BytesIO(b""))
+        error = HTTPError(
+            "url", 422, "Unprocessable Entity", HTTPMessage(), BytesIO(b"")
+        )
         mocker.patch.object(backend.api, "req", side_effect=error)
 
         with pytest.raises(HTTPError) as exc_info:

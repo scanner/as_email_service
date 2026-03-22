@@ -3,6 +3,7 @@
 """
 Test the huey tasks
 """
+
 # system imports
 #
 import json
@@ -231,10 +232,7 @@ def test_scan_message_for_spam_success(
     """
     original = email_factory()
     scanned_bytes = (
-        b"X-Spam-Status: No, score=2.0\r\n"
-        b"X-Spam-Score: 2.0\r\n"
-        b"\r\n"
-        b"body text"
+        b"X-Spam-Status: No, score=2.0\r\nX-Spam-Score: 2.0\r\n\r\nbody text"
     )
     mock_result = mocker.MagicMock()
     mock_result.body = scanned_bytes
@@ -291,10 +289,7 @@ def test_scan_message_for_spam_non_ascii(
     THEN  the message is serialized to spamd without UnicodeEncodeError
     """
     scanned_bytes = (
-        b"X-Spam-Status: Yes, score=9.0\r\n"
-        b"X-Spam-Score: 9.0\r\n"
-        b"\r\n"
-        b"body text"
+        b"X-Spam-Status: Yes, score=9.0\r\nX-Spam-Score: 9.0\r\n\r\nbody text"
     )
     mock_result = mocker.MagicMock()
     mock_result.body = scanned_bytes

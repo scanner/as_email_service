@@ -9,6 +9,7 @@ Covers:
 - delete_provider_email_accounts (post_delete on EmailAccount)
 - handle_receive_providers_changed (m2m_changed on Server.receive_providers)
 """
+
 # system imports
 #
 from collections.abc import Callable
@@ -268,6 +269,7 @@ class TestProviderSignals:
             "as_email.signals.provider_sync_server_email_accounts"
         )
 
+        assert provider
         server.receive_providers.remove(provider)
 
         mock_sync.assert_called_once_with(

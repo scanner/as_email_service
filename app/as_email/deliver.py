@@ -27,6 +27,7 @@ This module provides the lower-level helpers called by those delivery methods:
 
   NOTE: https://www.iana.org/assignments/message-headers/message-headers.xhtml
 """
+
 # system imports
 #
 import email.utils
@@ -36,7 +37,7 @@ from contextlib import contextmanager
 from email.message import EmailMessage
 from email.mime.text import MIMEText
 from mailbox import MH, ExternalClashError, NoSuchMailboxError
-from typing import List, Union, cast
+from typing import cast
 
 # Project imports
 #
@@ -52,7 +53,7 @@ logger = logging.getLogger(__name__)
 #
 def apply_message_filter_rules(
     email_account: EmailAccount, msg: EmailMessage
-) -> List[str]:
+) -> list[str]:
     """
     Apply all of the message filter rules for this email account on this
     message.
@@ -99,9 +100,7 @@ def apply_message_filter_rules(
 ####################################################################
 #
 @contextmanager
-def lock_folder(
-    folder: MH, timeout: Union[int | float] = 20, fail: bool = False
-):
+def lock_folder(folder: MH, timeout: int | float = 20, fail: bool = False):
     """
     Try to get an advisory lock on the MH folder in question.
     We will loop until we manage to get the lock, or we hit our timeout.
@@ -312,8 +311,8 @@ def make_delivery_status_notification(
 ####################################################################
 #
 def report_failed_message(
-    email_address: Union[str | EmailAccount],
-    failed_message: Union[str | bytes | EmailMessage],
+    email_address: str | EmailAccount,
+    failed_message: str | bytes | EmailMessage,
     report_text: str,
     subject: str,
     action: str,

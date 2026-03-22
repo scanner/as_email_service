@@ -69,9 +69,9 @@ def test_server_factory_client(
     provider_name = "dummy"
     if provider_name not in settings.EMAIL_SERVER_TOKENS:
         settings.EMAIL_SERVER_TOKENS[provider_name] = {}
-    settings.EMAIL_SERVER_TOKENS[provider_name][
-        server.domain_name
-    ] = faker.uuid4()
+    settings.EMAIL_SERVER_TOKENS[provider_name][server.domain_name] = (
+        faker.uuid4()
+    )
 
     message = email_factory(msg_from=f"test@{server.domain_name}")
     server.send_email(message)

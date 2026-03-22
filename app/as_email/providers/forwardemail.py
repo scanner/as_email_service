@@ -62,6 +62,7 @@ References:
 - Webhook Documentation: https://forwardemail.net/en/faq#do-you-support-webhooks
 - SMTP Integration Guide: https://forwardemail.net/en/guides/smtp-integration#python-integration
 """
+
 # system imports
 #
 import email.message
@@ -70,12 +71,13 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum, StrEnum
 from io import BytesIO
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Iterator, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urljoin
 
@@ -572,7 +574,7 @@ class ForwardEmailCache:
 
     ####################################################################
     #
-    def get_alias_data(self, email_address: str) -> Optional[dict]:
+    def get_alias_data(self, email_address: str) -> dict | None:
         """
         Return the cached full alias dict for email_address, or None on miss.
 
@@ -613,21 +615,21 @@ class ForwardEmailCache:
 
     ####################################################################
     #
-    def get_all_domains_fetched(self) -> Optional[str]:
+    def get_all_domains_fetched(self) -> str | None:
         """Return the timestamp of the last full domain-list refresh, or None."""
         val = self.r.get(self._key(ObjType.DOMAIN, "all_domains"))
         return val.decode("utf-8") if val is not None else None
 
     ####################################################################
     #
-    def get_cached_domain_id(self, domain_name: str) -> Optional[str]:
+    def get_cached_domain_id(self, domain_name: str) -> str | None:
         """Return the cached domain ID without falling back to the API."""
         val = self.r.get(self._key(ObjType.DOMAIN, domain_name))
         return val.decode("utf-8") if val is not None else None
 
     ####################################################################
     #
-    def get_cached_alias_id(self, email_address: str) -> Optional[str]:
+    def get_cached_alias_id(self, email_address: str) -> str | None:
         """Return the cached alias ID without falling back to the API."""
         val = self.r.get(self._key(ObjType.ALIAS, email_address))
         return val.decode("utf-8") if val is not None else None
@@ -662,7 +664,7 @@ class ForwardEmailCache:
             if e.code == 404:
                 raise KeyError(
                     f"Domain '{domain_name}' does not exist on forwardemail.net"
-                )
+                ) from e
             raise
 
     ####################################################################
@@ -702,7 +704,7 @@ class ForwardEmailCache:
             if e.code == 404:
                 raise KeyError(
                     f"Alias '{email_address}' does not exist on forwardemail.net"
-                )
+                ) from e
             raise
 
 
@@ -1230,8 +1232,7 @@ class ForwardEmailBackend(ProviderBackend):
             response = self.api.req(HTTPMethod.GET, next_url)
             response.raise_for_status()
 
-            for item in response.json():
-                yield item
+            yield from response.json()
 
             # The header 'Link' gets the next page of results.
             #

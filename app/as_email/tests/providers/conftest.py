@@ -3,6 +3,7 @@
 """
 Fixtures for provider backend tests.
 """
+
 # 3rd party imports
 #
 import pytest
@@ -29,9 +30,9 @@ def server_with_token(server_factory, settings, faker):
             server.domain_name
             not in settings.EMAIL_SERVER_TOKENS[provider_name]
         ):
-            settings.EMAIL_SERVER_TOKENS[provider_name][
-                server.domain_name
-            ] = faker.uuid4()
+            settings.EMAIL_SERVER_TOKENS[provider_name][server.domain_name] = (
+                faker.uuid4()
+            )
         return server
 
     return make_server

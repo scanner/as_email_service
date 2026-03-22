@@ -15,6 +15,7 @@ Typical use after changing domain settings in code:
     python manage.py sync_provider_domains --domain mail.example.com
     python manage.py sync_provider_domains --provider forwardemail --dry-run
 """
+
 # system imports
 #
 import logging
@@ -85,8 +86,7 @@ class Command(BaseCommand):
                 backend_name=provider_filter
             ).exists():
                 raise CommandError(
-                    f"No provider found with backend name "
-                    f"'{provider_filter}'"
+                    f"No provider found with backend name '{provider_filter}'"
                 )
 
         total_updated = 0
@@ -114,12 +114,11 @@ class Command(BaseCommand):
                 except Exception as exc:
                     self.stdout.write(
                         self.style.ERROR(
-                            f"ERR {server.domain_name} "
-                            f"({provider_name}): {exc}"
+                            f"ERR {server.domain_name} ({provider_name}): {exc}"
                         )
                     )
                     logger.exception(
-                        "sync_provider_domains: failed for '%s' on " "'%s': %r",
+                        "sync_provider_domains: failed for '%s' on '%s': %r",
                         server.domain_name,
                         provider_name,
                         exc,
@@ -131,8 +130,7 @@ class Command(BaseCommand):
                     label = "WOULD UPDATE" if dry_run else "UPDATED"
                     self.stdout.write(
                         self.style.SUCCESS(
-                            f"{label} {server.domain_name} "
-                            f"({provider_name})"
+                            f"{label} {server.domain_name} ({provider_name})"
                         )
                     )
                     total_updated += 1

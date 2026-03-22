@@ -44,7 +44,7 @@ BASE_DIR = Path(__file__).parent.parent
 random_chars = "abcdefghijklmnopqrstuvwxyz0123456789!@#%^&*(-_=+)"
 env = environ.FileAwareEnv(
     ADMINISTRATIVE_EMAIL_ADDRESS=(str, "admin@example.com"),
-    ALLOWED_HOSTS=(list, list()),
+    ALLOWED_HOSTS=(list, []),
     CACHE_URL=(str, "dummycache://"),
     COMPRESS_ENABLED=(bool, True),
     COMPRESS_OFFLINE=(bool, True),

@@ -8,9 +8,9 @@ providers on a per-server basis.
 
 Format: {"provider_name": {"domain.com": "token"}}
 """
+
 # system imports
 #
-from typing import Optional
 
 # 3rd party imports
 #
@@ -19,7 +19,7 @@ from django.conf import settings
 
 ########################################################################
 #
-def get_provider_token(provider_name: str, domain_name: str) -> Optional[str]:
+def get_provider_token(provider_name: str, domain_name: str) -> str | None:
     """
     Get the API token for a specific provider and domain.
 

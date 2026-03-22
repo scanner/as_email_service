@@ -5,6 +5,7 @@ Check email messages for spam using SpamAssassin and print the report.
 Usage:
     python check_spam.py message1.txt message2.txt message3.txt
 """
+
 import asyncio
 import sys
 from pathlib import Path

@@ -3,6 +3,7 @@
 """
 Huey dispatchable (and periodic) tasks.
 """
+
 # system imports
 #
 import asyncio
@@ -1529,7 +1530,6 @@ def provider_report_unused_servers() -> None:
     # Process each provider that supports server management
     #
     for provider in Provider.objects.all():
-
         unused_servers = []
         for server in provider.receiving_servers.all():
             email_account_count = server.email_accounts.count()

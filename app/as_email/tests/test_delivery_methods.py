@@ -7,13 +7,14 @@ Delivery integration tests (loops, hop limits, alias chains) live in
 test_deliver.py.  This file covers model-level properties — maildir creation,
 spam routing, enabled/disabled dispatch, and multi-method fan-out.
 """
+
 # system imports
 #
 import socket
 import ssl
+from collections.abc import Callable
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Callable
 
 # 3rd party imports
 #
@@ -89,6 +90,7 @@ class TestLocalDeliveryModel:
         """
         ea = email_account_factory()
         ld = LocalDelivery.objects.get(email_account=ea)
+        assert ld.maildir_path is not None
         assert Path(ld.maildir_path).is_dir()
         mh = ld.MH(create=False)
         for folder in settings.DEFAULT_FOLDERS:
@@ -401,12 +403,9 @@ class TestMultipleDeliveryMethods:
 
         assert DeliveryMethod.objects.filter(email_account=ea1).count() == 1
         assert DeliveryMethod.objects.filter(email_account=ea2).count() == 1
-        assert (
-            DeliveryMethod.objects.filter(email_account=ea1)
-            .first()
-            .email_account_id
-            == ea1.pk
-        )
+        dm = DeliveryMethod.objects.filter(email_account=ea1).first()
+        assert dm is not None
+        assert dm.email_account_id == ea1.pk
 
 
 ########################################################################

@@ -3,6 +3,7 @@
 """
 Serializers for the rest framework of our models
 """
+
 # 3rd party imports
 #
 from rest_framework import serializers

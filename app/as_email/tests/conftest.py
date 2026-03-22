@@ -3,6 +3,7 @@
 """
 pytest fixtures for our tests
 """
+
 # system imports
 #
 import email
@@ -21,7 +22,8 @@ from unittest.mock import MagicMock
 #
 import pytest
 import redis
-from aiosmtpd.smtp import Envelope as SMTPEnvelope, Session as SMTPSession
+from aiosmtpd.smtp import Envelope as SMTPEnvelope
+from aiosmtpd.smtp import Session as SMTPSession
 from django.conf import LazySettings
 from django.core import mail
 from faker import Faker

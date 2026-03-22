@@ -12,6 +12,7 @@ DeliveryMethod:
   - LocalDelivery  → delivery_method="LD", mail_dir, spam fields
   - AliasToDelivery → delivery_method="AL", alias_for M2M target
 """
+
 # system imports
 #
 from django.db import migrations
@@ -54,7 +55,6 @@ def restore_legacy_fields(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("as_email", "0010_populate_delivery_methods"),
     ]

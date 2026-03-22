@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("as_email", "0013_emailaccount_scan_incoming_spam_and_more"),
     ]

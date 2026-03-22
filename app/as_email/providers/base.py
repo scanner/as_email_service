@@ -6,6 +6,7 @@ Base abstract class for email provider backends.
 Defines the interface that all provider backends must implement for sending
 emails, handling webhooks, and managing provider resources.
 """
+
 # system imports
 #
 import email.message

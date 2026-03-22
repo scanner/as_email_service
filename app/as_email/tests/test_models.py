@@ -2,8 +2,8 @@
 #
 import email.message
 import mailbox
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 # 3rd party imports
 #
@@ -123,7 +123,7 @@ def test_email_account_valid_email_address(email_account_factory):
     try:
         ea.clean()
     except ValidationError as exc:
-        assert False, exc
+        pytest.fail(str(exc))
     ea.save()
 
     # The email address must end with the same domain name as the
@@ -144,6 +144,7 @@ def test_email_account_mail_dir(settings, email_account_factory) -> None:
     ea.save()
 
     ld = LocalDelivery.objects.get(email_account=ea)
+    assert ld.maildir_path is not None
     assert Path(ld.maildir_path).is_dir()
 
     # By setting `create=False` this will fail with an exception if
@@ -155,7 +156,7 @@ def test_email_account_mail_dir(settings, email_account_factory) -> None:
         for folder in settings.DEFAULT_FOLDERS:
             mh.get_folder(folder)
     except mailbox.NoSuchMailboxError as exc:
-        assert False, exc
+        pytest.fail(str(exc))
 
 
 ####################################################################

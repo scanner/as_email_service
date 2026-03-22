@@ -3,11 +3,11 @@
 """
 Test the Postmark provider backend.
 """
+
 # system imports
 #
 import json
 from email.message import EmailMessage
-from email.mime.text import MIMEText
 from pathlib import Path
 
 # 3rd party imports
@@ -26,6 +26,15 @@ pytestmark = pytest.mark.django_db
 
 ########################################################################
 #
+def _make_text_message(body: str = "Test message") -> EmailMessage:
+    """Create an EmailMessage with plain-text content."""
+    msg = EmailMessage()
+    msg.set_content(body)
+    return msg
+
+
+########################################################################
+#
 def test_postmark_backend_send_email_smtp_success(server_with_token, smtp):
     """
     Test successful SMTP email sending via Postmark backend.
@@ -38,7 +47,7 @@ def test_postmark_backend_send_email_smtp_success(server_with_token, smtp):
     server = server_with_token()
 
     backend = PostmarkBackend()
-    message = MIMEText("Test message")
+    message = _make_text_message()
     email_from = f"test@{server.domain_name}"
     rcpt_tos = ["recipient@example.com"]
 
@@ -70,7 +79,7 @@ def test_postmark_backend_send_email_smtp_wrong_domain(server_with_token):
     server = server_with_token()
 
     backend = PostmarkBackend()
-    message = MIMEText("Test message")
+    message = _make_text_message()
     email_from = "test@wrongdomain.com"
     rcpt_tos = ["recipient@example.com"]
 
@@ -108,7 +117,7 @@ def test_postmark_backend_send_email_smtp_missing_token(
         del settings.EMAIL_SERVER_TOKENS[provider_name][server.domain_name]
 
     backend = PostmarkBackend()
-    message = MIMEText("Test message")
+    message = _make_text_message()
     email_from = f"test@{server.domain_name}"
     rcpt_tos = ["recipient@example.com"]
 
@@ -144,7 +153,7 @@ def test_postmark_backend_send_email_smtp_exception_spools(
     smtp.starttls.side_effect = smtplib.SMTPException("Connection failed")
 
     backend = PostmarkBackend()
-    message = MIMEText("Test message")
+    message = _make_text_message()
     email_from = f"test@{server.domain_name}"
     rcpt_tos = ["recipient@example.com"]
 
@@ -181,7 +190,7 @@ def test_postmark_backend_send_email_api_success(server_with_token, mocker):
     )
 
     backend = PostmarkBackend()
-    message = MIMEText("Test message")
+    message = _make_text_message()
 
     result = backend.send_email_api(
         server=server,
@@ -217,7 +226,7 @@ def test_postmark_backend_send_email_api_request_exception(
     )
 
     backend = PostmarkBackend()
-    message = MIMEText("Test message")
+    message = _make_text_message()
 
     result = backend.send_email_api(
         server=server,
@@ -250,7 +259,7 @@ def test_postmark_backend_send_email_api_retryable_client_error(
 
     # Test retryable error codes
     for error_code in [100, 405, 429]:
-        message = MIMEText(f"Test message {error_code}")
+        message = _make_text_message(f"Test message {error_code}")
 
         # Mock the client to raise ClientError with retryable code
         error = ClientError(error_code=error_code)
@@ -293,7 +302,7 @@ def test_postmark_backend_send_email_api_non_retryable_client_error(
     )
 
     backend = PostmarkBackend()
-    message = MIMEText("Test message")
+    message = _make_text_message()
 
     with pytest.raises(ClientError):
         backend.send_email_api(

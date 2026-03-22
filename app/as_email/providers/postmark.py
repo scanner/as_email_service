@@ -6,6 +6,7 @@ Postmark provider backend implementation.
 Implements email sending via Postmark's SMTP and API, and webhook handlers
 for incoming email, bounces, and spam notifications.
 """
+
 # system imports
 #
 import email.message

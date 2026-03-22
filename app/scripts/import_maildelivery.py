@@ -4,6 +4,7 @@
 Read a mh slocal .maildelivery file and create Mesage Filter Rules based on
 that file for the specified email account.
 """
+
 # system imports
 #
 from pathlib import Path

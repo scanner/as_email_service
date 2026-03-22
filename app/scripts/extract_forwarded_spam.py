@@ -27,6 +27,7 @@ Notes:
     - Messages without attachments are copied as-is
     - Successfully processed messages are deleted from input_dir
 """
+
 # system imports
 #
 import email

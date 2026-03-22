@@ -44,7 +44,6 @@ def reverse_migrate_provider_data(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("as_email", "0004_alter_messagefilterrule_header"),
     ]

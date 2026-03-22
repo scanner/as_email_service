@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("as_email", "0007_alter_emailaccount_delivery_method"),
     ]

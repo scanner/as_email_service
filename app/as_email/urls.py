@@ -3,6 +3,7 @@
 """
 URLS for the AS Email app
 """
+
 # 3rd party imports
 #
 from django.urls import include, path

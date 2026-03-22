@@ -3,14 +3,16 @@
 """
 Factories for testing all of our models and related code
 """
+
 # system imports
 #
 import email.message
 import json
 import logging
 import smtplib
+from collections.abc import Sequence
 from enum import StrEnum
-from typing import Any, Sequence
+from typing import Any
 
 # 3rd party imports
 #

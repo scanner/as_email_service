@@ -3,6 +3,7 @@
 """
 Tests for the as_email Django admin forms and configuration.
 """
+
 # 3rd party imports
 #
 import pytest
@@ -214,9 +215,9 @@ class TestProviderAdminFormSave:
         WHEN:  A form with new smtp_host and smtp_port is saved against it
         THEN:  The stored smtp_server reflects the new values
         """
-        provider = ProviderFactory(
+        provider: Provider = ProviderFactory(
             smtp_server="old.host:25", provider_type=Provider.ProviderType.BOTH
-        )
+        )  # type: ignore[assignment]
         data = {
             "name": provider.name,
             "backend_name": "postmark",
@@ -252,7 +253,8 @@ class TestProviderAdminFormBackendChoices:
         form = ProviderAdminForm()
         field = form.fields["backend_name"]
         assert isinstance(field, django_forms.ChoiceField)
-        choice_values = [value for value, _ in field.choices]
+        choices: list[tuple[str, str]] = list(field.choices)  # type: ignore[arg-type]
+        choice_values = [value for value, _ in choices]
         assert "postmark" in choice_values
         assert "forwardemail" in choice_values
 

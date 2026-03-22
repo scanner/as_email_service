@@ -5,6 +5,7 @@ Models for the Apricot Systematic email service.  NOTE: Could
 potentially work with various 3rd party email services for now it is
 mostly custom for the service I use: postmark.
 """
+
 # system imports
 #
 import email
@@ -15,7 +16,6 @@ import mailbox
 import shlex
 import socket
 import ssl
-from typing import List
 
 # 3rd party imports
 #
@@ -977,7 +977,7 @@ class InactiveEmail(models.Model):
     ####################################################################
     #
     @classmethod
-    def inactives(cls, email_addresses: List[str]):
+    def inactives(cls, email_addresses: list[str]):
         """
         Given a list of email addresses see if any of those email addresses
         are inactive. Returns the list of email addresses that are inactive.
@@ -988,7 +988,7 @@ class InactiveEmail(models.Model):
     ####################################################################
     #
     @classmethod
-    async def a_inactives(cls, email_addresses: List[str]):
+    async def a_inactives(cls, email_addresses: list[str]):
         """
         Given a list of email addresses see if any of those email addresses
         are inactive. Returns the list of email addresses that are inactive.
@@ -1400,7 +1400,7 @@ class ImapDelivery(DeliveryMethod):
                 False,
                 f"Connection to {host}:{port} was refused — check the hostname and port.",
             )
-        except (TimeoutError, socket.timeout):
+        except TimeoutError:
             return (
                 False,
                 f"Connection to {host}:{port} timed out — server may be unreachable.",

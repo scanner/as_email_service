@@ -3,6 +3,7 @@
 """
 Test the aiosmtpd daemon/django command.
 """
+
 # system imports
 #
 from datetime import UTC, datetime
@@ -20,9 +21,11 @@ from dirty_equals import Contains
 #
 from ..management.commands.aiosmtpd import (
     Authenticator,
+    Command,
     RelayHandler,
     categorize_recipients,
     format_dnsbl_providers,
+    port_or_off,
     relay_email_to_provider,
     validate_from_header,
 )
@@ -1394,9 +1397,9 @@ class TestSMTPIntegration:
         mail_response = await handler.handle_MAIL(
             smtp_server, sess, envelope, mail_from, []
         )
-        assert mail_response.startswith(
-            "250 OK"
-        ), f"MAIL FROM failed: {mail_response}"
+        assert mail_response.startswith("250 OK"), (
+            f"MAIL FROM failed: {mail_response}"
+        )
 
         # Step 2: RCPT TO (may be called multiple times for mixed)
         rcpt_responses = []
@@ -1410,22 +1413,22 @@ class TestSMTPIntegration:
         if expected_rcpt_result:
             # For mixed scenario, check that at least one succeeds
             if rcpt_to_type == "mixed":
-                assert any(
-                    r.startswith("250 OK") for r in rcpt_responses
-                ), f"Expected at least one RCPT OK in mixed scenario, got: {rcpt_responses}"
+                assert any(r.startswith("250 OK") for r in rcpt_responses), (
+                    f"Expected at least one RCPT OK in mixed scenario, got: {rcpt_responses}"
+                )
             else:
-                assert rcpt_responses[0].startswith(
-                    expected_rcpt_result
-                ), f"Scenario '{scenario}': Expected RCPT '{expected_rcpt_result}', got '{rcpt_responses[0]}'"
+                assert rcpt_responses[0].startswith(expected_rcpt_result), (
+                    f"Scenario '{scenario}': Expected RCPT '{expected_rcpt_result}', got '{rcpt_responses[0]}'"
+                )
 
         # Step 3: DATA (only if RCPT succeeded)
         if expected_data_result:
             data_response = await handler.handle_DATA(
                 smtp_server, sess, envelope
             )
-            assert data_response.startswith(
-                expected_data_result
-            ), f"Scenario '{scenario}': Expected DATA '{expected_data_result}', got '{data_response}'"
+            assert data_response.startswith(expected_data_result), (
+                f"Scenario '{scenario}': Expected DATA '{expected_data_result}', got '{data_response}'"
+            )
 
             # Verify appropriate delivery method was called
             if "local" in rcpt_to_type or rcpt_to_type == "mixed":
@@ -1443,40 +1446,24 @@ class TestCommandArguments:
 
     ####################################################################
     #
-    def test_port_or_off_accepts_valid_port(self):
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("25", 25),
+            ("587", 587),
+            ("8025", 8025),
+            ("off", "off"),
+            ("OFF", "off"),
+            ("Off", "off"),
+        ],
+    )
+    def test_port_or_off_accepts_valid_input(self, value, expected) -> None:
         """
-        Given a valid port number as a string
+        Given a valid port number string or 'off' in any case
         When port_or_off is called
-        Then it should return the port as an integer
+        Then it should return the port as int or 'off' as str
         """
-        from ..management.commands.aiosmtpd import Command
-
-        cmd = Command()
-        parser = cmd.create_parser("manage.py", "aiosmtpd")
-        # Extract the port_or_off function from the argument parser
-        port_or_off = parser._option_string_actions["--submission_port"].type
-
-        assert port_or_off("25") == 25
-        assert port_or_off("587") == 587
-        assert port_or_off("8025") == 8025
-
-    ####################################################################
-    #
-    def test_port_or_off_accepts_off_case_insensitive(self):
-        """
-        Given the string 'off' in any case
-        When port_or_off is called
-        Then it should return the string "off"
-        """
-        from ..management.commands.aiosmtpd import Command
-
-        cmd = Command()
-        parser = cmd.create_parser("manage.py", "aiosmtpd")
-        port_or_off = parser._option_string_actions["--submission_port"].type
-
-        assert port_or_off("off") == "off"
-        assert port_or_off("OFF") == "off"
-        assert port_or_off("Off") == "off"
+        assert port_or_off(value) == expected
 
     ####################################################################
     #
@@ -1486,12 +1473,6 @@ class TestCommandArguments:
         When port_or_off is called
         Then it should raise ValueError
         """
-        from ..management.commands.aiosmtpd import Command
-
-        cmd = Command()
-        parser = cmd.create_parser("manage.py", "aiosmtpd")
-        port_or_off = parser._option_string_actions["--submission_port"].type
-
         with pytest.raises(
             ValueError, match="Port must be an integer.*or 'off'"
         ):
@@ -1515,7 +1496,6 @@ class TestCommandArguments:
         When handle() is called
         Then both controllers should be created and started
         """
-        from ..management.commands.aiosmtpd import Command
 
         # Mock the Controller class to prevent actual server startup
         mock_controller_class = mocker.patch(
@@ -1569,7 +1549,6 @@ class TestCommandArguments:
         When handle() is called
         Then only the SMTP controller should be created and started
         """
-        from ..management.commands.aiosmtpd import Command
 
         # Mock the Controller class
         mock_controller_class = mocker.patch(
@@ -1620,7 +1599,6 @@ class TestCommandArguments:
         When handle() is called
         Then only the submission controller should be created and started
         """
-        from ..management.commands.aiosmtpd import Command
 
         # Mock the Controller class
         mock_controller_class = mocker.patch(
@@ -1672,7 +1650,6 @@ class TestCommandArguments:
         Then no controllers should be created
         And the daemon should still run (and be stoppable)
         """
-        from ..management.commands.aiosmtpd import Command
 
         # Mock the Controller class
         mock_controller_class = mocker.patch(
@@ -1749,9 +1726,9 @@ class TestRelayToProvider:
             inactive_emails.append(inactive)
 
         # Send to only inactive address
-        inactive = inactive_emails[0].email_address
-        msg = email_factory(msg_from=ea.email_address, to=inactive)
-        await relay_email_to_provider(ea, [inactive], msg)
+        inactive_addr: str = inactive_emails[0].email_address
+        msg = email_factory(msg_from=ea.email_address, to=inactive_addr)
+        await relay_email_to_provider(ea, [inactive_addr], msg)
 
         # No email sent to provider
         assert smtp.sendmail.call_count == 0
