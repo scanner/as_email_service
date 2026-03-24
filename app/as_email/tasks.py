@@ -39,6 +39,7 @@ from .models import (
 )
 from .providers import get_backend
 from .providers.base import BounceEvent, BounceType, Capability
+from .reports import REPORTS, ReportSchedule, get_reports_by_schedule
 from .utils import (
     PWUser,
     read_emailaccount_pwfile,
@@ -1492,97 +1493,87 @@ def provider_sync_all_email_accounts() -> None:
 
 ####################################################################
 #
+@db_task()
+def run_report(report_name: str) -> None:
+    """
+    Run a single named report and email the result to
+    ADMINISTRATIVE_EMAIL_ADDRESS.
+
+    Called by the scheduled report tasks with a delay so that reports
+    do not all execute at the same moment.
+    """
+    if report_name not in REPORTS:
+        logger.error("Unknown report name: %s", report_name)
+        return
+
+    report_def = REPORTS[report_name]
+
+    output = report_def.generate()
+    if not output:
+        logger.debug(
+            "Report '%s' returned no data, skipping email", report_name
+        )
+        return
+
+    subject = report_def.subject
+    try:
+        send_mail(
+            subject=subject,
+            message=output,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[settings.ADMINISTRATIVE_EMAIL_ADDRESS],
+            fail_silently=False,
+        )
+        logger.info(
+            "Sent '%s' report to %s",
+            report_name,
+            settings.ADMINISTRATIVE_EMAIL_ADDRESS,
+        )
+    except Exception as e:
+        logger.exception("Failed to send '%s' report email: %r", report_name, e)
+
+
+########################################################################
+#
+def _schedule_reports(schedule: ReportSchedule) -> None:
+    """
+    Find all reports for the given schedule and dispatch each one with
+    a staggered delay so they do not all run at the same instant.
+
+    Each report is delayed by an additional 10 minutes after the
+    previous one.
+    """
+    reports = get_reports_by_schedule(schedule)
+    for idx, report_def in enumerate(reports):
+        delay_seconds = idx * 600  # 10 minutes apart
+        run_report.schedule(
+            args=(report_def.name,),
+            delay=delay_seconds,
+        )
+        logger.info(
+            "Scheduled '%s' report with %d second delay",
+            report_def.name,
+            delay_seconds,
+        )
+
+
+########################################################################
+#
 @db_periodic_task(crontab(day="*", hour="2"))
-def provider_report_unused_servers() -> None:
+def run_daily_reports() -> None:
     """
-    Daily task to report servers on all providers that have no active email
-    accounts.
-
-    This only looks at providers that can receive email that are assigned to at
-    least one server.
-
-    NOTE: This only bothers with backend providers that have support for
-          individual email accounts per server (ie: on the provider we can
-          specify specific email addresses that are active and can receive
-          email. `forwardemail`, for instance, lets us specify which email
-          addresses on your domain can accept email. All others are
-          refused. However `postmark` has no way to say which email accounts
-          will accept email: They all will.
-
-    Sends an email report to ADMINISTRATIVE_EMAIL_ADDRESS with details of any
-    unused servers.
-
-    XXX: Review whether this report is still useful. Since every Server
-         automatically gets a set of administrative EmailAccounts on creation
-         (see check_create_maintenance_email_accounts signal), it is rare in
-         practice for a server to have zero email accounts.
+    Daily task (02:00 UTC) that schedules all daily reports with
+    staggered execution.
     """
-    all_unused = []
+    _schedule_reports(ReportSchedule.DAILY)
 
-    # Process each provider that supports server management
-    #
-    for provider in Provider.objects.all():
-        unused_servers = []
-        for server in provider.receiving_servers.all():
-            email_account_count = server.email_accounts.count()
-            if email_account_count == 0:
-                unused_servers.append((server.domain_name, 0))
-            else:
-                # Even if there are EmailAccounts, check if any are actually
-                # enabled
-                #
-                try:
-                    backend = get_backend(provider.backend_name)
-                    remote_email_accounts = backend.list_email_accounts(server)
-                    enabled_count = sum(
-                        1 for ea in remote_email_accounts if ea.enabled
-                    )
-                    if enabled_count == 0:
-                        unused_servers.append(
-                            (server.domain_name, email_account_count)
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to check email accounts for server '%s' on provider '%s': %r",
-                        server.domain_name,
-                        provider.backend_name,
-                        e,
-                    )
 
-        if unused_servers:
-            all_unused.append((provider.backend_name, unused_servers))
-
-    # Build email report
-    if all_unused:
-        report_lines = ["Provider unused servers report:", ""]
-        total_unused = 0
-        for provider_name, servers in all_unused:
-            report_lines.append(f"Provider '{provider_name}':")
-            for domain_name, count in servers:
-                report_lines.append(
-                    f"  - {domain_name}: {count} email account(s)"
-                )
-                total_unused += 1
-            report_lines.append("")
-
-        subject = f"AS Email Service: {total_unused} unused server(s) detected"
-        message = "\n".join(report_lines)
-        try:
-            send_mail(
-                subject=subject,
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[settings.ADMINISTRATIVE_EMAIL_ADDRESS],
-                fail_silently=False,
-            )
-            logger.info(
-                "Sent unused servers report to %s: %d unused server(s)",
-                settings.ADMINISTRATIVE_EMAIL_ADDRESS,
-                total_unused,
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send unused servers report email: %r", e
-            )
-    else:
-        logger.debug("No unused servers found across all providers")
+########################################################################
+#
+@db_periodic_task(crontab(day_of_week="1", hour="6"))
+def run_weekly_reports() -> None:
+    """
+    Weekly task (Monday 06:00 UTC) that schedules all weekly reports
+    with staggered execution.
+    """
+    _schedule_reports(ReportSchedule.WEEKLY)
