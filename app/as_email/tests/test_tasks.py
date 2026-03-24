@@ -41,6 +41,7 @@ from ..providers.base import (
     Capability,
     EmailAccountInfo,
 )
+from ..reports.unused_servers import generate_unused_servers_report
 from ..tasks import (
     ALIAS_SYNC_INTERVAL_SECONDS,
     ALIAS_SYNC_MAX_PER_RUN,
@@ -54,10 +55,10 @@ from ..tasks import (
     provider_create_or_update_email_account,
     provider_create_update_server,
     provider_delete_email_account,
-    provider_report_unused_servers,
     provider_sync_all_email_accounts,
     provider_sync_server_email_accounts,
     retry_failed_incoming_email,
+    run_report,
     scan_message_for_spam,
 )
 from ..utils import (
@@ -1973,7 +1974,7 @@ class TestAliasSyncStaleness:
 ########################################################################
 #
 class TestProviderReportUnusedDomains:
-    """Tests for provider_report_unused_servers periodic task."""
+    """Tests for unused servers report generation and delivery."""
 
     ####################################################################
     #
@@ -1986,7 +1987,7 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given a server with no email accounts
-        When provider_report_unused_servers is called
+        When run_report("unused-servers") is called
         Then an email report should be sent
         """
         provider = provider_factory(backend_name="forwardemail")
@@ -1996,12 +1997,11 @@ class TestProviderReportUnusedDomains:
         # Mock get_backend
         mock_backend = mocker.Mock()
         mocker.patch(
-            "as_email.tasks.get_backend",
+            "as_email.reports.unused_servers.get_backend",
             return_value=mock_backend,
         )
 
-        res = provider_report_unused_servers()
-        res()
+        run_report("unused-servers")
 
         # Verify email was sent
         assert len(django_outbox) == 1
@@ -2021,7 +2021,7 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given a server with email accounts but all disabled on provider
-        When provider_report_unused_servers is called
+        When run_report("unused-servers") is called
         Then the domain should be reported as unused
         """
         provider = provider_factory(backend_name="forwardemail")
@@ -2043,12 +2043,11 @@ class TestProviderReportUnusedDomains:
             )
         ]
         mocker.patch(
-            "as_email.tasks.get_backend",
+            "as_email.reports.unused_servers.get_backend",
             return_value=mock_backend,
         )
 
-        res = provider_report_unused_servers()
-        res()
+        run_report("unused-servers")
 
         # Verify email was sent
         assert len(django_outbox) == 1
@@ -2059,7 +2058,6 @@ class TestProviderReportUnusedDomains:
     #
     def test_report_unused_domains_active_aliases(
         self,
-        mocker: MockerFixture,
         dummy_provider: DummyProviderBackend,
         server_factory: Callable[..., Server],
         email_account_factory: Callable[..., EmailAccount],
@@ -2068,31 +2066,29 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given a server with an active alias
-        When provider_report_unused_servers is called
-        Then no email should be sent
+        When generate_unused_servers_report is called
+        Then it should return an empty string (no report)
         """
-
         provider = provider_factory(
             backend_name=DummyProviderBackend.PROVIDER_NAME
         )
         server = server_factory(receive_providers=[provider])
-        # server.receive_providers.add(provider)
 
-        # Setup enabled email accounts in our dummy provider Since
-        # create_provider_aliases signal is mocked, manually add to provider
+        # Setup enabled email accounts in our dummy provider. Since
+        # create_provider_aliases signal is mocked, manually add to provider.
         #
         email_account = email_account_factory(server=server)
         dummy_provider.create_update_email_account(email_account)
 
-        # Call the task that generates the email that will list any unused
-        # domains. Since we have only one domain with one active email account
-        # there should be no unused domains, so no email is sent.
+        # Generate report directly — should produce no output since all
+        # accounts are active.
         #
-        res = provider_report_unused_servers()
-        res()
+        result = generate_unused_servers_report()
+        assert result == ""
 
-        # Verify no email was sent
+        # Also verify run_report sends no email when report is empty
         #
+        run_report("unused-servers")
         assert len(django_outbox) == 0
 
     ####################################################################
@@ -2104,13 +2100,12 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given a provider with no receiving servers
-        When provider_report_unused_servers is called
+        When run_report("unused-servers") is called
         Then no error should occur and no email should be sent
         """
         provider_factory(backend_name="postmark")
 
-        res = provider_report_unused_servers()
-        res()
+        run_report("unused-servers")
 
         assert len(django_outbox) == 0
 
@@ -2125,7 +2120,7 @@ class TestProviderReportUnusedDomains:
     ) -> None:
         """
         Given multiple providers with unused domains
-        When provider_report_unused_servers is called
+        When run_report("unused-servers") is called
         Then all should be included in the report
         """
         provider1 = provider_factory(backend_name="forwardemail")
@@ -2142,12 +2137,11 @@ class TestProviderReportUnusedDomains:
         # Mock get_backend
         mock_backend = mocker.Mock()
         mocker.patch(
-            "as_email.tasks.get_backend",
+            "as_email.reports.unused_servers.get_backend",
             return_value=mock_backend,
         )
 
-        res = provider_report_unused_servers()
-        res()
+        run_report("unused-servers")
 
         # Verify email was sent with both providers
         assert len(django_outbox) == 1

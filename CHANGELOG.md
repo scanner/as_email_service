@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Report framework (`as_email.reports`) with registry, schedule metadata, and staggered task execution
+- Management command `as_email_report` to run any registered report by name (`as_email_report email-usage`, `as_email_report --list`)
+- Email usage report for per-account mailbox usage and orphaned mail directory detection
+
+### Changed
+
+- Move unused servers report into the report framework
+- Daily and weekly report tasks now stagger individual report execution to avoid running all reports simultaneously
+
+### Fixed
+
+- Fix `UnboundLocalError` in unused servers report when a provider has no receiving servers (AS-EMAIL-SERVICE-3D)
+
 ## [0.6.3] - 2026-03-22
 
 ### Fixed
