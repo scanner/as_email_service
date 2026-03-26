@@ -243,6 +243,31 @@
     accuracy for your specific mail patterns.
   </p>
 
+  {% if settings.SPAM_TRAINING_ADDRESS %}
+  <h3>Reporting Misclassified Messages</h3>
+  <p>
+    You can help improve spam filtering by reporting messages that were
+    incorrectly classified:
+  </p>
+  <ul>
+    <li><strong>Spam that got through</strong> — forward the message to
+      <a href="mailto:{{ settings.SPAM_TRAINING_ADDRESS }}">{{ settings.SPAM_TRAINING_ADDRESS }}</a></li>
+    {% if settings.NOT_SPAM_TRAINING_ADDRESS %}
+    <li><strong>Legitimate email marked as spam</strong> — forward the message to
+      <a href="mailto:{{ settings.NOT_SPAM_TRAINING_ADDRESS }}">{{ settings.NOT_SPAM_TRAINING_ADDRESS }}</a></li>
+    {% endif %}
+  </ul>
+  <p>
+    Simply use your email client's <strong>Forward</strong> button — regular
+    forwarding works fine. If your client supports "Forward as attachment" that
+    is slightly better for training accuracy, but it is not required.
+  </p>
+  <p>
+    Only messages forwarded from your own email accounts on this service are
+    accepted. Forwards from other addresses are ignored.
+  </p>
+  {% endif %}
+
   <h2 class="subtitle">Need Help?</h2>
   <p>
     Contact the administrator at
