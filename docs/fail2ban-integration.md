@@ -58,7 +58,7 @@ The `start_smtpd.sh` script creates the log directory automatically
 before starting the daemon.
 
 **Important**: The host directory must be writable by the `app` user
-inside the container (UID 1000). Create it and set permissions before
+inside the container (UID 900). Create it and set permissions before
 starting the service:
 
 ```bash
