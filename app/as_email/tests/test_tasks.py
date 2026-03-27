@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 # 3rd party imports
@@ -130,7 +130,7 @@ def test_dispatch_incoming_email(
     ld = LocalDelivery.objects.get(email_account=ea)
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get("1")
+    stored_msg = cast(EmailMessage, folder.get("1"))
     assert_email_equal(msg, stored_msg)
 
 
@@ -1326,16 +1326,16 @@ class TestProviderSyncServerEmailAccounts:
         for ea in email_accounts:
             dummy_provider.email_accounts[ea.email_address]["enabled"] = False
 
-        for ea in dummy_provider.list_email_accounts(server):
-            assert ea.enabled is False
+        for eai in dummy_provider.list_email_accounts(server):
+            assert eai.enabled is False
 
         res = provider_sync_server_email_accounts(
             server.pk, dummy_provider.PROVIDER_NAME, enabled=True
         )
         res()
 
-        for ea in dummy_provider.list_email_accounts(server):
-            assert ea.enabled is True
+        for eai in dummy_provider.list_email_accounts(server):
+            assert eai.enabled is True
 
     ####################################################################
     #

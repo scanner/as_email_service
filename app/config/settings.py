@@ -84,6 +84,14 @@ env = environ.FileAwareEnv(
     TZ=(str, "America/Los_Angeles"),
     VERSION=(str, "unknown"),
     EMAIL_SERVICE_ACCOUNTS_OWNER=(str, None),
+    # Email accounts that are common brute-force targets (e.g. admin@,
+    # root@, postmaster@). Wrong-password attempts against these accounts
+    # emit a distinct security log tag (AUTH_FAIL_PROTECTED) so fail2ban
+    # can apply an immediate ban rather than the more lenient threshold
+    # used for regular accounts. Comma-separated list of email addresses.
+    #
+    PROTECTED_ACCOUNTS=(list, []),
+    SECURITY_LOG_FILE=(str, "/var/log/as_email/security.log"),
 )
 
 DEBUG = env("DEBUG")
@@ -112,6 +120,13 @@ SPAMD_PORT = int(SPAMD_PORT)
 # the old value from the list.
 SALT_KEY = env.list("SALT_KEY")
 DELIVERY_RETRY_DAYS = env.int("DELIVERY_RETRY_DAYS", default=7)
+
+# Security logging for fail2ban integration. See docs/fail2ban-integration.md.
+#
+PROTECTED_ACCOUNTS = {
+    addr.strip().lower() for addr in env("PROTECTED_ACCOUNTS") if addr.strip()
+}
+SECURITY_LOG_FILE = env("SECURITY_LOG_FILE")
 DELIVERY_RETRY_BACKOFF = env("DELIVERY_RETRY_BACKOFF", default="exponential")
 VERSION = env("VERSION")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
@@ -369,6 +384,24 @@ EXTERNAL_AUTH_DB = (
     Path(env("EXTERNAL_AUTH_DB")) if "EXTERNAL_AUTH_DB" in env else None
 )
 
+# The security file handler is only added when the log directory exists
+# (i.e. in production with the Docker volume mount). In development and
+# test environments the security logger falls back to console only.
+#
+_security_log_dir = Path(SECURITY_LOG_FILE).parent
+_security_handlers: dict[str, dict] = {}
+_security_logger_handlers = ["console"]
+
+if _security_log_dir.is_dir():
+    _security_handlers["security_file"] = {
+        "class": "logging.handlers.RotatingFileHandler",
+        "filename": SECURITY_LOG_FILE,
+        "formatter": "security",
+        "maxBytes": 10 * 1024 * 1024,  # 10 MB
+        "backupCount": 3,
+    }
+    _security_logger_handlers = ["security_file", "console"]
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -377,18 +410,29 @@ LOGGING = {
             "format": "[{asctime}] {levelname}:{module}.{funcName}: {message}",
             "style": "{",
         },
+        "security": {
+            "format": "[{asctime}] {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "basic",
         },
+        **_security_handlers,
     },
     "loggers": {
         "as_email": {
             "handlers": ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
             "propagate": True,
+        },
+        "as_email.security": {
+            "handlers": _security_logger_handlers,
+            "level": "WARNING",
+            "propagate": False,
         },
         "mail": {
             "handlers": ["console"],

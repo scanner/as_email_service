@@ -179,6 +179,7 @@ def test_postmark_backend_send_email_smtp_exception_spools(
 
     assert result is False
     # Verify message was spooled
+    assert server.outgoing_spool_dir is not None
     spool_files = list(Path(server.outgoing_spool_dir).glob("*"))
     assert len(spool_files) == 1
 
@@ -252,6 +253,7 @@ def test_postmark_backend_send_email_api_request_exception(
 
     assert result is False
     # Verify message was spooled
+    assert server.outgoing_spool_dir is not None
     spool_files = list(Path(server.outgoing_spool_dir).glob("*"))
     assert len(spool_files) == 1
 
@@ -379,6 +381,7 @@ def test_postmark_backend_handle_incoming_webhook_success(
     assert data["status"] == "all good"
 
     # Verify email was spooled
+    assert server.incoming_spool_dir is not None
     spool_files = list(Path(server.incoming_spool_dir).glob("*"))
     assert len(spool_files) == 1
 
@@ -464,6 +467,7 @@ def test_postmark_backend_handle_incoming_webhook_no_delivery(
     data = json.loads(response.content)
     assert "no such email account" in data["message"]
 
+    assert server.incoming_spool_dir is not None
     spool_files = list(Path(server.incoming_spool_dir).glob("*"))
     assert len(spool_files) == 0
 
