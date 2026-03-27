@@ -8,6 +8,7 @@ Test the various functions in the `deliver` module
 #
 from collections.abc import Callable
 from email.message import EmailMessage
+from typing import cast
 
 # 3rd party imports
 #
@@ -81,7 +82,7 @@ def test_deliver_message_locally(
     #
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
     # Now create a mfr and make sure the message is delivered to the proper
@@ -98,7 +99,7 @@ def test_deliver_message_locally(
     )
     mfr.save()
     deliver_message_locally(ld, msg)
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
 
@@ -120,7 +121,7 @@ def test_deliver_spam_locally(
 
     mh = ld.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
     # Set the spam score over the limit configured on the LocalDelivery.
@@ -134,7 +135,7 @@ def test_deliver_spam_locally(
     # The message should land in the spam folder.
     #
     folder = mh.get_folder(ld.spam_delivery_folder)
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
 
@@ -161,7 +162,7 @@ def test_deliver_alias(
     ld_2 = LocalDelivery.objects.get(email_account=ea_2)
     mh = ld_2.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
     # Create another level of aliasing: ea_2 (alias-only) → ea_3 (local).
@@ -178,7 +179,7 @@ def test_deliver_alias(
     ld_3 = LocalDelivery.objects.get(email_account=ea_3)
     mh = ld_3.MH()
     folder = mh.get_folder("inbox")
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
 
@@ -202,12 +203,12 @@ def test_deliver_to_multiple_aliases(
 
     ld_2 = LocalDelivery.objects.get(email_account=ea_2)
     folder = ld_2.MH().get_folder("inbox")
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
     ld_3 = LocalDelivery.objects.get(email_account=ea_3)
     folder = ld_3.MH().get_folder("inbox")
-    stored_msg = folder.get(str(1))
+    stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
 

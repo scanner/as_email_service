@@ -107,6 +107,7 @@ class TestEmailUsageReport:
             ea = email_account_factory(server=server)
 
         ld = LocalDelivery.objects.get(email_account=ea)
+        assert ld.maildir_path is not None
         _create_mh_messages(Path(ld.maildir_path), "inbox", 3)
 
         report = generate_email_usage_report()

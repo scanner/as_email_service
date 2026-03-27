@@ -51,6 +51,7 @@ services:
       - "${HOST_DB_DIR}:/mnt/db:z"
       - "${HOST_SPOOL_ROOT}:/mnt/spool:z"
       - "${HOST_SSL_DIR}:/mnt/ssl:ro"
+      - "${HOST_LOG_DIR:-./logs/as_email}:/var/log/as_email:z"
 
   worker:
     image: as_email_service:dev

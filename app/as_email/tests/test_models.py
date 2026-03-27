@@ -1,6 +1,6 @@
 # system imports
 #
-import email.message
+import email
 import mailbox
 from collections.abc import Callable
 from email.message import EmailMessage
@@ -43,14 +43,17 @@ def test_server(server_factory: Callable[..., Server]) -> None:
     server = server_factory()
     server.save()
 
+    assert server.incoming_spool_dir is not None
     assert str(server.incoming_spool_dir).endswith("incoming")
     assert server.domain_name in str(server.incoming_spool_dir)
     assert Path(server.incoming_spool_dir).is_dir()
 
+    assert server.outgoing_spool_dir is not None
     assert str(server.outgoing_spool_dir).endswith("outgoing")
     assert server.domain_name in str(server.outgoing_spool_dir)
     assert Path(server.outgoing_spool_dir).is_dir()
 
+    assert server.mail_dir_parent is not None
     assert str(server.mail_dir_parent).endswith(server.domain_name)
     assert Path(server.mail_dir_parent).is_dir()
 
@@ -297,11 +300,11 @@ def test_message_filter_rule_match(
     rule = message_filter_rule_factory(
         action=MessageFilterRule.FOLDER, destination=destination
     )
-    msg = email.message.Message()
+    msg = EmailMessage()
     msg[rule.header] = rule.pattern
     assert rule.match(msg)
 
-    msg = email.message.Message()
+    msg = EmailMessage()
     # The factory only generates patterns that are email addresses, so a
     # sentence will never match.
     #
