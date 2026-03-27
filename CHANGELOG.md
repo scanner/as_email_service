@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-03-27
 
 ### Added
 
@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report framework (`as_email.reports`) with registry, schedule metadata, and staggered task execution
 - Management command `as_email_report` to run any registered report by name (`as_email_report email-usage`, `as_email_report --list`)
 - Email usage report for per-account mailbox usage and orphaned mail directory detection
+- GH-233: `as_email_sa_training` management command processes user-forwarded spam/ham submissions, extracts the original messages, and stages them for `sa-learn`
+- GH-233: `sa-training` docker-compose service (under the `tools` profile) for running the training command against the live mail directories
+- GH-233: `SPAM_TRAINING_ADDRESS` and `NOT_SPAM_TRAINING_ADDRESS` env vars enable user-driven SpamAssassin training; addresses appear automatically on the user documentation page
+- `HOST_SPAMA_DIR` env var configures the host-side directory for SpamAssassin config, data, logs, and training corpus (default: `./spama`)
+- mypy added to the pre-commit / `make lint` pipeline so type errors are caught before commit
 
 ### Changed
 

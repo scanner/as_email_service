@@ -80,6 +80,8 @@ env = environ.FileAwareEnv(
     SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
     GITHUB_URL=(str, "https://github.com/scanner/as_email_service"),
     SITE_NAME=(str, "example.com"),
+    SPAM_TRAINING_ADDRESS=(str, None),
+    NOT_SPAM_TRAINING_ADDRESS=(str, None),
     SPAMD_HOST=(str, "spamassassin:783"),
     TZ=(str, "America/Los_Angeles"),
     VERSION=(str, "unknown"),
@@ -103,6 +105,8 @@ DEBUG = env("DEBUG")
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # NOTE: We should try moving secrets to compose secrets.
 #
+SPAM_TRAINING_ADDRESS = env("SPAM_TRAINING_ADDRESS")
+NOT_SPAM_TRAINING_ADDRESS = env("NOT_SPAM_TRAINING_ADDRESS")
 SPAMD_HOST, SPAMD_PORT = env("SPAMD_HOST").split(":")
 SPAMD_PORT = int(SPAMD_PORT)
 # NOTE: SALT_KEY is used by django-fernet-encrypted-fields to derive the

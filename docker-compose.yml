@@ -83,6 +83,17 @@ services:
     ports:
       - "8025:8025"
 
+  sa-training:
+    image: as_email_service:dev
+    profiles:
+      - tools
+    env_file: .env
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db:z"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
+      - "${HOST_SPAMA_DIR:-./spama}/training:/mnt/training:z"
+    command: /app/manage.py as_email_sa_training /mnt/training
+
   spamassassin:
     image: instantlinux/spamassassin:4.0.1-1
     container_name: spamassassin
@@ -90,11 +101,11 @@ services:
     ports:
       - "783:783"
     volumes:
-      - ./spama/local.cf:/etc/mail/spamassassin/local.cf:ro
-      - ./spama/local.pre:/etc/mail/spamassassin/local.pre:ro
-      - ./spama/home:/var/lib/spamassassin
-      - ./spama/logs:/var/log
-      - ./spama/training:/mnt/training
+      - "${HOST_SPAMA_DIR:-./spama}/local.cf:/etc/mail/spamassassin/local.cf:ro"
+      - "${HOST_SPAMA_DIR:-./spama}/local.pre:/etc/mail/spamassassin/local.pre:ro"
+      - "${HOST_SPAMA_DIR:-./spama}/home:/var/lib/spamassassin"
+      - "${HOST_SPAMA_DIR:-./spama}/logs:/var/log"
+      - "${HOST_SPAMA_DIR:-./spama}/training:/mnt/training"
     logging:
       driver: json-file
       options:

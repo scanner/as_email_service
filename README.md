@@ -54,16 +54,31 @@ SERVER_EMAIL = "your-server@example.com"
 #
 EMAIL_SERVER_TOKENS={"forwardemail":{"account_api_key":"<forwardemail-account-api-key>","example.com":"<forwardemail-account-api-key>"},"postmark":{"account_api_key":"<postmark-account-api-token>","example.com":"<postmark-server-api-token>","example.org":"<postmark-server-api-token>"}}
 
-# All of these parts are setup based on the default docker-compose file that
-# mounts file values under /mnt/db, /mnt/spool, /mnt/mail_dirs/, /mnt/ssl
+# The container-internal paths where volumes are mounted. These rarely
+# need to change.
 #
 DATABASE_URL=sqlite:////mnt/db/as_email_service.db
 EMAIL_SPOOL_DIR=/mnt/spool
 MAIL_DIRS=/mnt/mail_dirs
-HOST_SPOOL_ROOT=/mnt/spool
-HOST_MAIL_ROOT=/mnt/mail_dirs
-HOST_DB_DIR=/mnt/dbs
-HOST_SSL_DIR=/mnt/ssl
+
+# External (host) directories mounted into the containers. Set these to
+# wherever you want data stored on the host.
+#
+HOST_SPOOL_ROOT=/home/mailapps/spool
+HOST_MAIL_ROOT=/home/mailapps/mail_dirs
+HOST_DB_DIR=/home/mailapps/dbs
+HOST_SPAMA_DIR=/home/mailapps/spama
+
+# as_email expects to find ssl_crt.pem and ssl_key.pem in this directory.
+#
+HOST_SSL_DIR=/home/mailapps/ssl
+
+# Email addresses users forward misclassified messages to for SpamAssassin
+# training. Both must be set to enable user-driven training. See
+# docs/sa-training.md for setup instructions.
+#
+# SPAM_TRAINING_ADDRESS=spam@mail.example.com
+# NOT_SPAM_TRAINING_ADDRESS=not-spam@mail.example.com
 
 # What docker tag to pull and run
 #
@@ -87,20 +102,15 @@ make api-docs
 
 ## Administration
 
-### Training SpamAssassin on a corpus of spam and ham messages
+### SpamAssassin Training
 
-Assuming that you have mounted a directory as a volume in the "spamassassin" container which contains a directory of "ham" and a directory of "spam" you run the following commands to train the corpus. Assuming that you have mounted `/var/lib/spamassassin` in a volume that will be preserved across restarts of the "spamassassin" service:
+The service supports both initial corpus training (running `sa-learn` directly
+against a spam/ham directory) and ongoing user-driven training (users forward
+misclassified messages to dedicated addresses, which a management command
+processes and stages for `sa-learn`).
 
-**NOTE**: These need to be run inside the "spamassassin" container
-
-```
-sa-update
-sa-learn --spam --username=debian-spamd /mnt/training/spam
-sa-learn --ham --username=debian-spamd /mnt/training/ham
-sa-learn --sync --username=debian-spamd
-```
-
-The default docker-compose mounts the training & ham data under `/mnt/training/`. If you mount it somewhere else you will need to change these commands.
+See [docs/sa-training.md](docs/sa-training.md) for full setup and operational
+instructions.
 
 ### fail2ban Integration
 
