@@ -83,6 +83,28 @@ need to retrain after a database reset or `bayes_expire`.
 If disk space becomes a concern, old training messages can be removed
 at your discretion.
 
+## Initial / Manual Training
+
+If you have an existing corpus of spam and ham, or need to retrain after a
+Bayes database reset, run `sa-learn` directly inside the `spamassassin`
+container. The default `docker-compose.yml` mounts the training data at
+`/mnt/training`:
+
+```bash
+docker compose exec spamassassin sa-update
+docker compose exec spamassassin sa-learn --spam /mnt/training/spam/
+docker compose exec spamassassin sa-learn --ham /mnt/training/ham/
+docker compose exec spamassassin sa-learn --sync
+```
+
+Place your pre-existing spam corpus under `./spama/training/spam/` and ham
+under `./spama/training/ham/` on the host before running these commands. If
+you mount the training directory somewhere else, adjust the paths accordingly.
+
+**NOTE**: Training a large corpus can take a few minutes per `sa-learn` call.
+The `--sync` step flushes journalled changes to the Bayes database and should
+be run after each batch, especially before restarting the container.
+
 ## How it works
 
 1. The command looks up the `LocalDelivery` for the configured training

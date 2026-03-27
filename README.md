@@ -87,20 +87,15 @@ make api-docs
 
 ## Administration
 
-### Training SpamAssassin on a corpus of spam and ham messages
+### SpamAssassin Training
 
-Assuming that you have mounted a directory as a volume in the "spamassassin" container which contains a directory of "ham" and a directory of "spam" you run the following commands to train the corpus. Assuming that you have mounted `/var/lib/spamassassin` in a volume that will be preserved across restarts of the "spamassassin" service:
+The service supports both initial corpus training (running `sa-learn` directly
+against a spam/ham directory) and ongoing user-driven training (users forward
+misclassified messages to dedicated addresses, which a management command
+processes and stages for `sa-learn`).
 
-**NOTE**: These need to be run inside the "spamassassin" container
-
-```
-sa-update
-sa-learn --spam --username=debian-spamd /mnt/training/spam
-sa-learn --ham --username=debian-spamd /mnt/training/ham
-sa-learn --sync --username=debian-spamd
-```
-
-The default docker-compose mounts the training & ham data under `/mnt/training/`. If you mount it somewhere else you will need to change these commands.
+See [docs/sa-training.md](docs/sa-training.md) for full setup and operational
+instructions.
 
 ### fail2ban Integration
 
