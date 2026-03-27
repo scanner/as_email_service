@@ -57,6 +57,20 @@ volumes:
 The `start_smtpd.sh` script creates the log directory automatically
 before starting the daemon.
 
+**Important**: The host directory must be writable by the `app` user
+inside the container (UID 1000). Create it and set permissions before
+starting the service:
+
+```bash
+sudo mkdir -p /var/log/as_email
+sudo chown 900:900 /var/log/as_email
+```
+
+If using the default `./logs/as_email` path, Docker will create the
+directory as root and the container will fail to write logs. Either
+pre-create it with the correct ownership or use `chown` after the
+first `docker compose up`.
+
 After `docker compose up`, the security log will be available at
 `${HOST_LOG_DIR}/security.log` on the host (default:
 `./logs/as_email/security.log`).

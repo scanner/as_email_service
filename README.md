@@ -102,6 +102,16 @@ sa-learn --sync --username=debian-spamd
 
 The default docker-compose mounts the training & ham data under `/mnt/training/`. If you mount it somewhere else you will need to change these commands.
 
+### fail2ban Integration
+
+The SMTP daemon writes structured security log lines that fail2ban can monitor
+to automatically ban IPs performing brute-force attacks, flooding connections,
+or using nonexistent accounts. Six jails cover different attack patterns with
+configurable thresholds and ban durations.
+
+See [docs/fail2ban-integration.md](docs/fail2ban-integration.md) for setup
+instructions and configuration details.
+
 ## Design
 
 ## Local Development
