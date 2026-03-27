@@ -12,7 +12,7 @@ extracted original messages into directories for ``sa-learn``.
 import email.utils
 import logging
 from dataclasses import dataclass
-from email.message import EmailMessage
+from email.message import Message
 from pathlib import Path
 
 # 3rd party imports
@@ -89,7 +89,7 @@ def find_training_local_delivery() -> LocalDelivery:
 
 ########################################################################
 #
-def validate_sender(msg: EmailMessage) -> bool:
+def validate_sender(msg: Message) -> bool:
     """
     Check that the sender is an enabled EmailAccount on this instance.
 
@@ -109,7 +109,7 @@ def validate_sender(msg: EmailMessage) -> bool:
 ########################################################################
 #
 def determine_classification(
-    msg: EmailMessage,
+    msg: Message,
     spam_addr: str,
     not_spam_addr: str,
 ) -> str | None:
@@ -142,7 +142,7 @@ def determine_classification(
 
 ########################################################################
 #
-def extract_forwarded_message(msg: EmailMessage) -> bytes:
+def extract_forwarded_message(msg: Message) -> bytes:
     """
     Extract the original message from a forwarded email.
 
@@ -160,7 +160,7 @@ def extract_forwarded_message(msg: EmailMessage) -> bytes:
     for part in msg.walk():
         if part.get_content_type() == "message/rfc822":
             payload = part.get_payload(0)
-            if isinstance(payload, EmailMessage):
+            if isinstance(payload, Message):
                 return payload.as_bytes()
 
     # Fallback: return the whole message

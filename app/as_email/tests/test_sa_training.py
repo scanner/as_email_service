@@ -11,7 +11,7 @@ from collections.abc import Callable
 from email.message import EmailMessage
 from email.mime.message import MIMEMessage
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # 3rd party imports
 #
@@ -60,7 +60,7 @@ def _make_forwarded_msg(
         #
         outer.make_mixed()
         attachment = MIMEMessage(inner_msg)
-        outer.attach(attachment)
+        outer.attach(cast(EmailMessage, attachment))
     else:
         outer.set_content("---------- Forwarded message ----------\nspam body")
 
