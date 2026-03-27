@@ -125,11 +125,22 @@ be run after each batch, especially before restarting the container.
 
 ## Docker Compose service
 
-The `sa-training` service in `docker-compose.yml` is configured with
-the `tools` profile so it does not start with `docker compose up`. It
-shares the app image and mounts:
+The `sa-training` service is configured with the `tools` profile so it
+does not start with `docker compose up`:
 
-- `HOST_MAIL_ROOT` → `/mnt/mail_dirs` (read the training inbox)
-- `./spama/training` → `/mnt/training` (write training messages, shared
-  with the `spamassassin` container)
-- `HOST_DB_DIR` → `/mnt/db` (database access for account lookups)
+```yaml
+sa-training:
+  image: as_email_service:dev
+  profiles:
+    - tools
+  env_file: .env
+  volumes:
+    - "${HOST_DB_DIR}:/mnt/db:z"
+    - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
+    - "${HOST_SPAMA_DIR:-./spama}/training:/mnt/training:z"
+  command: /app/manage.py as_email_sa_training /mnt/training
+```
+
+The `./spama/training` directory is shared with the `spamassassin`
+container (also mounted at `/mnt/training`), so messages staged by
+the management command are immediately available to `sa-learn`.

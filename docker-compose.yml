@@ -91,7 +91,7 @@ services:
     volumes:
       - "${HOST_DB_DIR}:/mnt/db:z"
       - "${HOST_MAIL_ROOT}:/mnt/mail_dirs:z"
-      - ./spama/training:/mnt/training:z
+      - "${HOST_SPAMA_DIR:-./spama}/training:/mnt/training:z"
     command: /app/manage.py as_email_sa_training /mnt/training
 
   spamassassin:
@@ -101,11 +101,11 @@ services:
     ports:
       - "783:783"
     volumes:
-      - ./spama/local.cf:/etc/mail/spamassassin/local.cf:ro
-      - ./spama/local.pre:/etc/mail/spamassassin/local.pre:ro
-      - ./spama/home:/var/lib/spamassassin
-      - ./spama/logs:/var/log
-      - ./spama/training:/mnt/training
+      - "${HOST_SPAMA_DIR:-./spama}/local.cf:/etc/mail/spamassassin/local.cf:ro"
+      - "${HOST_SPAMA_DIR:-./spama}/local.pre:/etc/mail/spamassassin/local.pre:ro"
+      - "${HOST_SPAMA_DIR:-./spama}/home:/var/lib/spamassassin"
+      - "${HOST_SPAMA_DIR:-./spama}/logs:/var/log"
+      - "${HOST_SPAMA_DIR:-./spama}/training:/mnt/training"
     logging:
       driver: json-file
       options:

@@ -64,6 +64,14 @@ HOST_SPOOL_ROOT=/mnt/spool
 HOST_MAIL_ROOT=/mnt/mail_dirs
 HOST_DB_DIR=/mnt/dbs
 HOST_SSL_DIR=/mnt/ssl
+HOST_SPAMA_DIR=/mnt/spama
+
+# Email addresses users forward misclassified messages to for SpamAssassin
+# training. Both must be set to enable user-driven training. See
+# docs/sa-training.md for setup instructions.
+#
+# SPAM_TRAINING_ADDRESS=spam@mail.example.com
+# NOT_SPAM_TRAINING_ADDRESS=not-spam@mail.example.com
 
 # What docker tag to pull and run
 #
