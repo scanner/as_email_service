@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Security logging for fail2ban integration: structured log output for auth failures, connection floods, DNSBL rejections, and protocol errors
+- `PROTECTED_ACCOUNTS` setting for accounts (e.g. admin@, root@) that trigger immediate bans on wrong password
+- Per-IP connection flood detection (>10 connections in 60s)
+- Example fail2ban filters, jails, and setup documentation (`docs/fail2ban-integration.md`)
 - Report framework (`as_email.reports`) with registry, schedule metadata, and staggered task execution
 - Management command `as_email_report` to run any registered report by name (`as_email_report email-usage`, `as_email_report --list`)
 - Email usage report for per-account mailbox usage and orphaned mail directory detection

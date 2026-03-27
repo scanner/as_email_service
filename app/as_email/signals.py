@@ -99,7 +99,9 @@ def fire_off_async_task_update_emailaccount_pwfile(
             # see the committed row when it looks up this EmailAccount by pk.
             #
             transaction.on_commit(
-                lambda pk=instance.pk: check_update_pwfile_for_emailaccount(pk)
+                lambda pk=instance.pk: check_update_pwfile_for_emailaccount(  # type: ignore[misc]
+                    pk
+                )
             )
 
 
@@ -125,7 +127,7 @@ def create_or_update_provider_email_accounts(
     server = instance.server
     for provider in server.receive_providers.all():
         transaction.on_commit(
-            lambda pk=instance.pk, name=provider.backend_name: (
+            lambda pk=instance.pk, name=provider.backend_name: (  # type: ignore[misc]
                 provider_create_or_update_email_account(pk, name)
             )
         )
@@ -145,7 +147,7 @@ def fire_off_async_task_delete_emailaccount_pwfile(
     # reflects the final committed state of the database.
     #
     transaction.on_commit(
-        lambda addr=instance.email_address: delete_emailaccount_from_pwfile(
+        lambda addr=instance.email_address: delete_emailaccount_from_pwfile(  # type: ignore[misc]
             addr
         )
     )
@@ -167,7 +169,7 @@ def delete_provider_email_accounts(
     server = instance.server
     for provider in server.receive_providers.all():
         transaction.on_commit(
-            lambda addr=instance.email_address,
+            lambda addr=instance.email_address,  # type: ignore[misc]
             domain=server.domain_name,
             name=provider.backend_name: (
                 provider_delete_email_account(addr, domain, name)
@@ -329,7 +331,7 @@ def handle_send_provider_changed(
     #
     assert instance.send_provider is not None
     transaction.on_commit(
-        lambda pk=instance.pk, name=instance.send_provider.backend_name: (
+        lambda pk=instance.pk, name=instance.send_provider.backend_name: (  # type: ignore[misc]
             provider_create_update_server(pk, name)
         )
     )
@@ -377,7 +379,7 @@ def handle_receive_providers_changed(
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
                 transaction.on_commit(
-                    lambda server_pk=instance.pk,
+                    lambda server_pk=instance.pk,  # type: ignore[misc]
                     backend=provider.backend_name: (
                         provider_sync_server_email_accounts(
                             server_pk, backend, enabled=False

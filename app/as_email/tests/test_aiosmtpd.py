@@ -6,7 +6,9 @@ Test the aiosmtpd daemon/django command.
 
 # system imports
 #
-from collections.abc import Callable
+import logging
+import re
+from collections.abc import Callable, Generator
 from datetime import UTC, datetime
 from email.message import EmailMessage
 from pathlib import Path
@@ -26,6 +28,12 @@ from pytest_mock import MockerFixture
 # Project imports
 #
 from ..management.commands.aiosmtpd import (
+    SEC_AUTH_FAIL_NOUSER,
+    SEC_AUTH_FAIL_PASSWD,
+    SEC_AUTH_FAIL_PROTECTED,
+    SEC_CONN_DENIED,
+    SEC_CONN_FLOOD,
+    SEC_DNSBL_REJECT,
     Authenticator,
     Command,
     RelayHandler,
@@ -521,6 +529,7 @@ class TestAuthentication:
             assert res.success is False
 
         # Now access is denied
+        assert sess.peer is not None
         assert auth.check_deny(sess.peer)
         deny = auth.blacklist[sess.peer[0]]
         assert deny.expiry >= now + auth.AUTH_FAILURE_EXPIRY
@@ -549,7 +558,7 @@ class TestAuthentication:
         """
         sess = aiosmtp_session
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
         hostname = faker.hostname()
@@ -567,6 +576,7 @@ class TestAuthentication:
         assert response == "220 OK"
 
         # Blacklist the peer for auth failures
+        assert sess.peer is not None
         authenticator.incr_fails(sess.peer)
         authenticator.blacklist[sess.peer[0]].num_fails = (
             Authenticator.MAX_NUM_AUTH_FAILURES + 1
@@ -622,7 +632,7 @@ class TestHandleMAIL:
         """
         sess = aiosmtp_session
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -646,11 +656,11 @@ class TestHandleMAIL:
         assert envelope.mail_from == from_address
 
         if expected_account == "same":
-            assert envelope.mail_from_account == ea
+            assert envelope.mail_from_account == ea  # type: ignore[attr-defined]
             if deactivated:
-                assert envelope.mail_from_account.deactivated is True
+                assert envelope.mail_from_account.deactivated is True  # type: ignore[attr-defined]
         elif expected_account is None:
-            assert envelope.mail_from_account is None
+            assert envelope.mail_from_account is None  # type: ignore[attr-defined]
 
 
 ########################################################################
@@ -681,7 +691,7 @@ class TestHandleRCPT:
         sess = aiosmtp_session
         sess.authenticated = False
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -712,7 +722,7 @@ class TestHandleRCPT:
 
         sess = aiosmtp_session
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -742,7 +752,7 @@ class TestHandleRCPT:
         sess = aiosmtp_session
         sess.authenticated = False
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -774,9 +784,9 @@ class TestHandleRCPT:
 
         sess = aiosmtp_session
         sess.authenticated = True
-        sess.auth_data = ea
+        sess.auth_data = ea  # type: ignore[assignment]
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -812,7 +822,7 @@ class TestHandleRCPT:
         sess = aiosmtp_session
         sess.authenticated = False
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -851,7 +861,7 @@ class TestHandleRCPT:
         sess = aiosmtp_session
         sess.authenticated = False
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -890,9 +900,9 @@ class TestHandleRCPT:
 
         sess = aiosmtp_session
         sess.authenticated = True
-        sess.auth_data = ea1
+        sess.auth_data = ea1  # type: ignore[assignment]
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope()
 
@@ -951,7 +961,7 @@ class TestHandleDATA:
         )
 
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope(msg_from=faker.email(), to=ea.email_address)
 
@@ -989,7 +999,7 @@ class TestHandleDATA:
         sess.authenticated = False
 
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         from_addr = faker.email()
         envelope = aiosmtp_envelope(msg_from=from_addr, to=faker.email())
@@ -1028,10 +1038,10 @@ class TestHandleDATA:
 
         sess = aiosmtp_session
         sess.authenticated = True
-        sess.auth_data = ea
+        sess.auth_data = ea  # type: ignore[assignment]
 
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
         envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
@@ -1072,7 +1082,7 @@ class TestHandleDATA:
 
         sess = aiosmtp_session
         sess.authenticated = True
-        sess.auth_data = ea1
+        sess.auth_data = ea1  # type: ignore[assignment]
 
         # Mock deliver_email_locally
         mock_deliver_local = mocker.patch(
@@ -1081,7 +1091,7 @@ class TestHandleDATA:
         )
 
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         remote_to = faker.email()
         envelope = aiosmtp_envelope(msg_from=ea1.email_address, to=remote_to)
@@ -1132,10 +1142,10 @@ class TestFromHeaderValidation:
 
         sess = aiosmtp_session
         sess.authenticated = True
-        sess.auth_data = ea
+        sess.auth_data = ea  # type: ignore[assignment]
 
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
         envelope = aiosmtp_envelope(msg_from=ea.email_address, to=to)
@@ -1174,10 +1184,10 @@ class TestFromHeaderValidation:
 
         sess = aiosmtp_session
         sess.authenticated = True
-        sess.auth_data = ea
+        sess.auth_data = ea  # type: ignore[assignment]
 
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         to = faker.email()
         wrong_from = faker.email()
@@ -1218,7 +1228,7 @@ class TestDNSBL:
         """
         sess = aiosmtp_session
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
 
         # Mock DNSBL check - not blacklisted
         mock_result = mocker.Mock()
@@ -1253,7 +1263,7 @@ class TestDNSBL:
         """
         sess = aiosmtp_session
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
 
         # Mock DNSBL check - blacklisted
         mock_result = mocker.Mock()
@@ -1418,7 +1428,7 @@ class TestSMTPIntegration:
         sess = aiosmtp_session
         sess.authenticated = authenticated
         if authenticated:
-            sess.auth_data = local_account
+            sess.auth_data = local_account  # type: ignore[assignment]
 
         # Setup MAIL FROM
         if mail_from_type == "local":
@@ -1448,7 +1458,7 @@ class TestSMTPIntegration:
 
         # Setup handler
         authenticator = Authenticator()
-        handler = RelayHandler(tmp_path, authenticator)
+        handler = RelayHandler(str(tmp_path), authenticator)
         smtp_server = SMTP(handler, authenticator=authenticator)
         envelope = aiosmtp_envelope(
             msg_from=mail_from, to=rcpt_tos[0] if rcpt_tos else faker.email()
@@ -1917,6 +1927,7 @@ class TestRelayToProvider:
         # Mock the backend's send_email to simulate an API-only provider
         # that dispatches to send_email_api instead of send_email_smtp.
         #
+        assert ea.server.send_provider is not None
         mock_send = mocker.patch.object(
             ea.server.send_provider.backend,
             "send_email",
@@ -1936,3 +1947,351 @@ class TestRelayToProvider:
         # SMTP was never touched — the API path handled it
         #
         assert smtp.sendmail.call_count == 0
+
+
+########################################################################
+########################################################################
+#
+SECURITY_LOGGER = "as_email.security"
+
+
+class TestSecurityLogging:
+    """Tests for fail2ban-compatible security logging."""
+
+    @pytest.fixture(autouse=True)
+    def _capture_security_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> Generator[None]:
+        """
+        The as_email.security logger has propagate=False (to avoid
+        duplicate console output in production), which prevents caplog
+        from seeing its records via the root logger. Explicitly attach
+        caplog's handler to the security logger for all tests in this
+        class.
+        """
+        sec_logger = logging.getLogger(SECURITY_LOGGER)
+        sec_logger.addHandler(caplog.handler)
+        caplog.set_level(logging.WARNING, logger=SECURITY_LOGGER)
+        yield
+        sec_logger.removeHandler(caplog.handler)
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_auth_fail_nouser_emits_security_log(
+        self,
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        Given an authentication attempt with a nonexistent username
+        When the authenticator processes the attempt
+        Then AUTH_FAIL_NOUSER is logged to the security logger
+        """
+        sess = aiosmtp_session
+        assert sess.peer is not None
+        auth = Authenticator()
+        username = faker.email()
+
+        auth_data = LoginPassword(
+            login=bytes(username, "utf-8"),
+            password=bytes(faker.pystr(), "utf-8"),
+        )
+        await auth(None, sess, None, "LOGIN", auth_data)
+
+        security_records = [
+            r for r in caplog.records if r.name == SECURITY_LOGGER
+        ]
+        assert len(security_records) == 1
+        assert SEC_AUTH_FAIL_NOUSER in security_records[0].message
+        assert f"ip={sess.peer[0]}" in security_records[0].message
+        assert f"user={username}" in security_records[0].message
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "protected,expected_tag,unexpected_tag",
+        [
+            (False, SEC_AUTH_FAIL_PASSWD, SEC_AUTH_FAIL_PROTECTED),
+            (True, SEC_AUTH_FAIL_PROTECTED, SEC_AUTH_FAIL_PASSWD),
+        ],
+        ids=["regular-account", "protected-account"],
+    )
+    async def test_auth_fail_wrong_password_security_log(
+        self,
+        protected: bool,
+        expected_tag: str,
+        unexpected_tag: str,
+        settings,
+        email_account_factory: Callable[..., EmailAccount],
+        faker: Faker,
+        aiosmtp_session: SMTPSession,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        Given a wrong-password attempt for an existing account
+        When the account is (or is not) in PROTECTED_ACCOUNTS
+        Then the correct security tag is logged
+        """
+        sess = aiosmtp_session
+        assert sess.peer is not None
+        password = faker.pystr(min_chars=8, max_chars=32)
+        ea = await sync_to_async(email_account_factory)(password=password)
+
+        if protected:
+            settings.PROTECTED_ACCOUNTS = {ea.email_address.lower()}
+        else:
+            settings.PROTECTED_ACCOUNTS = set()
+
+        auth = Authenticator()
+        auth_data = LoginPassword(
+            login=bytes(ea.email_address, "utf-8"),
+            password=bytes("wrong_password", "utf-8"),
+        )
+        await auth(None, sess, None, "LOGIN", auth_data)
+
+        security_records = [
+            r for r in caplog.records if r.name == SECURITY_LOGGER
+        ]
+        assert len(security_records) == 1
+        assert expected_tag in security_records[0].message
+        assert unexpected_tag not in security_records[0].message
+        assert f"ip={sess.peer[0]}" in security_records[0].message
+        assert f"user={ea.email_address}" in security_records[0].message
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_conn_denied_emits_security_log(
+        self,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        mocker: MockerFixture,
+        mock_tarpit_delay: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        Given a peer that is already blacklisted for auth failures
+        When handle_CONNECT is called
+        Then CONN_DENIED is logged to the security logger
+        """
+        sess = aiosmtp_session
+        assert sess.peer is not None
+        authenticator = Authenticator()
+        handler = RelayHandler(str(tmp_path), authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        # Blacklist the peer
+        authenticator.incr_fails(sess.peer)
+        authenticator.blacklist[sess.peer[0]].num_fails = (
+            Authenticator.MAX_NUM_AUTH_FAILURES + 1
+        )
+
+        response = await handler.handle_CONNECT(
+            smtp, sess, envelope, "hostname", 25
+        )
+
+        assert response.startswith("554")
+        security_records = [
+            r for r in caplog.records if r.name == SECURITY_LOGGER
+        ]
+        assert len(security_records) == 1
+        assert SEC_CONN_DENIED in security_records[0].message
+        assert f"ip={sess.peer[0]}" in security_records[0].message
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_conn_flood_emits_security_log(
+        self,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        mocker: MockerFixture,
+        mock_tarpit_delay: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        Given a peer connecting more than CONN_FLOOD_THRESHOLD times in 60s
+        When handle_CONNECT is called for the next connection
+        Then CONN_FLOOD is logged and 554 returned
+        """
+        sess = aiosmtp_session
+        assert sess.peer is not None
+        authenticator = Authenticator()
+        handler = RelayHandler(str(tmp_path), authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        # Mock DNSBL check
+        mock_result = mocker.Mock()
+        mock_result.blacklisted = False
+        handler.dnsbl = mocker.AsyncMock()
+        handler.dnsbl.check = mocker.AsyncMock(return_value=mock_result)
+
+        # Fill up the connection counter to the threshold
+        for _ in range(RelayHandler.CONN_FLOOD_THRESHOLD):
+            response = await handler.handle_CONNECT(
+                smtp, sess, envelope, "hostname", 25
+            )
+            assert response == "220 OK"
+
+        # The next connection should trigger flood detection
+        response = await handler.handle_CONNECT(
+            smtp, sess, envelope, "hostname", 25
+        )
+
+        assert response == "554 Too many connections"
+        security_records = [
+            r for r in caplog.records if r.name == SECURITY_LOGGER
+        ]
+        assert len(security_records) == 1
+        assert SEC_CONN_FLOOD in security_records[0].message
+        assert f"ip={sess.peer[0]}" in security_records[0].message
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_conn_flood_window_resets(
+        self,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        Given a peer that previously hit the flood threshold
+        When the 60s window has expired and they connect again
+        Then the counter resets and connection is allowed
+        """
+        sess = aiosmtp_session
+        assert sess.peer is not None
+        authenticator = Authenticator()
+        handler = RelayHandler(str(tmp_path), authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        # Mock DNSBL + tarpit
+        mock_result = mocker.Mock()
+        mock_result.blacklisted = False
+        handler.dnsbl = mocker.AsyncMock()
+        handler.dnsbl.check = mocker.AsyncMock(return_value=mock_result)
+        mocker.patch(
+            "as_email.management.commands.aiosmtpd.tarpit_delay",
+            new_callable=mocker.AsyncMock,
+        )
+
+        # Exhaust the flood window
+        for _ in range(RelayHandler.CONN_FLOOD_THRESHOLD + 1):
+            await handler.handle_CONNECT(smtp, sess, envelope, "hostname", 25)
+
+        # Simulate window expiry by backdating the rate info
+        peer_ip = sess.peer[0]
+        rate_info = handler.conn_rates[peer_ip]
+        rate_info.window_start = datetime(2000, 1, 1, tzinfo=UTC)
+
+        # Now connection should succeed (window expired, counter resets)
+        response = await handler.handle_CONNECT(
+            smtp, sess, envelope, "hostname", 25
+        )
+        assert response == "220 OK"
+        assert handler.conn_rates[peer_ip].count == 1
+
+    ####################################################################
+    #
+    @pytest.mark.asyncio
+    async def test_dnsbl_reject_emits_security_log(
+        self,
+        aiosmtp_session: SMTPSession,
+        aiosmtp_envelope: Callable[..., SMTPEnvelope],
+        tmp_path: Path,
+        mocker: MockerFixture,
+        mock_tarpit_delay: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        Given a connecting IP that is on a DNSBL
+        When handle_CONNECT is called
+        Then DNSBL_REJECT is logged to the security logger
+        """
+        sess = aiosmtp_session
+        assert sess.peer is not None
+        authenticator = Authenticator()
+        handler = RelayHandler(str(tmp_path), authenticator)
+        smtp = SMTP(handler, authenticator=authenticator)
+        envelope = aiosmtp_envelope()
+
+        mock_result = mocker.Mock()
+        mock_result.blacklisted = True
+        mock_result.detected_by = [("spamhaus.org", ["spam"])]
+        handler.dnsbl = mocker.AsyncMock()
+        handler.dnsbl.check = mocker.AsyncMock(return_value=mock_result)
+
+        response = await handler.handle_CONNECT(
+            smtp, sess, envelope, "hostname", 25
+        )
+
+        assert response.startswith("554 Your IP is blacklisted")
+        security_records = [
+            r for r in caplog.records if r.name == SECURITY_LOGGER
+        ]
+        assert len(security_records) == 1
+        assert SEC_DNSBL_REJECT in security_records[0].message
+        assert f"ip={sess.peer[0]}" in security_records[0].message
+        assert "spamhaus.org" in security_records[0].message
+
+    ####################################################################
+    #
+    def test_security_log_format_parseable(self) -> None:
+        """
+        Given sample security log lines
+        When checked against the fail2ban filter regex patterns
+        Then each line matches and extracts the correct IP
+        """
+        sample_lines = [
+            "[2026-03-26 14:30:00] AUTH_FAIL_NOUSER ip=1.2.3.4 user=foo@bar.com",
+            "[2026-03-26 14:30:00] AUTH_FAIL_PASSWD ip=10.0.0.1 user=admin@example.com",
+            "[2026-03-26 14:30:00] AUTH_FAIL_PROTECTED ip=192.168.1.1 user=admin@example.com",
+            "[2026-03-26 14:30:00] CONN_FLOOD ip=172.16.0.1 count=11",
+            "[2026-03-26 14:30:00] DNSBL_REJECT ip=203.0.113.5 providers=spamhaus.org:spam",
+            "[2026-03-26 14:30:00] CONN_DENIED ip=198.51.100.1",
+            "[2026-03-26 14:30:00] SSL_ERROR ip=100.64.0.1 error=no shared cipher",
+            "[2026-03-26 14:30:00] SMTP_EXCEPTION ip=100.64.0.2 error=ValueError",
+        ]
+
+        # These patterns match the fail2ban filter regexes with <HOST>
+        # replaced by a named capture group for the IP.
+        #
+        patterns = [
+            r"^\[.*\] AUTH_FAIL_NOUSER ip=(?P<host>\S+) user=\S+$",
+            r"^\[.*\] AUTH_FAIL_PASSWD ip=(?P<host>\S+) user=\S+$",
+            r"^\[.*\] AUTH_FAIL_PROTECTED ip=(?P<host>\S+) user=\S+$",
+            r"^\[.*\] CONN_FLOOD ip=(?P<host>\S+) count=\d+$",
+            r"^\[.*\] DNSBL_REJECT ip=(?P<host>\S+) providers=\S+$",
+            r"^\[.*\] CONN_DENIED ip=(?P<host>\S+)$",
+            r"^\[.*\] SSL_ERROR ip=(?P<host>\S+) error=.*$",
+            r"^\[.*\] SMTP_EXCEPTION ip=(?P<host>\S+) error=\S+$",
+        ]
+
+        expected_ips = [
+            "1.2.3.4",
+            "10.0.0.1",
+            "192.168.1.1",
+            "172.16.0.1",
+            "203.0.113.5",
+            "198.51.100.1",
+            "100.64.0.1",
+            "100.64.0.2",
+        ]
+
+        for line, pattern, expected_ip in zip(
+            sample_lines, patterns, expected_ips, strict=True
+        ):
+            m = re.match(pattern, line)
+            assert m is not None, f"Pattern did not match line: {line}"
+            assert m.group("host") == expected_ip

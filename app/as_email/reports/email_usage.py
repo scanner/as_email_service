@@ -56,11 +56,12 @@ def _count_messages(folder_path: Path) -> int:
 #
 def _format_size(size_bytes: int) -> str:
     """Format a byte count into a human-readable string."""
+    size: float = size_bytes
     for unit in ("B", "KB", "MB", "GB"):
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} TB"
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 ########################################################################
@@ -87,6 +88,8 @@ def _report_active_accounts(lines: list[str]) -> set[Path]:
     for ld in deliveries:
         ea = ld.email_account
         domain = ea.server.domain_name
+        if not ld.maildir_path:
+            continue
         maildir = Path(ld.maildir_path)
         known_paths.add(maildir)
 

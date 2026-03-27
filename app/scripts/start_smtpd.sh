@@ -18,6 +18,10 @@ wait-for-it --service spamassassin:783 -- echo "SpamAssassin available"
 : "${SMTPD_CERT:=/mnt/ssl/ssl_crt.pem}"
 : "${SMTPD_KEY:=/mnt/ssl/ssl_key.pem}"
 
+# Ensure the security log directory exists for fail2ban integration.
+#
+mkdir -p "$(dirname "${SECURITY_LOG_FILE:-/var/log/as_email/security.log}")"
+
 echo "Starting SMTP daemon (submission port: ${SMTPD_SUBMISSION_PORT}, SMTP port: ${SMTPD_SMTP_PORT})"
 exec /venv/bin/python /app/manage.py aiosmtpd \
                  --submission_port="${SMTPD_SUBMISSION_PORT}" \

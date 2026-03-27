@@ -1622,7 +1622,7 @@ class TestDeliveryMethodEndpoints:
         setup: dict[str, Any],
         mocker: MockerFixture,
         faker: Faker,
-        test_result: bool,
+        test_result: tuple[bool, str],
         expected_status: int,
     ) -> None:
         """
@@ -1695,7 +1695,7 @@ class TestDeliveryMethodEndpoints:
         setup: dict[str, Any],
         mocker: MockerFixture,
         faker: Faker,
-        test_result: bool,
+        test_result: tuple[bool, str],
         expected_status: int,
     ) -> None:
         """

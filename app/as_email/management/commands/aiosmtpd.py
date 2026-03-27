@@ -61,6 +61,19 @@ SMTP_PORT = 25
 LISTEN_HOST = "0.0.0.0"
 
 logger = logging.getLogger("as_email.aiosmtpd")
+security_logger = logging.getLogger("as_email.security")
+
+# Security event tags for fail2ban-parseable log lines.
+# Format: [timestamp] TAG ip=<IP> user=<USER> [extra=<VALUE>]
+#
+SEC_AUTH_FAIL_NOUSER = "AUTH_FAIL_NOUSER"
+SEC_AUTH_FAIL_PASSWD = "AUTH_FAIL_PASSWD"
+SEC_AUTH_FAIL_PROTECTED = "AUTH_FAIL_PROTECTED"
+SEC_CONN_DENIED = "CONN_DENIED"
+SEC_CONN_FLOOD = "CONN_FLOOD"
+SEC_DNSBL_REJECT = "DNSBL_REJECT"
+SEC_SSL_ERROR = "SSL_ERROR"
+SEC_SMTP_EXCEPTION = "SMTP_EXCEPTION"
 
 
 ########################################################################
@@ -215,6 +228,15 @@ class DenyInfo(BaseModel):
 
 
 ########################################################################
+#
+class ConnRateInfo(BaseModel):
+    """Track connection frequency per IP for flood detection."""
+
+    count: int
+    window_start: datetime
+
+
+########################################################################
 ########################################################################
 #
 class AsyncioAuthSMTP(SMTP):
@@ -272,6 +294,13 @@ class AsyncioAuthSMTP(SMTP):
             # disconnecting SMTP clients, not application errors. Logging at
             # ERROR would generate Sentry events for noise we cannot act on.
             #
+            assert self.session is not None
+
+            # NOTE: aiosmtpd types peer as str, but at runtime it is a
+            # (host, port) tuple from socket.getpeername().
+            peer_ip: str
+            peer_ip, _ = self.session.peer  # type: ignore[misc]
+
             if (
                 isinstance(error, TLSSetupException)
                 and hasattr(error, "__cause__")
@@ -280,18 +309,28 @@ class AsyncioAuthSMTP(SMTP):
                     or isinstance(error.__cause__, ConnectionResetError)
                 )
             ):
-                assert self.session is not None
                 logger.warning(
                     "%r SMTP session exception: %s",
                     self.session.peer,
                     error.__cause__,
                 )
+                security_logger.warning(
+                    "%s ip=%s error=%s",
+                    SEC_SSL_ERROR,
+                    peer_ip,
+                    error.__cause__,
+                )
             else:
-                assert self.session is not None
                 logger.warning(
                     "%r SMTP session exception",
                     self.session.peer,
                     exc_info=True,
+                )
+                security_logger.warning(
+                    "%s ip=%s error=%s",
+                    SEC_SMTP_EXCEPTION,
+                    peer_ip,
+                    error.__class__.__name__,
                 )
             status = f"500 Error: ({error.__class__.__name__}) {error!r}"
             return status
@@ -555,7 +594,13 @@ class Authenticator:
     ####################################################################
     #
     def _auth_fail(
-        self, session, log_msg: str, error_msg: str = "Authentication failed"
+        self,
+        session,
+        log_msg: str,
+        error_msg: str = "Authentication failed",
+        *,
+        fail_type: str = SEC_AUTH_FAIL_PASSWD,
+        username: str = "",
     ) -> AuthResult:
         """
         Helper to handle authentication failures consistently.
@@ -564,6 +609,8 @@ class Authenticator:
             session: The SMTP session
             log_msg: Log message describing the failure
             error_msg: User-facing error message
+            fail_type: Security event tag for fail2ban log
+            username: The username that was attempted
 
         Returns:
             AuthResult indicating failure
@@ -571,6 +618,9 @@ class Authenticator:
         self.incr_fails(session.peer)
         logger.info(
             "Authenticator: FAIL: %s, from: %s", log_msg, session.peer[0]
+        )
+        security_logger.warning(
+            "%s ip=%s user=%s", fail_type, session.peer[0], username
         )
         result = AuthResult(success=False, handled=False)
         result.message = error_msg
@@ -678,7 +728,12 @@ class Authenticator:
                 email_address=username
             )
         except EmailAccount.DoesNotExist:
-            return self._auth_fail(session, f"'{username}' not a valid account")
+            return self._auth_fail(
+                session,
+                f"'{username}' not a valid account",
+                fail_type=SEC_AUTH_FAIL_NOUSER,
+                username=username,
+            )
 
         # NOTE: We allow deactivated accounts to authenticate because:
         # - They can send to local addresses (no auth required anyway)
@@ -686,7 +741,17 @@ class Authenticator:
         # This way deactivated accounts can still receive and send local mail
 
         if not account.check_password(password):
-            return self._auth_fail(session, f"'{account}' invalid password")
+            fail_type = (
+                SEC_AUTH_FAIL_PROTECTED
+                if username.lower() in settings.PROTECTED_ACCOUNTS
+                else SEC_AUTH_FAIL_PASSWD
+            )
+            return self._auth_fail(
+                session,
+                f"'{account}' invalid password",
+                fail_type=fail_type,
+                username=username,
+            )
 
         # Upon success we pass the account back as the auth_data
         # back. This gets saved in to the session.auth_data attribute
@@ -705,6 +770,9 @@ class Authenticator:
 ########################################################################
 #
 class RelayHandler:
+    CONN_FLOOD_THRESHOLD = 10
+    CONN_FLOOD_WINDOW = timedelta(seconds=60)
+
     ####################################################################
     #
     def __init__(self, spool_dir: str, authenticator: Authenticator):
@@ -716,6 +784,7 @@ class RelayHandler:
         self.spool_dir = spool_dir
         self.authenticator = authenticator
         self.dnsbl = DNSBLIpChecker()
+        self.conn_rates: dict[str, ConnRateInfo] = {}
 
     ####################################################################
     #
@@ -743,22 +812,55 @@ class RelayHandler:
         #     are used for spam?)
         #
         assert session.peer is not None
-        if self.authenticator.check_deny(session.peer):
-            logger.info(
-                "Denying %s due to too many failed auth attempts",
-                session.peer[0],
-            )
-            await tarpit_delay()
-            return "554 Too many failed attempts"
 
         # NOTE: aiosmtpd types peer as str, but at runtime it is a
         # (host, port) tuple from socket.getpeername().
         peer_ip: str
         peer_ip, _ = session.peer  # type: ignore[misc]
+        now = datetime.now(UTC)
+
+        # Connection flood detection — reject IPs connecting too
+        # frequently before spending resources on TLS or auth.
+        #
+        rate_info = self.conn_rates.get(peer_ip)
+        if rate_info is not None:
+            if now - rate_info.window_start > self.CONN_FLOOD_WINDOW:
+                self.conn_rates[peer_ip] = ConnRateInfo(
+                    count=1, window_start=now
+                )
+            else:
+                rate_info.count += 1
+                if rate_info.count > self.CONN_FLOOD_THRESHOLD:
+                    security_logger.warning(
+                        "%s ip=%s count=%d",
+                        SEC_CONN_FLOOD,
+                        peer_ip,
+                        rate_info.count,
+                    )
+                    await tarpit_delay()
+                    return "554 Too many connections"
+        else:
+            self.conn_rates[peer_ip] = ConnRateInfo(count=1, window_start=now)
+
+        if self.authenticator.check_deny(session.peer):
+            logger.info(
+                "Denying %s due to too many failed auth attempts",
+                session.peer[0],
+            )
+            security_logger.warning("%s ip=%s", SEC_CONN_DENIED, peer_ip)
+            await tarpit_delay()
+            return "554 Too many failed attempts"
+
         result = await self.dnsbl.check(peer_ip)
         if result.blacklisted:
             detected_by = format_dnsbl_providers(result.detected_by)
             logger.info("IP %s is blacklisted: %s", peer_ip, detected_by)
+            security_logger.warning(
+                "%s ip=%s providers=%s",
+                SEC_DNSBL_REJECT,
+                peer_ip,
+                detected_by,
+            )
             await tarpit_delay()
             return "554 Your IP is blacklisted. Connection refused."
 
