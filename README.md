@@ -54,17 +54,24 @@ SERVER_EMAIL = "your-server@example.com"
 #
 EMAIL_SERVER_TOKENS={"forwardemail":{"account_api_key":"<forwardemail-account-api-key>","example.com":"<forwardemail-account-api-key>"},"postmark":{"account_api_key":"<postmark-account-api-token>","example.com":"<postmark-server-api-token>","example.org":"<postmark-server-api-token>"}}
 
-# All of these parts are setup based on the default docker-compose file that
-# mounts file values under /mnt/db, /mnt/spool, /mnt/mail_dirs/, /mnt/ssl
+# The container-internal paths where volumes are mounted. These rarely
+# need to change.
 #
 DATABASE_URL=sqlite:////mnt/db/as_email_service.db
 EMAIL_SPOOL_DIR=/mnt/spool
 MAIL_DIRS=/mnt/mail_dirs
-HOST_SPOOL_ROOT=/mnt/spool
-HOST_MAIL_ROOT=/mnt/mail_dirs
-HOST_DB_DIR=/mnt/dbs
-HOST_SSL_DIR=/mnt/ssl
-HOST_SPAMA_DIR=/mnt/spama
+
+# External (host) directories mounted into the containers. Set these to
+# wherever you want data stored on the host.
+#
+HOST_SPOOL_ROOT=/home/mailapps/spool
+HOST_MAIL_ROOT=/home/mailapps/mail_dirs
+HOST_DB_DIR=/home/mailapps/dbs
+HOST_SPAMA_DIR=/home/mailapps/spama
+
+# as_email expects to find ssl_crt.pem and ssl_key.pem in this directory.
+#
+HOST_SSL_DIR=/home/mailapps/ssl
 
 # Email addresses users forward misclassified messages to for SpamAssassin
 # training. Both must be set to enable user-driven training. See
