@@ -305,7 +305,11 @@ class TestProcessTrainingInbox:
         other = "ham" if classification == "spam" else "spam"
         assert getattr(result, f"{other}_count") == 0
 
-        output_files = list((training_dir / classification).iterdir())
+        output_files = [
+            f
+            for f in (training_dir / classification).iterdir()
+            if f.name.isdigit()
+        ]
         assert len(output_files) == 1
 
         mh = ld.MH(create=False)
@@ -390,7 +394,9 @@ class TestProcessTrainingInbox:
         result = process_training_inbox(training_dir)
 
         assert result.spam_count == 1
-        spam_files = list((training_dir / "spam").iterdir())
+        spam_files = [
+            f for f in (training_dir / "spam").iterdir() if f.name.isdigit()
+        ]
         assert len(spam_files) == 1
 
 
