@@ -11,6 +11,7 @@ extracted original messages into directories for ``sa-learn``.
 #
 import email.utils
 import logging
+import mailbox
 from dataclasses import dataclass
 from email.message import Message
 from pathlib import Path
@@ -209,6 +210,8 @@ def process_training_inbox(
     ham_dir = training_dir / "ham"
     spam_dir.mkdir(parents=True, exist_ok=True)
     ham_dir.mkdir(parents=True, exist_ok=True)
+    spam_mh = mailbox.MH(spam_dir, create=False)
+    ham_mh = mailbox.MH(ham_dir, create=False)
 
     keys = inbox.keys()
     if not keys:
@@ -249,12 +252,14 @@ def process_training_inbox(
                 result.skipped_no_classification += 1
                 continue
 
-            # Extract and save the original message
+            # Extract and save the original message into the appropriate
+            # MH training folder. Using MH.add() ensures the sequence
+            # number is always unique and avoids collisions with
+            # messages from previous runs.
             #
             original_bytes = extract_forwarded_message(msg)
-            dest_dir = spam_dir if classification == "spam" else ham_dir
-            dest_path = dest_dir / str(key)
-            dest_path.write_bytes(original_bytes)
+            dest_mh = spam_mh if classification == "spam" else ham_mh
+            dest_mh.add(original_bytes)
 
             inbox.remove(key)
 

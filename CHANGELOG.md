@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-03-27
+
+### Fixed
+
+- Fix fail2ban `datepattern` in all filter configs — use explicit `%%Y-%%m-%%d %%H:%%M:%%S` instead of `{^LN-BEG}` shorthand which fail2ban could not parse
+- Fix sa-training permission error when destination file already exists from a previous run — use `mailbox.MH.add()` to assign the next sequence number instead of reusing the inbox message key
+
 ## [0.7.1] - 2026-03-27
 
 ### Fixed
