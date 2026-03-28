@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-03-27
+
+### Fixed
+
+- Add `SPAM_TRAINING_ADDRESS` and `NOT_SPAM_TRAINING_ADDRESS` to `SETTINGS_EXPORT` so the documentation page can render without raising `UnexportedSettingError`
+
 ## [0.7.0] - 2026-03-27
 
 ### Added
