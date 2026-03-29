@@ -203,7 +203,13 @@ class DeliveryMethodAdmin(PolymorphicParentModelAdmin):
         "polymorphic_ctype",
         "created_at",
     )
-    list_filter = (PolymorphicChildModelFilter, "enabled")
+    list_filter = (
+        PolymorphicChildModelFilter,
+        "enabled",
+        "email_account",
+        "email_account__owner",
+        "email_account__server",
+    )
 
 
 class DeliveryMethodInline(admin.TabularInline):
