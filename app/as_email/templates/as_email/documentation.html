@@ -9,7 +9,7 @@
 {% block content %}
 <div class="content">
 
-  <h2 class="subtitle">Your Email Accounts</h2>
+  <h2 class="subtitle" id="email-accounts">Your Email Accounts</h2>
   <p>
     You may have one or more email accounts on this server, each with its own email
     address. All of your email accounts are listed on the
@@ -38,7 +38,7 @@
     </figcaption>
   </figure>
 
-  <h2 class="subtitle">Sending Email</h2>
+  <h2 class="subtitle" id="sending-email">Sending Email</h2>
   <p>
     Configure your email client with one set of SMTP credentials per email account.
     Use the email address and its account password (not your web login password).
@@ -53,7 +53,7 @@
     </tbody>
   </table>
 
-  <h2 class="subtitle">Local Delivery</h2>
+  <h2 class="subtitle" id="local-delivery">Local Delivery</h2>
   <p>
     Local delivery stores incoming mail in directories on this server. This is the
     simplest delivery method and requires no external accounts or services.
@@ -72,7 +72,7 @@
     </tbody>
   </table>
 
-  <h2 class="subtitle">IMAP Delivery</h2>
+  <h2 class="subtitle" id="imap-delivery">IMAP Delivery</h2>
   <p>
     IMAP delivery forwards incoming mail received by this service to a remote IMAP
     server of your choice — Gmail, Fastmail, or any hosted or self-hosted server.
@@ -208,7 +208,7 @@
     notification explaining which method was disabled and why.
   </p>
 
-  <h2 class="subtitle">Alias Delivery</h2>
+  <h2 class="subtitle" id="alias-delivery">Alias Delivery</h2>
   <p>
     Alias delivery lets you receive email sent to multiple addresses and have it all
     delivered to a single email account. For example, if you have a primary account
@@ -223,7 +223,7 @@
     managing separate inboxes for each one.
   </p>
 
-  <h2 class="subtitle">Spam Filtering</h2>
+  <h2 class="subtitle" id="spam-filtering">Spam Filtering</h2>
   <p>
     Each email account has a <strong>Scan incoming email for spam</strong> toggle
     (enabled by default). When on, incoming messages are run through SpamAssassin
@@ -268,7 +268,7 @@
   </p>
   {% endif %}
 
-  <h2 class="subtitle">Need Help?</h2>
+  <h2 class="subtitle" id="need-help">Need Help?</h2>
   <p>
     Contact the administrator at
     <a href="mailto:{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}">{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}</a>

@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.2] - 2026-03-27
+## [Unreleased]
+
+### Added
+
+- Add anchor IDs to all `<h2>` sections on the documentation page for deep-linking
+- Add `email_account`, `email_account__owner`, and `email_account__server` filters to the DeliveryMethod admin list
+- Add parametrized test to verify static pages (about, contact, docs) render without template errors
 
 ### Fixed
 
