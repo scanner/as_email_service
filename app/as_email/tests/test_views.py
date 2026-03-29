@@ -1912,3 +1912,44 @@ class TestDeliveryMethodEndpoints:
 
         imap_d.refresh_from_db()
         assert imap_d.enabled is expect_enabled
+
+
+########################################################################
+########################################################################
+#
+class TestStaticPages:
+    """Verify that static template pages render without errors."""
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "url_name",
+        [
+            pytest.param("as_email:about", id="about"),
+            pytest.param("as_email:contact", id="contact"),
+            pytest.param("as_email:documentation", id="documentation"),
+        ],
+    )
+    def test_static_page_renders_for_authenticated_user(
+        self,
+        api_client: type[APIClient],
+        user_factory: Callable,
+        faker: Faker,
+        url_name: str,
+    ) -> None:
+        """
+        GIVEN an authenticated user
+        WHEN  they request a static page
+        THEN  the page renders successfully (200) without template errors
+        """
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        user.save()
+
+        client = api_client()
+        resp = client.login(username=user.username, password=password)
+        assert resp
+
+        url = reverse(url_name)
+        resp = client.get(url)
+        assert resp.status_code == 200
