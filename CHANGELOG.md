@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-03-29
+
 ### Added
 
 - Add anchor IDs to all `<h2>` sections on the documentation page for deep-linking
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fix fail2ban `datepattern` in all filter configs — use explicit `%%Y-%%m-%%d %%H:%%M:%%S` instead of `{^LN-BEG}` shorthand which fail2ban could not parse
 - Fix sa-training permission error when destination file already exists from a previous run — use `mailbox.MH.add()` to assign the next sequence number instead of reusing the inbox message key
+- Fix periodic report tasks firing every minute during their scheduled hour instead of once — add `minute="0"` to crontab for `run_daily_reports`, `run_weekly_reports`, `decrement_num_bounces_counter`, and `provider_sync_all_server_domains`
 
 ## [0.7.1] - 2026-03-27
 
