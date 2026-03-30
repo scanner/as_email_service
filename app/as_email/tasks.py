@@ -548,7 +548,7 @@ def dispatch_spooled_outgoing_email():
 
 ####################################################################
 #
-@db_periodic_task(crontab(day="*", hour="1"))
+@db_periodic_task(crontab(minute="0", day="*", hour="1"))
 def decrement_num_bounces_counter():
     """
     EmailAccount.num_bounces decays over time, and this is the task that
@@ -1337,7 +1337,7 @@ def provider_sync_server_email_accounts(
 
 ####################################################################
 #
-@db_periodic_task(crontab(day="*", hour="3"))
+@db_periodic_task(crontab(minute="0", day="*", hour="3"))
 def provider_sync_all_server_domains() -> None:
     """
     Daily task to ensure every server's domain configuration is up to date
@@ -1559,7 +1559,7 @@ def _schedule_reports(schedule: ReportSchedule) -> None:
 
 ########################################################################
 #
-@db_periodic_task(crontab(day="*", hour="2"))
+@db_periodic_task(crontab(minute="0", day="*", hour="2"))
 def run_daily_reports() -> None:
     """
     Daily task (02:00 UTC) that schedules all daily reports with
@@ -1570,7 +1570,7 @@ def run_daily_reports() -> None:
 
 ########################################################################
 #
-@db_periodic_task(crontab(day_of_week="1", hour="6"))
+@db_periodic_task(crontab(minute="0", day_of_week="1", hour="6"))
 def run_weekly_reports() -> None:
     """
     Weekly task (Monday 06:00 UTC) that schedules all weekly reports
