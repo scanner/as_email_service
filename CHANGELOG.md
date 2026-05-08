@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-05-08
+
+### Fixed
+
+- Fix duplicate domain creation on forwardemail.net when the same provider is set as both send and receive provider during Server creation
+
 ## [0.7.3] - 2026-03-29
 
 ### Added
