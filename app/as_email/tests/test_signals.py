@@ -359,6 +359,35 @@ class TestProviderSignals:
 
     ####################################################################
     #
+    def test_handle_send_provider_same_as_receive_provider_enqueues_once(
+        self,
+        server_factory: Callable[..., Server],
+        provider_factory: Callable[..., Provider],
+        mocker: MockerFixture,
+        django_capture_on_commit_callbacks: Callable,
+    ) -> None:
+        """
+        GIVEN: a server with no send_provider and no receive_providers
+        WHEN:  send_provider and receive_providers are set to the same provider
+               in one transaction (as happens in Django admin on Server creation)
+        THEN:  HUEY.enqueue is called exactly once — the send-signal pipeline
+               covers both domain creation and account sync so the receive
+               signal must not enqueue a second domain-creation task
+        """
+        server = server_factory(send_provider=None, receive_providers=[])
+        new_provider = provider_factory()
+        mock_enqueue = mocker.patch("as_email.signals.HUEY.enqueue")
+
+        with django_capture_on_commit_callbacks(execute=True):
+            server.send_provider = new_provider
+            server.save()
+            server.receive_providers.add(new_provider)
+
+        # Only one pipeline enqueued — the send signal's (domain create + sync).
+        mock_enqueue.assert_called_once()
+
+    ####################################################################
+    #
     def test_handle_send_provider_changed_does_not_fire_on_unrelated_save(
         self,
         server_factory: Callable[..., Server],

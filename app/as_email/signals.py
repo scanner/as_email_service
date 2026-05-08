@@ -326,15 +326,39 @@ def handle_send_provider_changed(
     if not instance.send_provider_id:
         return
 
+    # Mark on the instance so handle_receive_providers_changed can detect
+    # that domain creation for this provider is already queued.  Both signals
+    # receive the same instance object within a single request cycle.
+    instance._send_provider_create_queued_id = instance.send_provider_id  # type: ignore[attr-defined]
+
     # Defer until the transaction commits so the huey worker sees the
     # committed Server row when it looks it up by pk.
     #
     assert instance.send_provider is not None
-    transaction.on_commit(
-        lambda pk=instance.pk, name=instance.send_provider.backend_name: (  # type: ignore[misc]
+    backend_name: str = instance.send_provider.backend_name
+    send_provider_id: int = instance.send_provider_id
+
+    def _enqueue_send(
+        pk: int = instance.pk,
+        name: str = backend_name,
+        provider_id: int = send_provider_id,
+    ) -> None:
+        # If this provider is also a receive_provider, include account sync
+        # in a chained pipeline so it runs after domain creation, rather than
+        # enqueueing a separate sync task that could race against domain creation
+        # (handle_receive_providers_changed skips its pipeline in this case).
+        if Server.objects.filter(
+            pk=pk, receive_providers__id=provider_id
+        ).exists():
+            HUEY.enqueue(
+                provider_create_update_server.s(pk, name).then(
+                    provider_sync_server_email_accounts, pk, name, True
+                )
+            )
+        else:
             provider_create_update_server(pk, name)
-        )
-    )
+
+    transaction.on_commit(_enqueue_send)
 
 
 @receiver(m2m_changed, sender=Server.receive_providers.through)
@@ -359,6 +383,17 @@ def handle_receive_providers_changed(
         case "post_add":
             for provider_pk in pk_set:
                 provider = Provider.objects.get(pk=provider_pk)
+
+                # When the same provider was just set as send_provider in this
+                # same save, handle_send_provider_changed already queued domain
+                # creation (and will include sync).  Enqueueing a second
+                # provider_create_update_server here would race against the
+                # first and create a duplicate domain on the remote provider.
+                if (
+                    getattr(instance, "_send_provider_create_queued_id", None)
+                    == provider_pk
+                ):
+                    continue
 
                 def _enqueue_add(
                     server_pk=instance.pk, backend=provider.backend_name
