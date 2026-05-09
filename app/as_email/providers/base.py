@@ -402,6 +402,20 @@ class ProviderBackend(ABC):
 
     ####################################################################
     #
+    def on_server_deleted(self, server: "Server") -> None:  # noqa: B027
+        """
+        Called when a Server is deleted from Django so the backend can
+        clean up any locally cached state (e.g. Redis domain ID entries).
+
+        The default implementation is a no-op.  Providers that maintain a
+        local cache of remote IDs should override this to evict stale entries.
+
+        Args:
+            server: The Server instance being deleted
+        """
+
+    ####################################################################
+    #
     @abstractmethod
     def create_email_account(self, email_account: "EmailAccount") -> None:
         """
