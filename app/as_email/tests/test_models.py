@@ -105,10 +105,8 @@ def test_email_account_set_check_password(
     When a password is set
     Then the password should be verifiable with check_password
     """
-    # Mock the task that updates the password file to avoid file I/O
-    mock_task = mocker.patch(
-        "as_email.signals.check_update_pwfile_for_emailaccount"
-    )
+    # Mock the sync task to avoid file I/O while testing password checking.
+    mock_task = mocker.patch("as_email.signals.request_pwfile_sync")
 
     ea = email_account_factory()
     password = faker.pystr(min_chars=8, max_chars=32)
@@ -121,7 +119,7 @@ def test_email_account_set_check_password(
         ea.set_password(password)
     assert ea.check_password(password)
 
-    mock_task.assert_called_once_with(ea.pk)
+    mock_task.assert_called_once()
 
 
 ####################################################################

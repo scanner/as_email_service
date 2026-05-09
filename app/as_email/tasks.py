@@ -24,7 +24,7 @@ import requests.exceptions
 from django.conf import settings
 from django.core.mail import send_mail
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task, db_task, lock_task, task
+from huey.contrib.djhuey import db_periodic_task, db_task
 
 # Project imports
 #
@@ -893,80 +893,53 @@ def process_bounce(email_account_pk: int, event: BounceEvent) -> None:
     )
 
 
-####################################################################
-#
-@db_task(retries=10, retry_delay=2)
-@lock_task("pwfile")
-def check_update_pwfile_for_emailaccount(ea_pk: int) -> None:
-    """
-    We are doing a manual retry because normal retries still log exceptions
-    and there seem to be a problem with huey and the version of redis we are
-    using getting a ZADD error like we are using a priority queue or
-    something.. so just do our own retries on failures to look up the email
-    account.
-
-    NOTE: If this EmailAccount has no LocalDelivery (e.g. it is alias-only),
-          the password file will not be updated because there is no local
-          maildir to record.
-    """
-    # The password file is at the root of the maildir directory
-    #
-    write = False
-    ea = EmailAccount.objects.get(pk=ea_pk)
-
-    # NOTE: The path to the mail dir is relative to the directory that the
-    #       password file is in. In settings the password file is always in
-    #       MAIL_DIRS directory.
-    #
-    local_delivery = LocalDelivery.objects.filter(email_account=ea).first()
-    if not local_delivery or not local_delivery.maildir_path:
-        logger.warning(
-            "No LocalDelivery with maildir_path for %s; skipping password file update",
-            ea.email_address,
-        )
-        return
-    ea_mail_dir = Path(local_delivery.maildir_path).relative_to(
-        settings.EXT_PW_FILE.parent
-    )
-    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    if ea.email_address not in accounts:
-        accounts[ea.email_address] = PWUser(
-            ea.email_address, ea_mail_dir, ea.password
-        )
-        write = True
-        logger.info("Adding '%s' to external password file", ea.email_address)
-    else:
-        account = accounts[ea.email_address]
-        if account.maildir != ea_mail_dir:
-            account.maildir = ea_mail_dir
-            logger.info(
-                "Updating '%s''s mail dir to: '%s' in external password file",
-                ea.email_address,
-                ea_mail_dir,
-            )
-            write = True
-        if account.pw_hash != ea.password:
-            account.pw_hash = ea.password
-            logger.info(
-                "Updating '%s''s password hash external password file",
-                ea.email_address,
-            )
-            write = True
-
-    if write:
-        write_emailaccount_pwfile(settings.EXT_PW_FILE, accounts)
+PWFILE_SYNC_LOCK_KEY = "as_email:pwfile_sync_lock"
+# Lock TTL covers the full sync; auto-releases if a worker crashes mid-task.
+PWFILE_SYNC_LOCK_TIMEOUT = 30
 
 
 ####################################################################
 #
-@task(retries=5, retry_delay=5)
-@lock_task("pwfile")
-def delete_emailaccount_from_pwfile(email_address: str):
-    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
-    if email_address in accounts:
-        logger.info("Deleting '%s' from external password file", email_address)
-        del accounts[email_address]
-        write_emailaccount_pwfile(settings.EXT_PW_FILE, accounts)
+def request_pwfile_sync() -> None:
+    """Enqueue a sync_pwfile task."""
+    sync_pwfile()
+
+
+####################################################################
+#
+@db_task(retries=3, retry_delay=5)
+def sync_pwfile() -> None:
+    """
+    Sync the pwfile from current DB state.
+
+    Holds a Redis distributed lock for the duration of the comparison and
+    write so that concurrent tasks serialize naturally. The first task does
+    the real work; subsequent tasks acquire the lock in turn, find the file
+    already up to date, and exit immediately.
+    """
+    r = redis_client()
+    with r.lock(PWFILE_SYNC_LOCK_KEY, timeout=PWFILE_SYNC_LOCK_TIMEOUT):
+        expected: dict[str, PWUser] = {}
+        for ld in (
+            LocalDelivery.objects.select_related("email_account")
+            .filter(maildir_path__isnull=False)
+            .exclude(maildir_path="")
+        ):
+            ea = ld.email_account
+            assert ld.maildir_path  # guaranteed by filter/exclude above
+            ea_mail_dir = Path(ld.maildir_path).relative_to(
+                settings.EXT_PW_FILE.parent
+            )
+            expected[ea.email_address] = PWUser(
+                ea.email_address, ea_mail_dir, ea.password
+            )
+
+        current = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+        if expected == current:
+            return
+
+        write_emailaccount_pwfile(settings.EXT_PW_FILE, expected)
+        logger.info("Synced pwfile: %d accounts", len(expected))
 
 
 ########################################################################

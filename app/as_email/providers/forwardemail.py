@@ -1338,7 +1338,20 @@ class ForwardEmailBackend(ProviderBackend):
             domain_id = self.cache.get_domain_id(server.domain_name)
 
             # Domain exists -- fetch current settings and apply any updates
-            r = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_id}")
+            try:
+                r = self.api.req(HTTPMethod.GET, f"v1/domains/{domain_id}")
+            except HTTPError as e:
+                if e.code != 404:
+                    raise
+                # Stale cache entry — the domain was deleted on forwardemail.net
+                # while our Redis still held its ID.  Evict and fall through to create.
+                logger.warning(
+                    "Cached domain ID '%s' for '%s' returned 404; evicting stale cache entry",
+                    domain_id,
+                    server.domain_name,
+                )
+                self.cache.delete_domain(server.domain_name)
+                raise KeyError(server.domain_name) from e
             domain_info = r.json()
 
             to_update = {

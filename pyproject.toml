@@ -58,7 +58,7 @@ dev = [
     # Testing
     "coverage",
     "dirty-equals",
-    "fakeredis",
+    "fakeredis[lua]",
     "ipython",
     "pytest",
     "pytest-asyncio",

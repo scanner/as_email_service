@@ -277,6 +277,22 @@ class PWUser:
 
     ##################################################################
     #
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PWUser):
+            return NotImplemented
+        return (
+            self.username == other.username
+            and self.maildir == other.maildir
+            and self.pw_hash == other.pw_hash
+        )
+
+    ##################################################################
+    #
+    def __hash__(self) -> int:
+        return hash((self.username, self.maildir, self.pw_hash))
+
+    ##################################################################
+    #
     def __str__(self):
         return self.username
 

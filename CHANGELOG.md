@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-05-08
+
+### Fixed
+
+- Eliminate thundering-herd lock contention on the pwfile: replace per-account `check_update_pwfile_for_emailaccount` / `delete_emailaccount_from_pwfile` tasks with a single `sync_pwfile` task that holds a Redis distributed lock, reads all accounts from the DB, and writes the file only when content has changed
+
 ## [0.7.5] - 2026-05-08
 
 ### Fixed

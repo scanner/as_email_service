@@ -47,7 +47,6 @@ from ..tasks import (
     ALIAS_SYNC_MAX_PER_RUN,
     ALIAS_SYNC_STALE_THRESHOLD_SECONDS,
     _alias_sync_last_ok,
-    check_update_pwfile_for_emailaccount,
     decrement_num_bounces_counter,
     dispatch_incoming_email,
     dispatch_spooled_outgoing_email,
@@ -60,6 +59,7 @@ from ..tasks import (
     retry_failed_incoming_email,
     run_report,
     scan_message_for_spam,
+    sync_pwfile,
 )
 from ..utils import (
     read_emailaccount_pwfile,
@@ -831,7 +831,7 @@ def test_delete_email_account_removes_pwfile_entry(
     """
     Given an email account exists in pwfile
     When the account is deleted
-    Then its pwfile entry is removed
+    Then its pwfile entry is removed via the signal-triggered sync task
     """
     # Signal handlers defer huey tasks via transaction.on_commit(), so the
     # test transaction (which never commits) must be flushed explicitly.
@@ -845,8 +845,8 @@ def test_delete_email_account_removes_pwfile_entry(
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     assert ea.email_address in accounts
 
-    # And now if we delete the email address, it should be deleted from the
-    # external pw file via the signal-triggered task.
+    # Delete the account; the on_commit sync task re-reads the DB (account
+    # no longer there) and rewrites the pwfile.
     #
     with django_capture_on_commit_callbacks(execute=True):
         ea.delete()
@@ -856,7 +856,7 @@ def test_delete_email_account_removes_pwfile_entry(
 
 ####################################################################
 #
-def test_check_update_pwfile_for_emailaccount_creates_new_entry(
+def test_sync_pwfile_creates_new_entry(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
@@ -865,7 +865,7 @@ def test_check_update_pwfile_for_emailaccount_creates_new_entry(
     """
     Given a new email account with password
     When the account is saved
-    Then a new entry is added to the pwfile via signal
+    Then a new entry is added to the pwfile via the signal-triggered sync task
     """
     # Signal handlers defer huey tasks via transaction.on_commit(), so the
     # test transaction (which never commits) must be flushed explicitly.
@@ -891,7 +891,7 @@ def test_check_update_pwfile_for_emailaccount_creates_new_entry(
 
 ####################################################################
 #
-def test_check_update_pwfile_for_emailaccount_updates_password(
+def test_sync_pwfile_updates_password(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
@@ -900,7 +900,7 @@ def test_check_update_pwfile_for_emailaccount_updates_password(
     """
     Given an email account with password in pwfile
     When the password is changed and saved
-    Then the pwfile entry is updated with new password hash via signal
+    Then the pwfile entry is updated with new password hash via the signal-triggered sync task
     """
     # Signal handlers defer huey tasks via transaction.on_commit(), so the
     # test transaction (which never commits) must be flushed explicitly.
@@ -927,7 +927,7 @@ def test_check_update_pwfile_for_emailaccount_updates_password(
 
 ####################################################################
 #
-def test_check_update_pwfile_for_emailaccount_updates_maildir(
+def test_sync_pwfile_updates_maildir(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
@@ -935,33 +935,27 @@ def test_check_update_pwfile_for_emailaccount_updates_maildir(
 ) -> None:
     """
     Given an email account with password in pwfile
-    When the maildir_path on LocalDelivery is changed and task is invoked
-    Then the pwfile entry is updated with new maildir path
+    When the maildir_path on LocalDelivery is changed and saved
+    Then the pwfile entry is updated with the new maildir path via signal
     """
-    # Signal handlers defer huey tasks via transaction.on_commit(), so the
-    # test transaction (which never commits) must be flushed explicitly.
-    #
     with django_capture_on_commit_callbacks(execute=True):
         ea = email_account_factory(password=faker.password())
         ea.save()
 
     ld = LocalDelivery.objects.get(email_account=ea)
 
-    # Verify initial state
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     original_mail_dir = accounts[ea.email_address].maildir
 
-    # Change the maildir_path on LocalDelivery (simulate moving the mailbox)
+    # Change the maildir_path on LocalDelivery (simulate moving the mailbox).
+    # The post_save signal on LocalDelivery queues sync_pwfile via on_commit.
+    #
     new_mail_dir = settings.MAIL_DIRS / "new_location" / ea.email_address
     new_mail_dir.mkdir(parents=True, exist_ok=True)
     ld.maildir_path = str(new_mail_dir)
-    ld.save()
+    with django_capture_on_commit_callbacks(execute=True):
+        ld.save()
 
-    # Call task directly (signal only fires on password change)
-    res = check_update_pwfile_for_emailaccount(ea.pk)
-    res()
-
-    # Verify mail_dir was updated in pwfile
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     expected_mail_dir = Path(new_mail_dir).relative_to(
         settings.EXT_PW_FILE.parent
@@ -972,34 +966,28 @@ def test_check_update_pwfile_for_emailaccount_updates_maildir(
 
 ####################################################################
 #
-def test_check_update_pwfile_for_emailaccount_no_change(
+def test_sync_pwfile_no_write_when_unchanged(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
+    faker: Faker,
     mocker: MockerFixture,
     django_capture_on_commit_callbacks: Callable,
 ) -> None:
     """
-    Given an email account with no changes
-    When check_update_pwfile_for_emailaccount is invoked
+    Given the pwfile already reflects current DB state
+    When sync_pwfile is invoked
     Then the pwfile is not rewritten
     """
-    # Signal handlers defer huey tasks via transaction.on_commit(), so the
-    # test transaction (which never commits) must be flushed explicitly.
-    # The factory's save populates the pwfile; without flushing, the direct
-    # task call below would see the EA as "new" and write it.
+    # Populate the pwfile via the password-change signal.
     #
     with django_capture_on_commit_callbacks(execute=True):
-        ea = email_account_factory()
+        ea = email_account_factory(password=faker.password())
         ea.save()
 
-    # Mock write_emailaccount_pwfile to track if it's called
     mock_write = mocker.patch("as_email.tasks.write_emailaccount_pwfile")
 
-    # Save again without changes
-    res = check_update_pwfile_for_emailaccount(ea.pk)
-    res()
+    sync_pwfile()
 
-    # Verify pwfile was not rewritten
     mock_write.assert_not_called()
 
 
