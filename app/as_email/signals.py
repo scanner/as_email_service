@@ -18,6 +18,7 @@ from django.db.models.signals import (
     m2m_changed,
     post_delete,
     post_save,
+    pre_delete,
     pre_save,
 )
 from django.dispatch import receiver
@@ -421,3 +422,26 @@ def handle_receive_providers_changed(
                         )
                     )
                 )
+
+
+####################################################################
+#
+@receiver(pre_delete, sender=Server)
+def clear_provider_cache_on_server_delete(
+    sender: type[Server], instance: Server, **kwargs
+) -> None:
+    """
+    When a Server is deleted, evict its domain and all alias cache entries
+    from every associated provider backend.
+
+    Uses pre_delete so that instance.receive_providers and
+    instance.emailaccount_set are still accessible before cascade deletion
+    removes the related rows.
+    """
+    providers = set()
+    if instance.send_provider:
+        providers.add(instance.send_provider)
+    providers.update(instance.receive_providers.all())
+
+    for provider in providers:
+        provider.backend.on_server_deleted(instance)

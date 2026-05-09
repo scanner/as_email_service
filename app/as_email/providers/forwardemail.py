@@ -1436,6 +1436,27 @@ class ForwardEmailBackend(ProviderBackend):
 
     ####################################################################
     #
+    def on_server_deleted(self, server: "Server") -> None:
+        """
+        Evict all Redis cache entries for a server and its email accounts.
+
+        Called from the Server pre_delete signal so that stale IDs are
+        gone before any re-creation attempt.  The domain entry and every
+        alias entry for each EmailAccount on the server are removed.
+
+        Args:
+            server: The Server instance being deleted
+        """
+        self.cache.delete_domain(server.domain_name)
+        for ea in server.email_accounts.all():
+            self.cache.delete_alias(ea.email_address)
+        logger.debug(
+            "Evicted forwardemail.net cache for deleted server '%s'",
+            server.domain_name,
+        )
+
+    ####################################################################
+    #
     def get_bounce_webhook_url(self, server: "Server") -> str:
         """
         Construct the domain-level bounce webhook URL for a server.

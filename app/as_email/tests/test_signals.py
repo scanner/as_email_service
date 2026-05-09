@@ -388,6 +388,29 @@ class TestProviderSignals:
 
     ####################################################################
     #
+    def test_clear_provider_cache_on_server_delete_calls_on_server_deleted(
+        self,
+        server_factory: Callable[..., Server],
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        GIVEN: a server with a send_provider that is also a receive_provider
+        WHEN:  the server is deleted
+        THEN:  on_server_deleted is called on the provider backend exactly once
+               (send and receive share the same provider, so deduplication applies)
+        """
+        server = server_factory()
+        assert server.send_provider is not None
+        mock_hook = mocker.patch.object(
+            server.send_provider.backend, "on_server_deleted"
+        )
+
+        server.delete()
+
+        mock_hook.assert_called_once_with(server)
+
+    ####################################################################
+    #
     def test_handle_send_provider_changed_does_not_fire_on_unrelated_save(
         self,
         server_factory: Callable[..., Server],

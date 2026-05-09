@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-05-08
+
+### Fixed
+
+- Fix stale Redis cache causing 404 errors when a Server is recreated after being deleted from forwardemail.net — evict domain and alias cache entries when a Server is deleted from Django
+
 ## [0.7.4] - 2026-05-08
 
 ### Fixed

@@ -1092,6 +1092,41 @@ class TestForwardEmailAPIMethods:
 
     ####################################################################
     #
+    def test_on_server_deleted_clears_domain_and_alias_cache(
+        self,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        use_fakeredis: redis.StrictRedis,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a server with two email accounts whose domain and alias IDs
+               are all present in the Redis cache
+        WHEN:  on_server_deleted() is called
+        THEN:  the domain cache entry and both alias cache entries are evicted
+               and no API calls are made
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        ea1 = email_account_factory(server=server)
+        ea2 = email_account_factory(server=server)
+
+        domain_key = f"forwardemail:domain:{server.domain_name}"
+        alias_key1 = f"forwardemail:alias:{ea1.email_address}"
+        alias_key2 = f"forwardemail:alias:{ea2.email_address}"
+
+        use_fakeredis.set(domain_key, faker.uuid4())
+        use_fakeredis.set(alias_key1, faker.uuid4())
+        use_fakeredis.set(alias_key2, faker.uuid4())
+
+        backend.on_server_deleted(server)
+
+        assert use_fakeredis.get(domain_key) is None
+        assert use_fakeredis.get(alias_key1) is None
+        assert use_fakeredis.get(alias_key2) is None
+
+    ####################################################################
+    #
     def test_create_email_account(
         self,
         email_account_factory: Callable[..., EmailAccount],
