@@ -34,12 +34,11 @@ from .models import (
     Server,
 )
 from .tasks import (
-    check_update_pwfile_for_emailaccount,
-    delete_emailaccount_from_pwfile,
     provider_create_or_update_email_account,
     provider_create_update_server,
     provider_delete_email_account,
     provider_sync_server_email_accounts,
+    request_pwfile_sync,
 )
 
 User = get_user_model()
@@ -77,6 +76,26 @@ def create_local_delivery_mailbox(
 
 ####################################################################
 #
+@receiver(post_save, sender=LocalDelivery)
+def sync_pwfile_on_local_delivery_save(
+    sender: type[LocalDelivery],
+    instance: LocalDelivery,
+    created: bool,
+    **kwargs,
+) -> None:
+    """
+    When a LocalDelivery's maildir_path is updated, queue a pwfile sync
+    so the IMAP service sees the new path promptly.
+
+    Creation is excluded: the associated EmailAccount's password signal
+    handles the initial pwfile entry once a real password is set.
+    """
+    if not created and instance.maildir_path:
+        transaction.on_commit(request_pwfile_sync)
+
+
+####################################################################
+#
 @receiver(post_save, sender=EmailAccount)
 def fire_off_async_task_update_emailaccount_pwfile(
     sender: type[EmailAccount], instance: EmailAccount, created: bool, **kwargs
@@ -99,11 +118,7 @@ def fire_off_async_task_update_emailaccount_pwfile(
             # Defer until the transaction commits so the huey worker can
             # see the committed row when it looks up this EmailAccount by pk.
             #
-            transaction.on_commit(
-                lambda pk=instance.pk: check_update_pwfile_for_emailaccount(  # type: ignore[misc]
-                    pk
-                )
-            )
+            transaction.on_commit(request_pwfile_sync)
 
 
 ####################################################################
@@ -144,14 +159,10 @@ def fire_off_async_task_delete_emailaccount_pwfile(
     When an email account is deleted from the system make sure its entry in
     the generated pwfile is also removed.
     """
-    # Defer until the delete transaction commits so the pwfile update
-    # reflects the final committed state of the database.
+    # Defer until the delete transaction commits so the pwfile reflects
+    # the final committed state of the database.
     #
-    transaction.on_commit(
-        lambda addr=instance.email_address: delete_emailaccount_from_pwfile(  # type: ignore[misc]
-            addr
-        )
-    )
+    transaction.on_commit(request_pwfile_sync)
 
 
 ####################################################################
