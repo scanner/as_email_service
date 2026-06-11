@@ -62,9 +62,10 @@ export default {
     // after so the parent can refresh data on other affected accounts.
     //
     const emitCounts = () => {
-      const total = deliveryMethods.value.length;
-      const enabled = deliveryMethods.value.filter((dm) => dm.enabled).length;
-      ctx.emit("countsUpdated", { total, enabled });
+      ctx.emit("countsUpdated", {
+        total: totalCount.value,
+        enabled: enabledCount.value,
+      });
     };
 
     ////////////////////////////////////////////////////////////////////////
@@ -101,6 +102,22 @@ export default {
         loading.value = false;
       }
     };
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Count of currently-enabled delivery methods. Passed to each
+    // DeliveryMethodForm so it can warn before disabling the last one.
+    //
+    const enabledCount = computed(
+      () => deliveryMethods.value.filter((dm) => dm.enabled).length,
+    );
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Total delivery method count (enabled or not). Passed to each
+    // DeliveryMethodForm so it can warn before deleting the last one.
+    //
+    const totalCount = computed(() => deliveryMethods.value.length);
 
     ////////////////////////////////////////////////////////////////////////
     //
@@ -194,6 +211,8 @@ export default {
       error,
       addingType,
       showAddMenu,
+      enabledCount,
+      totalCount,
       hasLocalDelivery,
       DELIVERY_TYPE_LABELS,
       DELIVERY_TYPE_DEFAULTS,
