@@ -15,11 +15,11 @@
 // AliasToDelivery.
 //
 import { ref, computed, onMounted } from "vue";
-import DeliveryMethodForm from "./delivery_method_form.js";
+import DeliveryMethodForm from "as-email/delivery-method-form";
 import {
   DELIVERY_TYPE_LABELS,
   DELIVERY_TYPE_DEFAULTS,
-} from "./delivery_method_registry.js";
+} from "as-email/delivery-method-registry";
 
 ////////////////////////////////////////////////////////////////////////////
 //

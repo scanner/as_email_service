@@ -14,6 +14,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 #
 import json
 from pathlib import Path
+from typing import Any
 
 # 3rd party imports
 #
@@ -285,6 +286,26 @@ LOCALE_PATHS = [str(BASE_DIR / "locale")]
 STATIC_ROOT = str(BASE_DIR / "staticfiles")
 STATIC_URL = "static/"
 STATICFILES_DIRS = [str(BASE_DIR / "static")]
+# Use ManifestStaticFilesStorage in production to append content hashes to
+# filenames, busting the browser cache whenever a file changes. collectstatic
+# must be run first to build staticfiles.json; this happens automatically
+# during `docker build` for the production image.
+#
+# In DEBUG mode the dev workflow does not include collectstatic, so we fall
+# back to plain StaticFilesStorage to avoid a missing-manifest error.
+#
+# We use RelaxedManifestStaticFilesStorage (manifest_strict=False) rather
+# than the stock class. See config/storage.py for the full rationale.
+STORAGES: dict[str, dict[str, Any]] = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": (
+        {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
+        if DEBUG
+        else {
+            "BACKEND": "config.storage.RelaxedManifestStaticFilesStorage",
+        }
+    ),
+}
 STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.FileSystemFinder",
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",

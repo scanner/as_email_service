@@ -6,7 +6,15 @@
    {
      "imports": {
        "vue": "{% if settings.DEBUG %}{% static 'js/vue.esm-browser.js' %}{% else %}{% static 'js/vue.esm-browser.prod.js' %}{% endif %}",
-       "vue-select": "{% static 'js/vue-select.es.js' %}"
+       "vue-select": "{% static 'js/vue-select.es.js' %}",
+       "as-email/email-account": "{% static 'as_email/js/email_account.js' %}",
+       "as-email/message-filter-rules": "{% static 'as_email/js/MessageFilterRules.js' %}",
+       "as-email/delivery-method-list": "{% static 'as_email/js/delivery_method_list.js' %}",
+       "as-email/delivery-method-form": "{% static 'as_email/js/delivery_method_form.js' %}",
+       "as-email/delivery-method-registry": "{% static 'as_email/js/delivery_method_registry.js' %}",
+       "as-email/local-delivery-form": "{% static 'as_email/js/local_delivery_form.js' %}",
+       "as-email/alias-to-delivery-form": "{% static 'as_email/js/alias_to_delivery_form.js' %}",
+       "as-email/imap-delivery-form": "{% static 'as_email/js/imap_delivery_form.js' %}"
      }
    }
   </script>

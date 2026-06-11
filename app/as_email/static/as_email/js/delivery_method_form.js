@@ -10,7 +10,7 @@ import {
   DELIVERY_TYPE_COMPONENTS,
   DELIVERY_TYPE_ICONS,
   DELIVERY_TYPE_LABELS,
-} from "./delivery_method_registry.js";
+} from "as-email/delivery-method-registry";
 
 ////////////////////////////////////////////////////////////////////////////
 //

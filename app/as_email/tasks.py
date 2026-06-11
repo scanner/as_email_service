@@ -671,7 +671,18 @@ def dispatch_incoming_email(email_account_pk: int, email_fname: str) -> None:
     failed_pks: list[int] = []
     visited: set[int] = set()
 
-    for method in email_account.delivery_methods.filter(enabled=True):
+    methods = email_account.delivery_methods.filter(enabled=True)
+    if not methods:
+        logger.warning(
+            "Email account %s(%d) had no delivery methods. Email message %s will not be delivered.",
+            email_account.email_address,
+            email_account_pk,
+            email_msg.get("message-id", ""),
+        )
+        email_file.unlink(missing_ok=True)
+        return
+
+    for method in methods:
         try:
             method.deliver(msg, visited)
         except Exception as exc:

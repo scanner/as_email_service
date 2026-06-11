@@ -8,9 +8,9 @@
 //   2. Add an entry to each of the four exports below
 //   3. Nothing else needs to change
 //
-import LocalDeliveryForm from "./local_delivery_form.js";
-import AliasToDeliveryForm from "./alias_to_delivery_form.js";
-import ImapDeliveryForm from "./imap_delivery_form.js";
+import LocalDeliveryForm from "as-email/local-delivery-form";
+import AliasToDeliveryForm from "as-email/alias-to-delivery-form";
+import ImapDeliveryForm from "as-email/imap-delivery-form";
 
 ////////////////////////////////////////////////////////////////////////////
 //

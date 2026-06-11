@@ -1,8 +1,8 @@
 // Vue Component for an EmailAccount
 //
 import { ref } from "vue";
-import MessageFilterRules from "./MessageFilterRules.js";
-import DeliveryMethodList from "./delivery_method_list.js";
+import MessageFilterRules from "as-email/message-filter-rules";
+import DeliveryMethodList from "as-email/delivery-method-list";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
