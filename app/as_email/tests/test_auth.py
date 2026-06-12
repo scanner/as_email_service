@@ -66,6 +66,28 @@ class TestLogout:
 
     ####################################################################
     #
+    def test_logout_page_renders(
+        self,
+        client: Client,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: an authenticated user
+        WHEN:  GET /accounts/logout/
+        THEN:  the logout confirmation template renders without error
+        """
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        user.save()
+        client.login(username=user.username, password=password)
+
+        resp = client.get(reverse("account_logout"))
+        assert resp.status_code == 200
+        assert b"Sign Out" in resp.content
+
+    ####################################################################
+    #
     def test_logout_clears_session(
         self,
         client: Client,
@@ -95,6 +117,28 @@ class TestLogout:
 #
 class TestPasswordChange:
     """Tests for the allauth password change view."""
+
+    ####################################################################
+    #
+    def test_password_change_page_renders(
+        self,
+        client: Client,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: an authenticated user
+        WHEN:  GET /accounts/password/change/
+        THEN:  the password change template renders without error
+        """
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        user.save()
+        client.login(username=user.username, password=password)
+
+        resp = client.get(reverse("account_change_password"))
+        assert resp.status_code == 200
+        assert b"Change Password" in resp.content
 
     ####################################################################
     #
@@ -134,6 +178,37 @@ class TestPasswordChange:
 #
 class TestPasswordReset:
     """Tests for the allauth password reset email flow."""
+
+    ####################################################################
+    #
+    def test_password_reset_page_renders(self, client: Client) -> None:
+        """
+        GIVEN: any visitor
+        WHEN:  GET /accounts/password/reset/
+        THEN:  the password reset template renders without error
+        """
+        resp = client.get(reverse("account_reset_password"))
+        assert resp.status_code == 200
+        assert b"Password Reset" in resp.content
+
+    ####################################################################
+    #
+    def test_password_reset_bad_key_renders(self, client: Client) -> None:
+        """
+        GIVEN: a malformed or expired reset key in the URL
+        WHEN:  GET /accounts/password/reset/key/<junk>/
+        THEN:  the token_fail branch of the template renders without error
+        """
+        resp = client.get(
+            reverse(
+                "account_reset_password_from_key",
+                kwargs={"uidb36": "xx", "key": "bad-key"},
+            )
+        )
+        assert resp.status_code == 200
+        assert (
+            b"invalid" in resp.content.lower() or b"Bad Token" in resp.content
+        )
 
     ####################################################################
     #
