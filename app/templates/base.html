@@ -77,7 +77,7 @@
 		</div>
 	      {% endif %}
             <div class="navbar-item">
-		<a class="navbar-item" href="{% url 'password_change' %}">
+		<a class="navbar-item" href="{% url 'account_change_password' %}">
 		  <span class="tag is-link is-large">Change Password</span>
 		</a>
 	    </div>
@@ -86,7 +86,7 @@
             <div class="navbar-item">
               <div class="buttons">
                 {% if user.is_authenticated %}
-                  <form action="{% url 'logout' %}?next={{ request.path }}" method="post">
+                  <form action="{% url 'account_logout' %}" method="post">
                     {% csrf_token %}
                     <button class="button is-warning">
                       <span class="icon is-small">
@@ -96,7 +96,7 @@
                     </button>
                   </form>
                 {% else %}
-                  {% url 'login' as login_url %}
+                  {% url 'account_login' as login_url %}
                   {% if request.path != login_url  %}
                     <a class="button is-light" href="{{ login_url }}?next={{ request.path }}">
                       <span class="icon is-small">

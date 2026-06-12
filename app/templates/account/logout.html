@@ -1,0 +1,16 @@
+{% extends "registration/base.html" %}
+{% load i18n %}
+
+{% block content_title %}<h1 class="title">{% trans "Sign Out" %}</h1>{% endblock %}
+{% block content %}
+  <p class="content">{% trans "Are you sure you want to sign out?" %}</p>
+  <form method="post" action="{% url 'account_logout' %}">
+    {% csrf_token %}
+    <div class="field">
+      <div class="control">
+        <button type="submit" class="button is-warning">{% trans "Sign Out" %}</button>
+        <a class="button is-light" href="/">{% trans "Cancel" %}</a>
+      </div>
+    </div>
+  </form>
+{% endblock %}

@@ -205,7 +205,7 @@ def test_index(
     client = api_client()
     resp = client.get(url)
     assert resp.status_code == 302
-    assert reverse("login") == urlparse(resp["Location"]).path
+    assert reverse("account_login") == urlparse(resp["Location"]).path
 
     resp = client.login(username=user.username, password=password)
     assert resp

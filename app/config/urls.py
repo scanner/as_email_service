@@ -10,10 +10,10 @@ urlpatterns = [
     path("admin/", admin.site.urls, name="admin"),
     path(
         "accounts/",
-        RedirectView.as_view(pattern_name="login", permanent=True),
+        RedirectView.as_view(pattern_name="account_login", permanent=True),
         name="accounts",
     ),
-    path("accounts/", include("django.contrib.auth.urls")),
+    path("accounts/", include("allauth.account.urls")),
     path(
         "",
         RedirectView.as_view(pattern_name="as_email:index", permanent=True),

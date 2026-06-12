@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Replace `django.contrib.auth.urls` with `django-allauth` for session-based authentication; covers login/logout, password change, and password reset with crispy-bulma styling
+
 ## [0.7.7] - 2026-06-11
 
 ### Added
