@@ -10,7 +10,7 @@ import {
   DELIVERY_TYPE_COMPONENTS,
   DELIVERY_TYPE_ICONS,
   DELIVERY_TYPE_LABELS,
-} from "./delivery_method_registry.js";
+} from "as-email/delivery-method-registry";
 
 ////////////////////////////////////////////////////////////////////////////
 //
@@ -34,6 +34,12 @@ export default {
     deliveryMethodsUrl: { type: String, default: "" },
     // List of valid email addresses passed down to AliasToDeliveryForm.
     validEmailAddresses: { type: Array, default: () => [] },
+    // Number of currently-enabled delivery methods on this account (from the
+    // parent list). Used to warn before disabling the last enabled method.
+    enabledCount: { type: Number, default: 0 },
+    // Total number of delivery methods on this account (enabled or not).
+    // Used to warn before deleting the last delivery method.
+    totalCount: { type: Number, default: 0 },
   },
 
   emits: ["saved", "deleted", "created", "cancel"],
@@ -246,10 +252,21 @@ export default {
     //
     const toggleEnabled = async () => {
       if (saving.value || deleting.value) return;
+      const newEnabled = !formData.value.enabled;
+      if (
+        !newEnabled &&
+        props.enabledCount === 1 &&
+        !confirm(
+          "If you disable this delivery method there will be no enabled " +
+            "delivery methods for this email account and all emails sent to " +
+            "it will be dropped and cannot be recovered. Are you sure?",
+        )
+      ) {
+        return;
+      }
       saving.value = true;
       errors.value = {};
       try {
-        const newEnabled = !formData.value.enabled;
         const res = await fetch(props.deliveryMethod.url, {
           method: "PATCH",
           credentials: "same-origin",
@@ -280,7 +297,13 @@ export default {
     //
     const destroy = async () => {
       const label = deliveryTypeLabel.value;
-      if (!confirm(`Delete this ${label} delivery method?`)) return;
+      const confirmMsg =
+        props.totalCount === 1
+          ? `This is the only delivery method for this email account. ` +
+            `If you delete it, all emails sent to this account will be ` +
+            `dropped and cannot be recovered. Are you sure?`
+          : `Delete this ${label} delivery method?`;
+      if (!confirm(confirmMsg)) return;
 
       deleting.value = true;
       errors.value = {};

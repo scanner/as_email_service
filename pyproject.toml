@@ -1,8 +1,8 @@
 [project]
 name = "as-email-service"
-version = "0.7.5"
+version = "0.7.7"
 description = "Apricot Systematic Email Service"
-requires-python = ">=3.13.12"
+requires-python = ">=3.13.13"
 dependencies = [
     "aiofiles",
     "aiologger",
@@ -11,7 +11,7 @@ dependencies = [
     "crispy-bulma",
     "cryptography==42.0.8",
     "csscompressor",
-    "django",
+    "django<6.0.0",
     "django-anymail",
     "django-compressor",
     "django-crispy-forms",

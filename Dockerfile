@@ -1,5 +1,5 @@
 # PYTHON_VERSION is set via --build-arg by `make build`, which reads .python-version
-ARG PYTHON_VERSION=3.13.12
+ARG PYTHON_VERSION=3.13.13
 
 #########################
 #

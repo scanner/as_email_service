@@ -1,7 +1,7 @@
 // AS Email App Vue/JS file
 //
 import { createApp, reactive } from "vue";
-import EmailAccount from "./email_account.js";
+import EmailAccount from "as-email/email-account";
 
 // Get the data that the as_email service filled the document with that
 // contains information about all the EmailAccount's.

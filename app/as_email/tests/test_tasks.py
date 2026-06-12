@@ -228,6 +228,36 @@ def test_dispatch_incoming_email_auth_failure_auto_disables(
 
 ####################################################################
 #
+def test_dispatch_incoming_email_no_delivery_methods(
+    email_account_factory: Callable[..., EmailAccount],
+    email_factory: Callable[..., EmailMessage],
+    tmp_path: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    """
+    GIVEN an email account with no enabled delivery methods
+    WHEN dispatch_incoming_email task runs
+    THEN a warning is logged and the spool file is deleted
+    """
+    ea = email_account_factory()
+    ea.scan_incoming_spam = False
+    ea.save()
+    ea.delivery_methods.update(enabled=False)
+    msg = email_factory(to=ea.email_address)
+    now = datetime.now()
+    message_id = msg["Message-ID"]
+    fname = write_spooled_email(msg["To"], tmp_path, msg, str(now), message_id)
+
+    res = dispatch_incoming_email(ea.pk, str(fname))
+    res()
+
+    assert "had no delivery methods" in caplog.text
+    assert ea.email_address in caplog.text
+    assert not fname.exists()
+
+
+####################################################################
+#
 def test_scan_message_for_spam_success(
     mocker: MockerFixture,
     email_factory: Callable[..., EmailMessage],

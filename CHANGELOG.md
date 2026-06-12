@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-06-11
+
+### Added
+
+- Warn before disabling the last enabled delivery method for an email account, since doing so means all incoming mail will be silently dropped
+- Warn before deleting the last delivery method for an email account, since doing so means all incoming mail will be silently dropped
+- Cache-bust JS modules via `ManifestStaticFilesStorage` (production) and ES module import maps, so browser always loads the latest code after a deploy
+- Django updated to 5.2.15
+
 ## [0.7.6] - 2026-05-08
 
 ### Fixed
