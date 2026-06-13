@@ -1,0 +1,8 @@
+{% extends "registration/base.html" %}
+{% load i18n %}
+
+{% block content_title %}<h1 class="title">{% trans "Sign Up Closed" %}</h1>{% endblock %}
+{% block content %}
+  <p class="content">{% trans "Account registration is not available. Please contact an administrator." %}</p>
+  <a class="button is-primary" href="{% url 'account_login' %}">{% trans "Sign In" %}</a>
+{% endblock %}
