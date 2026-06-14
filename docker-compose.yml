@@ -1,3 +1,4 @@
+name: as_email_service
 volumes:
   redis_data:
     name: "as_email_redis_data_01"
@@ -5,7 +6,6 @@ volumes:
 services:
   web:
     image: "as_email_service:dev"
-    container_name: app
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -35,7 +35,6 @@ services:
 
   smtpd:
     image: as_email_service:dev
-    container_name: smtpd
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -55,7 +54,6 @@ services:
 
   worker:
     image: as_email_service:dev
-    container_name: worker
     command: /app/scripts/start_worker.sh
     restart: unless-stopped
     env_file: .env
@@ -66,7 +64,6 @@ services:
 
   redis:
     image: redis:latest
-    container_name: redis
     restart: unless-stopped
     volumes:
       - "redis_data:/data"
@@ -78,7 +75,6 @@ services:
 
   mailhog:
     image: druidfi/mailhog:1.0.1
-    container_name: mailhog
     restart: unless-stopped
     ports:
       - "8025:8025"
@@ -96,7 +92,6 @@ services:
 
   spamassassin:
     image: instantlinux/spamassassin:4.0.1-1
-    container_name: spamassassin
     restart: unless-stopped
     ports:
       - "783:783"
