@@ -185,6 +185,7 @@ INSTALLED_APPS = [
     "django_simple_bulma",
     "project",  # NOTE: project wide templatetags, etc.
     "as_email",
+    "users",
 ]
 
 MIDDLEWARE = [
