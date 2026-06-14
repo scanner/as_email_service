@@ -280,6 +280,10 @@ ACCOUNT_ADAPTER = "as_email.adapters.NoSignupAccountAdapter"
 ACCOUNT_LOGIN_METHODS = {"username"}
 ACCOUNT_EMAIL_VERIFICATION = "optional"
 ACCOUNT_LOGOUT_REDIRECT_URL = "home"
+ACCOUNT_CHANGE_EMAIL = True
+ACCOUNT_UNIQUE_EMAIL = False
+# Send security notifications to the old address when email is changed.
+ACCOUNT_EMAIL_NOTIFICATIONS = True
 
 TIME_ZONE = env("TZ")
 # https://docs.djangoproject.com/en/dev/ref/settings/#language-code
@@ -369,7 +373,7 @@ if "EMAIL_BACKEND" in env:
     ANYMAIL = env.dict("ANYMAIL")
 else:
     # https://docs.djangoproject.com/en/dev/ref/settings/#email-host
-    EMAIL_HOST = env("EMAIL_HOST", default="mailhog")
+    EMAIL_HOST = env("EMAIL_HOST", default="mailpit")
     # https://docs.djangoproject.com/en/dev/ref/settings/#email-port
     EMAIL_PORT = 1025
 

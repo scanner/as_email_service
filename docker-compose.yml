@@ -15,8 +15,10 @@ services:
         - "linux/arm64"
         # - "linux/arm/v7"   # when we want to build for raspberry pi's
     depends_on:
-      - mailhog
-      - redis
+      mailpit:
+        condition: service_started
+      redis:
+        condition: service_healthy
     ports:
       - "11578:8000"
     command: wait-for-it --service redis:6379 -- /app/manage.py runserver_plus --cert-file /mnt/ssl/ssl_crt.pem --key-file /mnt/ssl/ssl_key.pem 0.0.0.0:8000
@@ -65,6 +67,11 @@ services:
   redis:
     image: redis:latest
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     volumes:
       - "redis_data:/data"
       - type: bind
@@ -73,11 +80,11 @@ services:
     expose:
       - 6379
 
-  mailhog:
-    image: druidfi/mailhog:1.0.1
+  mailpit:
+    image: axllent/mailpit:latest
     restart: unless-stopped
     ports:
-      - "8025:8025"
+      - "8026:8025"
 
   sa-training:
     image: as_email_service:dev
