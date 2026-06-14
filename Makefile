@@ -98,8 +98,8 @@ createadmin: migrate   ## Create admin account (admin / testpass1234)
                             --rm web \
                             /venv/bin/python /app/manage.py createsuperuser --username admin --no-input
 
-logs:	## Tail the logs for web, worker, smtpd, mailhog
-	@docker compose logs -f worker web smtpd mailhog
+logs:	## Tail the logs for web, worker, smtpd, mailpit
+	@docker compose logs -f worker web smtpd mailpit
 
 test: .venv	## Run all of the tests
 	@$(UV_RUN) pytest --cov=as_email --cov-report=html app/

@@ -1,0 +1,7 @@
+{% extends "account/email/base_notification.txt" %}
+{% load i18n %}
+
+{% block notification_message %}{% autoescape off %}{% blocktrans %}Your email address has been changed from {{ from_email }} to {{ to_email }}.{% endblocktrans %}
+
+{% blocktrans with domain=current_site.domain %}If you did not make this change, please contact us immediately at https://{{ domain }}/as_email/contact/ to secure your account.{% endblocktrans %}{% endautoescape %}
+{% endblock notification_message %}

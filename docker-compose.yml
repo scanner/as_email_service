@@ -1,3 +1,4 @@
+name: as_email_service
 volumes:
   redis_data:
     name: "as_email_redis_data_01"
@@ -5,7 +6,6 @@ volumes:
 services:
   web:
     image: "as_email_service:dev"
-    container_name: app
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -15,8 +15,10 @@ services:
         - "linux/arm64"
         # - "linux/arm/v7"   # when we want to build for raspberry pi's
     depends_on:
-      - mailhog
-      - redis
+      mailpit:
+        condition: service_started
+      redis:
+        condition: service_healthy
     ports:
       - "11578:8000"
     command: wait-for-it --service redis:6379 -- /app/manage.py runserver_plus --cert-file /mnt/ssl/ssl_crt.pem --key-file /mnt/ssl/ssl_key.pem 0.0.0.0:8000
@@ -35,7 +37,6 @@ services:
 
   smtpd:
     image: as_email_service:dev
-    container_name: smtpd
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -55,7 +56,6 @@ services:
 
   worker:
     image: as_email_service:dev
-    container_name: worker
     command: /app/scripts/start_worker.sh
     restart: unless-stopped
     env_file: .env
@@ -66,8 +66,12 @@ services:
 
   redis:
     image: redis:latest
-    container_name: redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     volumes:
       - "redis_data:/data"
       - type: bind
@@ -76,12 +80,11 @@ services:
     expose:
       - 6379
 
-  mailhog:
-    image: druidfi/mailhog:1.0.1
-    container_name: mailhog
+  mailpit:
+    image: axllent/mailpit:latest
     restart: unless-stopped
     ports:
-      - "8025:8025"
+      - "8026:8025"
 
   sa-training:
     image: as_email_service:dev
@@ -96,7 +99,6 @@ services:
 
   spamassassin:
     image: instantlinux/spamassassin:4.0.1-1
-    container_name: spamassassin
     restart: unless-stopped
     ports:
       - "783:783"
