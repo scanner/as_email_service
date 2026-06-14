@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Replace `django.contrib.auth.urls` with `django-allauth` for session-based authentication; covers login/logout, password change, and password reset with crispy-bulma styling
+- Account Info page for email address management; allauth sends a security notification to the old address when an email change is confirmed
 
 ## [0.7.7] - 2026-06-11
 

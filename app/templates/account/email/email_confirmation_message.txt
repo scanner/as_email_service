@@ -1,0 +1,8 @@
+{% extends "account/email/base_message.txt" %}
+{% load i18n %}
+
+{% block content %}{% autoescape off %}{% blocktranslate with site_name=current_site.name %}You are receiving this email because your account on {{ site_name }} has requested to change its email address to this one.{% endblocktranslate %}
+
+{% blocktranslate %}To confirm this change, go to {{ activate_url }}{% endblocktranslate %}
+
+{% blocktranslate %}If you did not make this request, you can safely ignore this email -- no changes will be made until the link above is followed.{% endblocktranslate %}{% endautoescape %}{% endblock content %}

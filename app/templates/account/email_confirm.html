@@ -1,0 +1,39 @@
+{% extends "registration/base.html" %}
+{% load i18n %}
+
+{% block content_title %}<h1 class="title">{% trans "Confirm Email Address" %}</h1>{% endblock %}
+{% block content %}
+  {% if confirmation %}
+    {% if can_confirm %}
+      <p class="content">
+        {% blocktrans with email=confirmation.email_address.email %}
+          Please confirm that <strong>{{ email }}</strong> should be set as
+          the email address for your account.
+        {% endblocktrans %}
+      </p>
+      <form method="post" action="{% url 'account_confirm_email' confirmation.key %}">
+        {% csrf_token %}
+        {{ redirect_field }}
+        <div class="field">
+          <div class="control">
+            <button type="submit" class="button is-primary">{% trans "Confirm" %}</button>
+          </div>
+        </div>
+      </form>
+    {% else %}
+      <div class="notification is-danger is-light">
+        {% blocktrans with email=confirmation.email_address.email %}
+          Unable to confirm {{ email }} because it is already confirmed by a different account.
+        {% endblocktrans %}
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="notification is-warning is-light">
+      {% url 'as_email:account_info' as account_info_url %}
+      {% blocktrans %}
+        This email confirmation link has expired or is invalid.
+        Please <a href="{{ account_info_url }}">request a new one</a>.
+      {% endblocktrans %}
+    </div>
+  {% endif %}
+{% endblock %}
