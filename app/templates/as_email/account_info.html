@@ -1,5 +1,5 @@
 {% extends "registration/base.html" %}
-{% load i18n %}
+{% load crispy_forms_tags i18n %}
 
 {% block content_title %}<h1 class="title">{% trans "Account Info" %}</h1>{% endblock %}
 {% block content %}
@@ -74,4 +74,32 @@
       updateButtonState();
     })();
   </script>
+
+  <hr>
+
+  <h2 class="subtitle">{% trans "Password" %}</h2>
+
+  <form method="post" action="{% url 'as_email:account_info_password_change' %}">
+    {% csrf_token %}
+    {{ password_change_form|crispy }}
+    <div class="field">
+      <div class="control">
+        <button type="submit" class="button is-primary">{% trans "Change Password" %}</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="block mt-3">
+    {% if current_email_str %}
+      <a href="{% url 'account_reset_password' %}">{% trans "Forgot your password?" %}</a>
+    {% else %}
+      <p class="help">
+        {% blocktrans %}
+          No email address is registered on this account, so password reset by
+          email is not available. Add an email address above to enable it.
+        {% endblocktrans %}
+      </p>
+    {% endif %}
+  </div>
+
 {% endblock %}

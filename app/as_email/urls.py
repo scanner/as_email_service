@@ -16,7 +16,7 @@ from rest_framework_nested import routers
 
 # Project imports
 #
-from .account_views import AccountInfoView
+from .account_views import AccountInfoView, AccountPasswordChangeView
 from .views import (
     DeliveryMethodViewSet,
     EmailAccountViewSet,
@@ -75,6 +75,11 @@ app_name = "as_email"
 urlpatterns = [
     path("", index, name="index"),
     path("account/info/", AccountInfoView.as_view(), name="account_info"),
+    path(
+        "account/password/change/",
+        AccountPasswordChangeView.as_view(),
+        name="account_info_password_change",
+    ),
     path("about/", about, name="about"),
     path("contact/", contact, name="contact"),
     path("docs/", documentation, name="documentation"),

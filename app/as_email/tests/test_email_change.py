@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 #
 """
-Tests for the Account Info page and email change flow.
+Tests for the Account Info page, email change flow, and password change.
 
-Covers: Account Info page rendering, email change via allauth, and the
-old-address security notification that fires when an email change is confirmed.
+Covers: Account Info page rendering, email change via allauth, the
+old-address security notification that fires when an email change is confirmed,
+and password change via the Account Info page.
 """
 
 # system imports
@@ -16,6 +17,7 @@ from urllib.parse import urlparse
 # 3rd party imports
 #
 import pytest
+from allauth.account.models import EmailAddress
 from django.core import mail
 from django.test import Client
 from django.urls import reverse
@@ -86,8 +88,6 @@ class TestEmailChange:
         THEN:  allauth sends a security notification to the old address that
                includes a link to the contact page
         """
-        from allauth.account.models import EmailAddress
-
         password = faker.pystr(min_chars=8, max_chars=32)
         old_email = faker.email()
         new_email = "new_" + faker.email()
@@ -129,3 +129,89 @@ class TestEmailChange:
             f"No email to old address {old_email!r}; outbox: {[m.to for m in mail.outbox]}"
         )
         assert "/as_email/contact/" in notification_emails[0].body
+
+
+########################################################################
+########################################################################
+#
+class TestAccountInfoPassword:
+    """Tests for password change on the Account Info page."""
+
+    ####################################################################
+    #
+    def test_password_change_succeeds(
+        self,
+        client: Client,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a logged-in user with a known password
+        WHEN:  they POST valid old+new password to account_info_password_change
+        THEN:  they are redirected to Account Info and can log in with the new password
+        """
+        old_password = faker.pystr(min_chars=8, max_chars=32)
+        new_password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=old_password)
+        user.save()
+        client.login(username=user.username, password=old_password)
+
+        resp = client.post(
+            reverse("as_email:account_info_password_change"),
+            {
+                "oldpassword": old_password,
+                "password1": new_password,
+                "password2": new_password,
+            },
+        )
+
+        assert resp.status_code == 302
+        assert reverse("as_email:account_info") in resp["Location"]
+        # Verify the new password actually works
+        client.logout()
+        assert client.login(username=user.username, password=new_password)
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "has_email,expect_link,expect_message",
+        [
+            (True, True, False),
+            (False, False, True),
+        ],
+        ids=["with-email", "without-email"],
+    )
+    def test_forgot_password_display(
+        self,
+        client: Client,
+        user_factory: Callable,
+        faker: Faker,
+        has_email: bool,
+        expect_link: bool,
+        expect_message: bool,
+    ) -> None:
+        """
+        GIVEN: a user with or without a registered email address
+        WHEN:  they view Account Info
+        THEN:  with email -> forgot-password link is shown;
+               without email -> explanatory message is shown, no link
+        """
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        if has_email:
+            user.email = faker.email()
+        user.save()
+        if has_email:
+            EmailAddress.objects.create(
+                user=user, email=user.email, primary=True, verified=True
+            )
+        client.login(username=user.username, password=password)
+
+        resp = client.get(reverse("as_email:account_info"))
+        assert resp.status_code == 200
+
+        forgot_url = reverse("account_reset_password").encode()
+        no_email_msg = b"Add an email address above to enable it"
+
+        assert (forgot_url in resp.content) == expect_link
+        assert (no_email_msg in resp.content) == expect_message
