@@ -1,0 +1,46 @@
+{% extends "registration/base.html" %}
+{% load i18n %}
+
+{% block content_title %}<h1 class="title">{% trans "Cancel Email Change" %}</h1>{% endblock %}
+{% block content %}
+  {% if state == "confirm" %}
+    <div class="block">
+      <p class="content">
+        {% blocktrans with email=new_email %}
+          Clicking the button below will cancel the pending change to
+          <strong>{{ email }}</strong> and keep your current email address.
+        {% endblocktrans %}
+      </p>
+    </div>
+    <form method="post" action="{% url 'as_email:email_change_revoke' key %}">
+      {% csrf_token %}
+      <div class="field">
+        <div class="control">
+          <button type="submit" class="button is-danger">
+            {% trans "Cancel the Email Change" %}
+          </button>
+        </div>
+      </div>
+    </form>
+
+  {% elif state == "revoked" %}
+    <div class="notification is-success is-light">
+      <p>{% trans "The email change has been cancelled. Your email address remains unchanged." %}</p>
+    </div>
+    <div class="block">
+      <a href="{% url 'as_email:account_info' %}">{% trans "Return to Account Info" %}</a>
+    </div>
+
+  {% else %}
+    {% url 'as_email:contact' as contact_url %}
+    <div class="notification is-warning is-light">
+      <p>
+        {% blocktrans %}
+          This cancellation link has already been used or has expired.
+          If you still need to cancel an email change, please
+          <a href="{{ contact_url }}">contact us</a>.
+        {% endblocktrans %}
+      </p>
+    </div>
+  {% endif %}
+{% endblock %}

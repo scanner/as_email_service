@@ -33,47 +33,58 @@
     </div>
   {% endif %}
 
-  <form method="post" action="{% url 'as_email:account_info' %}">
-    {% csrf_token %}
-    <div class="field">
-      <label class="label" for="id_email">{% trans "Email Address" %}</label>
-      <div class="control">
-        <input
-          class="input{% if form.email.errors %} is-danger{% endif %}"
-          type="email"
-          name="email"
-          id="id_email"
-          value="{{ form.email.value|default:current_email_str }}"
-          autocomplete="email"
-        >
-        {% for error in form.email.errors %}
-          <p class="help is-danger">{{ error }}</p>
-        {% endfor %}
-      </div>
+  {% if email_change_cooldown_until %}
+    <div class="notification is-warning is-light">
+      <p>
+        {% blocktrans with until=email_change_cooldown_until %}
+          Email changes are blocked until {{ until }} following a recent change.
+          Contact us if you need this lifted sooner.
+        {% endblocktrans %}
+      </p>
     </div>
-    <div class="field">
-      <div class="control">
-        <button id="change-email-btn" type="submit" name="action_add" class="button is-primary">
-          {% trans "Change Email" %}
-        </button>
+  {% else %}
+    <form method="post" action="{% url 'as_email:account_info' %}">
+      {% csrf_token %}
+      <div class="field">
+        <label class="label" for="id_email">{% trans "Email Address" %}</label>
+        <div class="control">
+          <input
+            class="input{% if form.email.errors %} is-danger{% endif %}"
+            type="email"
+            name="email"
+            id="id_email"
+            value="{{ form.email.value|default:current_email_str }}"
+            autocomplete="email"
+          >
+          {% for error in form.email.errors %}
+            <p class="help is-danger">{{ error }}</p>
+          {% endfor %}
+        </div>
       </div>
-    </div>
-  </form>
+      <div class="field">
+        <div class="control">
+          <button id="change-email-btn" type="submit" name="action_add" class="button is-primary">
+            {% trans "Change Email" %}
+          </button>
+        </div>
+      </div>
+    </form>
 
-  <script>
-    (function () {
-      const emailInput = document.getElementById('id_email');
-      const changeBtn = document.getElementById('change-email-btn');
-      const currentEmail = '{{ current_email_str|escapejs }}';
+    <script>
+      (function () {
+        const emailInput = document.getElementById('id_email');
+        const changeBtn = document.getElementById('change-email-btn');
+        const currentEmail = '{{ current_email_str|escapejs }}';
 
-      function updateButtonState() {
-        changeBtn.disabled = currentEmail !== '' && emailInput.value === currentEmail;
-      }
+        function updateButtonState() {
+          changeBtn.disabled = currentEmail !== '' && emailInput.value === currentEmail;
+        }
 
-      emailInput.addEventListener('input', updateButtonState);
-      updateButtonState();
-    })();
-  </script>
+        emailInput.addEventListener('input', updateButtonState);
+        updateButtonState();
+      })();
+    </script>
+  {% endif %}
 
   <hr>
 
