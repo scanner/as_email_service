@@ -39,8 +39,7 @@ from rest_framework.test import APIClient, RequestsClient
 #
 import as_email.utils
 from as_email.models import EmailAccount, InactiveEmail, Server
-
-from .factories import (
+from tests.as_email.factories import (
     DummyProviderBackend,
     EmailAccountFactory,
     InactiveEmailFactory,
@@ -586,7 +585,7 @@ def dummy_provider(mocker: MockerFixture) -> DummyProviderBackend:
     # restore previous values when the fixture scope exits
     #
     mocker.patch.dict(
-        "as_email.tests.factories._DUMMY_PROVIDER_SHARED_STATE",
+        "tests.as_email.factories._DUMMY_PROVIDER_SHARED_STATE",
         {"domains": {}, "email_accounts": {}},
     )
 

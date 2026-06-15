@@ -28,21 +28,21 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..models import (
+from as_email.models import (
     EmailAccount,
     InactiveEmail,
     LocalDelivery,
     Provider,
     Server,
 )
-from ..providers.base import (
+from as_email.providers.base import (
     BounceEvent,
     BounceType,
     Capability,
     EmailAccountInfo,
 )
-from ..reports.unused_servers import generate_unused_servers_report
-from ..tasks import (
+from as_email.reports.unused_servers import generate_unused_servers_report
+from as_email.tasks import (
     ALIAS_SYNC_INTERVAL_SECONDS,
     ALIAS_SYNC_MAX_PER_RUN,
     ALIAS_SYNC_STALE_THRESHOLD_SECONDS,
@@ -61,13 +61,14 @@ from ..tasks import (
     scan_message_for_spam,
     sync_pwfile,
 )
-from ..utils import (
+from as_email.utils import (
     read_emailaccount_pwfile,
     redis_client,
     spool_message,
     write_spooled_email,
 )
-from .factories import DummyProviderBackend
+from tests.as_email.factories import DummyProviderBackend
+
 from .test_deliver import assert_email_equal
 
 pytestmark = pytest.mark.django_db

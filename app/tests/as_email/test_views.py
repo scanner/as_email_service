@@ -24,7 +24,7 @@ from rest_framework.test import APIClient
 
 # Project imports
 #
-from ..models import (
+from as_email.models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,
@@ -34,7 +34,7 @@ from ..models import (
     Provider,
     Server,
 )
-from ..utils import redis_client
+from as_email.utils import redis_client
 
 pytestmark = pytest.mark.django_db
 
@@ -154,7 +154,7 @@ def test_get_provider_for_webhook(
     """
     from django.http import Http404
 
-    from ..views import _get_provider_for_webhook
+    from as_email.views import _get_provider_for_webhook
 
     # Create a provider with the specified backend name
     #

@@ -31,7 +31,7 @@ from faker import Faker
 
 # Project imports
 #
-from ..models import (
+from as_email.models import (
     AliasToDelivery,
     EmailAccount,
     InactiveEmail,
@@ -40,14 +40,14 @@ from ..models import (
     Provider,
     Server,
 )
-from ..provider_tokens import get_provider_token
-from ..providers.base import (
+from as_email.provider_tokens import get_provider_token
+from as_email.providers.base import (
     Capability,
     EmailAccountInfo,
     ProviderBackend,
     resolve_envelope,
 )
-from ..utils import (
+from as_email.utils import (
     get_smtp_client,
     sendmail,
     split_email_mailbox_hash,

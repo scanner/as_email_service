@@ -18,19 +18,19 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..deliver import (
+from as_email.deliver import (
     apply_message_filter_rules,
     deliver_message_locally,
     make_delivery_status_notification,
     report_failed_message,
 )
-from ..models import (
+from as_email.models import (
     AliasToDelivery,
     EmailAccount,
     LocalDelivery,
     MessageFilterRule,
 )
-from .conftest import assert_email_equal
+from tests.conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
 

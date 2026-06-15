@@ -25,7 +25,7 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..models import (
+from as_email.models import (
     AliasToDelivery,
     DeliveryMethod,
     EmailAccount,

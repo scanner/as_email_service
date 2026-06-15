@@ -14,9 +14,9 @@ from django import forms as django_forms
 
 # Project imports
 #
-from ..admin import ProviderAdminForm
-from ..models import Provider
-from .factories import ProviderFactory
+from as_email.admin import ProviderAdminForm
+from as_email.models import Provider
+from tests.as_email.factories import ProviderFactory
 
 pytestmark = pytest.mark.django_db
 

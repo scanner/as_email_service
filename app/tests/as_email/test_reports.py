@@ -21,10 +21,10 @@ from django.core.management.base import CommandError
 
 # Project imports
 #
-from ..models import EmailAccount, LocalDelivery, Server
-from ..reports import REPORTS, ReportSchedule, get_reports_by_schedule
-from ..reports.email_usage import generate_email_usage_report
-from ..tasks import run_report
+from as_email.models import EmailAccount, LocalDelivery, Server
+from as_email.reports import REPORTS, ReportSchedule, get_reports_by_schedule
+from as_email.reports.email_usage import generate_email_usage_report
+from as_email.tasks import run_report
 
 pytestmark = pytest.mark.django_db
 

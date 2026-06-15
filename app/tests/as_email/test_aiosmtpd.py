@@ -27,7 +27,7 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..management.commands.aiosmtpd import (
+from as_email.management.commands.aiosmtpd import (
     SEC_AUTH_FAIL_NOUSER,
     SEC_AUTH_FAIL_PASSWD,
     SEC_AUTH_FAIL_PROTECTED,
@@ -43,7 +43,7 @@ from ..management.commands.aiosmtpd import (
     relay_email_to_provider,
     validate_from_header,
 )
-from ..models import EmailAccount, InactiveEmail, Server
+from as_email.models import EmailAccount, InactiveEmail, Server
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

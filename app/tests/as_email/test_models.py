@@ -19,7 +19,7 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..models import (
+from as_email.models import (
     AliasToDelivery,
     EmailAccount,
     InactiveEmail,
@@ -27,7 +27,7 @@ from ..models import (
     MessageFilterRule,
     Server,
 )
-from .conftest import assert_email_equal
+from tests.conftest import assert_email_equal
 
 User = get_user_model()
 

@@ -17,7 +17,7 @@ from faker import Faker
 
 # Project imports
 #
-from ..utils import (
+from as_email.utils import (
     PWUser,
     now_str_datetime,
     read_emailaccount_pwfile,

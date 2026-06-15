@@ -17,7 +17,7 @@ from pytest_mock import MockerFixture
 # Project imports
 #
 from as_email.models import Provider, Server
-from as_email.tests.factories import DummyProviderBackend
+from tests.as_email.factories import DummyProviderBackend
 
 pytestmark = pytest.mark.django_db
 

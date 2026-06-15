@@ -23,9 +23,9 @@ from requests import RequestException
 
 # project imports
 #
-from ...models import EmailAccount, Server
-from ...providers.base import BounceType
-from ...providers.postmark import PostmarkBackend
+from as_email.models import EmailAccount, Server
+from as_email.providers.base import BounceType
+from as_email.providers.postmark import PostmarkBackend
 
 pytestmark = pytest.mark.django_db
 

@@ -22,8 +22,8 @@ from django.core.management.base import CommandError
 
 # Project imports
 #
-from ..models import EmailAccount, LocalDelivery
-from ..sa_training import (
+from as_email.models import EmailAccount, LocalDelivery
+from as_email.sa_training import (
     TrainingResult,
     determine_classification,
     find_training_local_delivery,

@@ -22,7 +22,7 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from ..models import EmailAccount, Provider, Server
+from as_email.models import EmailAccount, Provider, Server
 
 pytestmark = pytest.mark.django_db
 

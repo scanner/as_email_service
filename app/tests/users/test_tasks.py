@@ -6,6 +6,7 @@
 #
 from collections.abc import Callable
 from datetime import timedelta
+from typing import Any
 
 # 3rd party imports
 #
@@ -49,7 +50,7 @@ class TestCleanupExpiredEmailChangeRecords:
         self,
         two_users: tuple,
         faker: Faker,
-        model_cls,
+        model_cls: type[PendingEmailChange] | type[EmailChangeCooldown],
     ) -> None:
         """
         GIVEN: one expired and one still-active record of the same model type
@@ -59,11 +60,11 @@ class TestCleanupExpiredEmailChangeRecords:
         now = timezone.now()
         user_expired, user_active = two_users
 
-        kwargs_expired = {
+        kwargs_expired: dict[str, Any] = {
             "user": user_expired,
             "expires_at": now - timedelta(days=1),
         }
-        kwargs_active = {
+        kwargs_active: dict[str, Any] = {
             "user": user_active,
             "expires_at": now + timedelta(days=3),
         }

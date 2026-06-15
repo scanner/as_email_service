@@ -21,14 +21,14 @@ from django.test import RequestFactory
 from faker import Faker
 from pytest_mock import MockerFixture
 
-from ..models import (
+from as_email.models import (
     EmailAccount,
     InactiveEmail,
     MessageFilterRule,
     Provider,
     Server,
 )
-from .factories import DummyProviderBackend
+from tests.as_email.factories import DummyProviderBackend
 
 pytestmark = pytest.mark.django_db
 
