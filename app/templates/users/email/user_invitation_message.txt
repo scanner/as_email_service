@@ -1,0 +1,12 @@
+{% extends "account/email/base_message.txt" %}
+{% load i18n %}
+
+{% block content %}{% autoescape off %}{% blocktrans with site_name=site_name %}You have been invited to create an account on {{ site_name }}.{% endblocktrans %}
+
+{% blocktrans with expiry_days=expiry_days %}To accept this invitation and set up your account, click the link below. This link is valid for {{ expiry_days }} days.{% endblocktrans %}
+
+{{ accept_url }}
+
+{% blocktrans %}Once you accept, you will receive a separate email with a link to set your password.{% endblocktrans %}
+
+{% blocktrans %}If you did not expect this invitation, you can safely ignore this email.{% endblocktrans %}{% endautoescape %}{% endblock content %}

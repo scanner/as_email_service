@@ -110,3 +110,73 @@ class EmailChangeCooldown(models.Model):
             defaults={"expires_at": expires},
         )
         return obj
+
+
+########################################################################
+########################################################################
+#
+class UserInvitation(models.Model):
+    """
+    Tracks an admin-issued invitation for a new user to join the service.
+
+    Flow: admin creates invitation -> invitation email sent -> recipient
+    clicks link -> acceptance page -> user activated + password-reset email
+    dispatched so they can set their first password.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        CANCELLED = "cancelled", "Cancelled"
+        EXPIRED = "expired", "Expired"
+
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="sent_invitations",
+    )
+    invitee_email = models.EmailField(db_index=True)
+    # Set when the inactive placeholder user is created. FK (not OneToOne)
+    # because multiple invitation records can exist for the same email over
+    # time (e.g. cancel-and-reinvite scenarios).
+    invitee_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invitations",
+    )
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    send_count = models.PositiveIntegerField(default=0)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    ####################################################################
+    #
+    class Meta:
+        ordering = ["-created_at"]
+
+    ####################################################################
+    #
+    def __str__(self) -> str:
+        return f"Invitation({self.invitee_email}, {self.status})"
+
+    ####################################################################
+    #
+    @property
+    def is_usable(self) -> bool:
+        """True if the invitation can still be accepted."""
+        return (
+            self.status == self.Status.PENDING
+            and self.expires_at > timezone.now()
+        )

@@ -28,4 +28,5 @@ urlpatterns = [
         name="home",
     ),
     path("as_email/", include("as_email.urls")),
+    path("", include("users.urls")),
 ]

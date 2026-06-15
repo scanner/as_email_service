@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Password change moved to Account Info page; "Forgot your password?" link shown only when an email address is registered
 - Email change security hardening: pre-confirmation cancellation notice sent to old address with a 7-day revocation link; 7-day cooldown blocks further changes after a confirmed change; `accounts/email/` shadowed to prevent cooldown bypass
 - Periodic Huey task cleans up expired `PendingEmailChange` and `EmailChangeCooldown` records daily
+- Admin user invitation flow: admins can invite new users by email; invitees receive an acceptance link that activates their account and triggers a password-reset email
 
 ## [0.7.7] - 2026-06-11
 

@@ -288,6 +288,13 @@ ACCOUNT_EMAIL_NOTIFICATIONS = True
 # Confirmation link sent to the new address expires after 24 hours.
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 1
 
+# User invitation settings
+INVITATION_EXPIRY_DAYS = 7
+INVITATION_MAX_RESENDS = 3
+INVITATION_RESEND_COOLDOWN_HOURS = 1
+INVITATION_MAX_PER_WINDOW = 5
+INVITATION_WINDOW_DAYS = 30
+
 TIME_ZONE = env("TZ")
 # https://docs.djangoproject.com/en/dev/ref/settings/#language-code
 LANGUAGE_CODE = "en-us"
