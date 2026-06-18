@@ -52,6 +52,7 @@ dependencies = [
     "whitenoise",
     "drf-spectacular>=0.29.0",
     "django-allauth>=65.18.0",
+    "zxcvbn",
 ]
 
 [dependency-groups]

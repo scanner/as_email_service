@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Email change security hardening: pre-confirmation cancellation notice sent to old address with a 7-day revocation link; 7-day cooldown blocks further changes after a confirmed change; `accounts/email/` shadowed to prevent cooldown bypass
 - Periodic Huey task cleans up expired `PendingEmailChange` and `EmailChangeCooldown` records daily
 - Admin user invitation flow: admins can invite new users by email; invitees receive an acceptance link that activates their account and triggers a password-reset email
+- zxcvbn backend password validator registered in `AUTH_PASSWORD_VALIDATORS`; minimum score configurable via `ZXCVBN_MIN_SCORE` setting (default 2)
+- zxcvbn strength indicator on Account Info password form; submit button disabled until score meets the minimum
+- Inline help text on Account Info page explaining the two-step email change flow and security rules
+- Developer documentation for the email change design in `docs/email-change.md`
 
 ## [0.7.7] - 2026-06-11
 
