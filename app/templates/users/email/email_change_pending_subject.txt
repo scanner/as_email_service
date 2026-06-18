@@ -1,0 +1,1 @@
+{% load i18n %}{% autoescape off %}{% blocktrans with site_name=current_site.name %}[{{ site_name }}] Your email address is being changed{% endblocktrans %}{% endautoescape %}

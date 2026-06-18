@@ -1,0 +1,10 @@
+{% load i18n %}<!DOCTYPE html>
+<html lang="en">
+<body>
+  <p>{% blocktrans with site_name=site_name %}You have been invited to create an account on {{ site_name }}.{% endblocktrans %}</p>
+  <p>{% blocktrans with expiry_days=expiry_days %}To accept this invitation and set up your account, click the link below. This link is valid for {{ expiry_days }} days.{% endblocktrans %}</p>
+  <p><a href="{{ accept_url }}">{% trans "Accept Invitation" %}</a></p>
+  <p>{% trans "Once you accept, you will receive a separate email with a link to set your password." %}</p>
+  <p>{% trans "If you did not expect this invitation, you can safely ignore this email." %}</p>
+</body>
+</html>

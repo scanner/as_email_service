@@ -185,6 +185,7 @@ INSTALLED_APPS = [
     "django_simple_bulma",
     "project",  # NOTE: project wide templatetags, etc.
     "as_email",
+    "users",
 ]
 
 MIDDLEWARE = [
@@ -284,6 +285,15 @@ ACCOUNT_CHANGE_EMAIL = True
 ACCOUNT_UNIQUE_EMAIL = False
 # Send security notifications to the old address when email is changed.
 ACCOUNT_EMAIL_NOTIFICATIONS = True
+# Confirmation link sent to the new address expires after 24 hours.
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 1
+
+# User invitation settings
+INVITATION_EXPIRY_DAYS = 7
+INVITATION_MAX_RESENDS = 3
+INVITATION_RESEND_COOLDOWN_HOURS = 1
+INVITATION_MAX_PER_WINDOW = 5
+INVITATION_WINDOW_DAYS = 30
 
 TIME_ZONE = env("TZ")
 # https://docs.djangoproject.com/en/dev/ref/settings/#language-code
