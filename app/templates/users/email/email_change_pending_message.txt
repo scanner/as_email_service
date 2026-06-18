@@ -1,0 +1,14 @@
+{% extends "account/email/base_message.txt" %}
+{% load i18n %}
+
+{% block content %}{% autoescape off %}{% blocktrans with site_name=current_site.name new_email=new_email %}A request has been made to change the email address on your {{ site_name }} account to {{ new_email }}.{% endblocktrans %}
+
+{% blocktrans %}If you made this request, no action is needed. You will receive a separate email at the new address asking you to confirm the change. The confirmation link expires in 24 hours.{% endblocktrans %}
+
+{% blocktrans with revocation_url=revocation_url %}If you did not make this request, cancel it immediately by clicking the link below -- no login required:
+
+{{ revocation_url }}
+
+This cancellation link is valid for 7 days.{% endblocktrans %}
+
+{% blocktrans with domain=current_site.domain %}If you need help, contact us at https://{{ domain }}/as_email/contact/{% endblocktrans %}{% endautoescape %}{% endblock content %}

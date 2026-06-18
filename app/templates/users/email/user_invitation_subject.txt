@@ -1,0 +1,1 @@
+{% load i18n %}{% autoescape off %}{% blocktrans with site_name=site_name %}You have been invited to {{ site_name }}{% endblocktrans %}{% endautoescape %}

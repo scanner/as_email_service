@@ -1,0 +1,57 @@
+{% extends "registration/base.html" %}
+{% load i18n %}
+
+{% block content_title %}<h1 class="title">{% trans "Account Invitation" %}</h1>{% endblock %}
+{% block content %}
+  {% if state == "confirm" %}
+    <div class="block">
+      <p class="content">
+        {% blocktrans with email=invitation.invitee_email %}
+          You have been invited to create an account on this service using
+          <strong>{{ email }}</strong>.
+        {% endblocktrans %}
+      </p>
+      <p class="content">
+        {% trans "After you accept, you will receive an email with a link to set your password." %}
+      </p>
+    </div>
+    <form method="post" action="">
+      {% csrf_token %}
+      <div class="field">
+        <div class="control">
+          <button type="submit" class="button is-primary">
+            {% trans "Accept Invitation" %}
+          </button>
+        </div>
+      </div>
+    </form>
+
+  {% elif state == "accepted" %}
+    <div class="notification is-success is-light">
+      <p>
+        {% trans "Your account has been activated." %}
+        {% trans "Check your email for a link to set your password." %}
+      </p>
+    </div>
+
+  {% else %}
+    <div class="notification is-warning is-light">
+      {% if already_accepted %}
+        <p>{% trans "This invitation has already been used." %}</p>
+      {% else %}
+        <p>
+          {% blocktrans %}
+            This invitation link is no longer valid -- it may have expired,
+            been cancelled, or already been used.
+          {% endblocktrans %}
+        </p>
+      {% endif %}
+      <p>
+        {% url 'as_email:contact' as contact_url %}
+        {% blocktrans %}
+          If you need assistance, please <a href="{{ contact_url }}">contact us</a>.
+        {% endblocktrans %}
+      </p>
+    </div>
+  {% endif %}
+{% endblock %}
