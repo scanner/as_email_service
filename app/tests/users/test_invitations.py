@@ -145,7 +145,7 @@ class TestCreateUserInvitation:
 
     ####################################################################
     #
-    def test_raises_for_existing_active_user(
+    def test_links_existing_active_user(
         self,
         fake_request,
         user_factory: Callable,
@@ -154,14 +154,59 @@ class TestCreateUserInvitation:
         """
         GIVEN: an email that already belongs to an active user
         WHEN:  create_user_invitation is called
-        THEN:  InvitationError is raised
+        THEN:  the invitation is created and linked to the existing user
         """
         email = faker.email()
         existing = user_factory(email=email)
         existing.is_active = True
         existing.save()
 
-        with pytest.raises(InvitationError):
+        inv = create_user_invitation(fake_request.user, email, fake_request)
+
+        assert inv.status == UserInvitation.Status.PENDING
+        assert inv.invitee_user == existing
+
+    ####################################################################
+    #
+    def test_creates_invitation_with_explicit_username(
+        self,
+        fake_request,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a new email address and an explicit username
+        WHEN:  create_user_invitation is called with that username
+        THEN:  the created placeholder user has the specified username
+        """
+        email = faker.email()
+        desired_username = faker.user_name()
+
+        inv = create_user_invitation(
+            fake_request.user, email, fake_request, username=desired_username
+        )
+
+        assert inv.invitee_user is not None
+        assert inv.invitee_user.username == desired_username
+
+    ####################################################################
+    #
+    def test_raises_for_multiple_users_with_same_email(
+        self,
+        fake_request,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: two accounts sharing the same email address
+        WHEN:  create_user_invitation is called for that address
+        THEN:  InvitationError is raised -- the ambiguity must be resolved
+               by an admin before an invite can be sent
+        """
+        email = faker.email()
+        user_factory(email=email)
+        user_factory(email=email)
+
+        with pytest.raises(InvitationError, match="Multiple accounts"):
             create_user_invitation(fake_request.user, email, fake_request)
 
     ####################################################################
@@ -353,7 +398,7 @@ class TestAcceptUserInvitation:
         fake_request,
     ) -> None:
         """
-        GIVEN: a valid pending invitation
+        GIVEN: a valid pending invitation for an inactive placeholder user
         WHEN:  accept_user_invitation is called
         THEN:  the invitee user is activated, a verified primary EmailAddress
                is created, and the invitation is marked accepted with a timestamp
@@ -372,6 +417,51 @@ class TestAcceptUserInvitation:
         assert EmailAddress.objects.filter(
             user=user,
             email=pending_invitation.invitee_email,
+            primary=True,
+            verified=True,
+        ).exists()
+
+    ####################################################################
+    #
+    def test_accept_already_active_user_marks_accepted(
+        self,
+        fake_request,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a valid pending invitation linked to an already-active user
+        WHEN:  accept_user_invitation is called
+        THEN:  the invitation is marked accepted, the user stays active,
+               and a verified EmailAddress record is ensured
+        """
+        email = faker.email()
+        active_user = user_factory(email=email)
+        active_user.is_active = True
+        active_user.save()
+
+        invitation = UserInvitation.objects.create(
+            invited_by=fake_request.user,
+            invitee_email=email,
+            invitee_user=active_user,
+            token=faker.uuid4(),
+            status=UserInvitation.Status.PENDING,
+            expires_at=timezone.now() + timedelta(days=7),
+            send_count=1,
+            last_sent_at=timezone.now() - timedelta(hours=2),
+        )
+
+        accept_user_invitation(invitation, fake_request)
+
+        active_user.refresh_from_db()
+        invitation.refresh_from_db()
+
+        assert active_user.is_active
+        assert invitation.status == UserInvitation.Status.ACCEPTED
+        assert invitation.accepted_at is not None
+        assert EmailAddress.objects.filter(
+            user=active_user,
+            email=email,
             primary=True,
             verified=True,
         ).exists()

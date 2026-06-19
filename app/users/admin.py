@@ -10,6 +10,7 @@ from typing import Any
 # 3rd party imports
 #
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
 from django.forms import ModelForm
@@ -23,6 +24,7 @@ from .invitation import (
     cancel_user_invitation,
     create_user_invitation,
     resend_user_invitation,
+    window_count,
 )
 from .models import EmailChangeCooldown, PendingEmailChange, UserInvitation
 
@@ -54,13 +56,23 @@ class UserInvitationAdminForm(forms.ModelForm):
     """
     Form used only when creating a new invitation.
 
-    Validates that the email is not already used by an active account and
-    that the rolling window cap has not been reached.
+    Validates the rolling window cap and, when a username is provided for a
+    new account, that the username is not already taken.
     """
 
     invitee_email = forms.EmailField(
         label="Invitee email address",
         help_text="The email address to send the invitation to.",
+    )
+    username = forms.CharField(
+        label="Username",
+        required=False,
+        help_text=(
+            "Username for the new account. Leave blank to auto-derive from "
+            "the email address. Ignored when the address belongs to an "
+            "existing account."
+        ),
+        max_length=150,
     )
 
     ####################################################################
@@ -72,19 +84,7 @@ class UserInvitationAdminForm(forms.ModelForm):
     ####################################################################
     #
     def clean_invitee_email(self) -> str:
-        from .invitation import window_count
-
         email = self.cleaned_data["invitee_email"].strip().lower()
-
-        # Check for existing active user.
-        if User.objects.filter(email__iexact=email, is_active=True).exists():
-            raise forms.ValidationError(
-                f"An active account already exists for {email!r}."
-            )
-
-        # Check rolling window cap.
-        from django.conf import settings
-
         count = window_count(email)
         if count >= settings.INVITATION_MAX_PER_WINDOW:
             raise forms.ValidationError(
@@ -93,6 +93,28 @@ class UserInvitationAdminForm(forms.ModelForm):
                 f"(limit: {settings.INVITATION_MAX_PER_WINDOW}, current: {count})."
             )
         return email
+
+    ####################################################################
+    #
+    def clean_username(self) -> str:
+        username = self.cleaned_data.get("username", "").strip()
+        if not username:
+            return username
+
+        # Skip uniqueness check when inviting an existing account -- the
+        # username field is ignored by the service layer in that case.
+        invitee_email = self.cleaned_data.get("invitee_email", "")
+        if (
+            invitee_email
+            and User.objects.filter(email__iexact=invitee_email).exists()
+        ):
+            return username
+
+        if User.objects.filter(username=username).exists():
+            raise forms.ValidationError(
+                f"The username {username!r} is already taken."
+            )
+        return username
 
 
 ########################################################################
@@ -143,7 +165,7 @@ class UserInvitationAdmin(admin.ModelAdmin):
     #
     def get_fields(self, request, obj=None):
         if obj is None:
-            return ("invitee_email",)
+            return ("invitee_email", "username")
         return (
             "invitee_email",
             "status",
@@ -168,6 +190,7 @@ class UserInvitationAdmin(admin.ModelAdmin):
                     invited_by=request.user,
                     invitee_email=form.cleaned_data["invitee_email"],
                     request=request,
+                    username=form.cleaned_data.get("username") or None,
                 )
                 self.message_user(
                     request,

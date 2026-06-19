@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Admin invitation form now accepts an optional username for new accounts; left blank, it is auto-derived from the email local part
+- Admins can invite existing accounts (active or inactive) by email; the invitation is linked to the existing user and a password-reset email is sent on acceptance
+
+### Fixed
+
+- Inviting an address shared by multiple accounts now raises a clear error instead of crashing with `MultipleObjectsReturned`
+
 - Replace `django.contrib.auth.urls` with `django-allauth` for session-based authentication; covers login/logout, password change, and password reset with crispy-bulma styling
 - Account Info page for email address management; allauth sends a security notification to the old address when an email change is confirmed
 - Password change moved to Account Info page; "Forgot your password?" link shown only when an email address is registered

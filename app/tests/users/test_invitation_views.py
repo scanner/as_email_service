@@ -84,7 +84,7 @@ class TestAcceptInvitationView:
             reverse("users:accept_invitation", args=[invitation.token])
         )
         assert resp.status_code == 200
-        assert b"activated" in resp.content.lower()
+        assert b"accepted" in resp.content.lower()
 
         assert invitation.invitee_user is not None
         invitation.invitee_user.refresh_from_db()

@@ -116,34 +116,37 @@ def window_count(invitee_email: str) -> int:
 
 ####################################################################
 #
-def get_or_create_inactive_user(invitee_email: str) -> tuple:
+def _get_or_create_user_for_invite(
+    invitee_email: str, username: str | None = None
+) -> tuple:
     """
-    Return (user, created) for the placeholder user for this email.
+    Return (user, created) for the invitation target.
 
-    Creates an inactive user with an unusable password if none exists.
-    If a user already exists with this email and is already active,
-    raises InvitationError (cannot invite an existing active user).
+    If exactly one user already exists for this email (active or inactive),
+    return them without modification. If multiple users share the email,
+    raise InvitationError -- the admin must resolve the ambiguity manually.
+    If no user exists, create an inactive placeholder with an unusable
+    password, using the provided username or one auto-derived from the
+    email local part.
     """
-    try:
-        user = User.objects.get(email__iexact=invitee_email)
-        if user.is_active:
-            raise InvitationError(
-                f"An active account already exists for {invitee_email!r}."
-            )
-        return user, False
-    except User.DoesNotExist:
-        pass
+    matching = list(User.objects.filter(email__iexact=invitee_email))
+    if len(matching) > 1:
+        raise InvitationError(
+            f"Multiple accounts share the address {invitee_email!r}; "
+            "resolve the duplicate before sending an invitation."
+        )
+    if matching:
+        return matching[0], False
 
-    username = invitee_email.split("@")[0][:150]
-    # Ensure username uniqueness.
-    base = username
+    derived = (username or invitee_email.split("@")[0])[:150]
+    base = derived
     counter = 1
-    while User.objects.filter(username=username).exists():
-        username = f"{base}{counter}"
+    while User.objects.filter(username=derived).exists():
+        derived = f"{base}{counter}"
         counter += 1
 
     user = User.objects.create_user(
-        username=username,
+        username=derived,
         email=invitee_email,
         password=None,  # unusable password
         is_active=False,
@@ -219,13 +222,25 @@ def trigger_password_reset(request, user, email: str) -> None:
 ########################################################################
 #
 def create_user_invitation(
-    invited_by, invitee_email: str, request
+    invited_by, invitee_email: str, request, username: str | None = None
 ) -> UserInvitation:
     """
     Create and send a new invitation.
 
+    If an account already exists for 'invitee_email', the invitation is
+    linked to that account (active or inactive) and a password-reset email
+    is dispatched on acceptance so the user can set or change their password.
+    If multiple accounts share the address, InvitationError is raised.
+
+    Args:
+        invited_by: the admin user issuing the invitation.
+        invitee_email: email address to invite.
+        request: current HTTP request (used to build the accept URL).
+        username: desired username for a newly created placeholder account;
+            ignored when an existing account is found for the address.
+
     Raises:
-        InvitationError: if an active user already exists for this email.
+        InvitationError: if the email is ambiguous (multiple accounts).
         InvitationWindowCapError: if the rolling window cap is exceeded.
     """
     invitee_email = invitee_email.strip().lower()
@@ -237,7 +252,7 @@ def create_user_invitation(
             f"(limit: {settings.INVITATION_MAX_PER_WINDOW})."
         )
 
-    invitee_user, _ = get_or_create_inactive_user(invitee_email)
+    invitee_user, _ = _get_or_create_user_for_invite(invitee_email, username)
     expires_at = timezone.now() + timedelta(
         days=settings.INVITATION_EXPIRY_DAYS
     )
