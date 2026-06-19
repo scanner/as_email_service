@@ -134,55 +134,18 @@
   <form method="post" action="{% url 'as_email:account_info_password_change' %}">
     {% csrf_token %}
     {{ password_change_form|crispy }}
-    <div id="pw-strength" class="block" style="display:none">
+    <div id="pw-strength" class="block" style="display:none" data-min-score="{{ settings.ZXCVBN_MIN_SCORE }}">
       <progress id="pw-progress" class="progress is-danger" max="4" value="0"></progress>
       <p id="pw-feedback" class="help"></p>
     </div>
     <div class="field">
       <div class="control">
-        <button id="change-password-btn" type="submit" class="button is-primary">
+        <button type="submit" class="button is-primary">
           {% trans "Change Password" %}
         </button>
       </div>
     </div>
   </form>
-
-  <script>
-    (function () {
-      const minScore = {{ settings.ZXCVBN_MIN_SCORE }};
-      const pw1 = document.getElementById('id_password1');
-      const changeBtn = document.getElementById('change-password-btn');
-      const strengthDiv = document.getElementById('pw-strength');
-      const pwProgress = document.getElementById('pw-progress');
-      const pwFeedback = document.getElementById('pw-feedback');
-      const SCORE_CLASSES = [
-        'is-danger', 'is-danger', 'is-warning', 'is-warning', 'is-success'
-      ];
-
-      function updateStrength() {
-        if (!pw1.value) {
-          strengthDiv.style.display = 'none';
-          changeBtn.disabled = true;
-          return;
-        }
-        const result = zxcvbn(pw1.value);
-        const score = result.score;
-        strengthDiv.style.display = '';
-        pwProgress.value = score;
-        SCORE_CLASSES.forEach(cls => pwProgress.classList.remove(cls));
-        pwProgress.classList.add(SCORE_CLASSES[score]);
-        const fb = result.feedback;
-        const parts = [fb.warning, ...(fb.suggestions || [])].filter(Boolean);
-        pwFeedback.textContent = parts.join(' ');
-        changeBtn.disabled = score < minScore;
-      }
-
-      if (pw1) {
-        pw1.addEventListener('input', updateStrength);
-        updateStrength();
-      }
-    })();
-  </script>
 
   <div class="block mt-3">
     {% if current_email_str %}
