@@ -1,6 +1,6 @@
 [project]
 name = "as-email-service"
-version = "0.7.7"
+version = "0.8.0"
 description = "Apricot Systematic Email Service"
 requires-python = ">=3.13.13"
 dependencies = [
@@ -52,6 +52,7 @@ dependencies = [
     "whitenoise",
     "drf-spectacular>=0.29.0",
     "django-allauth>=65.18.0",
+    "zxcvbn",
 ]
 
 [dependency-groups]

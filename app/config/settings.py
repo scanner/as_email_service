@@ -252,6 +252,10 @@ DATABASES = {"default": env.db()}
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
+# Minimum zxcvbn score (0-4) required to accept a password. Score 2 is the
+# threshold used throughout the UI as well; change both together.
+ZXCVBN_MIN_SCORE = 2
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",  # noqa: E501
@@ -264,6 +268,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+    },
+    {
+        "NAME": "users.validators.ZxcvbnPasswordValidator",
     },
 ]
 
@@ -543,6 +550,7 @@ SETTINGS_EXPORT = [
     "SITE_NAME",
     "SPAM_TRAINING_ADDRESS",
     "VERSION",
+    "ZXCVBN_MIN_SCORE",
 ]
 
 # django-crispy-forms
