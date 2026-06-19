@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-06-19
+
 ### Added
 
 - Admin invitation form now accepts an optional username for new accounts; left blank, it is auto-derived from the email local part
@@ -15,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Inviting an address shared by multiple accounts now raises a clear error instead of crashing with `MultipleObjectsReturned`
+
+## [0.8.0] - 2026-06-18
+
+### Added
 
 - Replace `django.contrib.auth.urls` with `django-allauth` for session-based authentication; covers login/logout, password change, and password reset with crispy-bulma styling
 - Account Info page for email address management; allauth sends a security notification to the old address when an email change is confirmed
