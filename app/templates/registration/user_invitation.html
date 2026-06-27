@@ -7,7 +7,7 @@
     <div class="block">
       <p class="content">
         {% blocktrans with email=invitation.invitee_email %}
-          You have been invited to create an account on this service using
+          You have been invited to access this service using
           <strong>{{ email }}</strong>.
         {% endblocktrans %}
       </p>
@@ -29,7 +29,7 @@
   {% elif state == "accepted" %}
     <div class="notification is-success is-light">
       <p>
-        {% trans "Your account has been activated." %}
+        {% trans "Your invitation has been accepted." %}
         {% trans "Check your email for a link to set your password." %}
       </p>
     </div>

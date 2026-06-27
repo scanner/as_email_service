@@ -88,9 +88,10 @@ class TestWindowCount:
             (UserInvitation.Status.PENDING, 1),
             (UserInvitation.Status.ACCEPTED, 1),
             (UserInvitation.Status.EXPIRED, 1),
+            (UserInvitation.Status.RESET_SENT, 1),
             (UserInvitation.Status.CANCELLED, 0),
         ],
-        ids=["pending", "accepted", "expired", "cancelled"],
+        ids=["pending", "accepted", "expired", "reset_sent", "cancelled"],
     )
     def test_window_count_by_status(
         self,
@@ -129,55 +130,116 @@ class TestCreateUserInvitation:
         faker: Faker,
     ) -> None:
         """
-        GIVEN: a valid email with no prior invitations
-        WHEN:  create_user_invitation is called
-        THEN:  a pending UserInvitation is created, send_count=1, and an
-               inactive placeholder user is created for the invitee
+        GIVEN: a username that does not yet exist
+        WHEN:  create_user_invitation is called with that username and an email
+        THEN:  a PENDING UserInvitation is created and an inactive placeholder
+               user is created with the given username
         """
+        username = faker.user_name()
         email = faker.email()
-        inv = create_user_invitation(fake_request.user, email, fake_request)
+        inv = create_user_invitation(
+            fake_request.user, username, fake_request, invitee_email=email
+        )
 
         assert inv.status == UserInvitation.Status.PENDING
         assert inv.invitee_email == email.lower()
         assert inv.send_count == 1
         assert inv.invitee_user is not None
         assert not inv.invitee_user.is_active
+        assert inv.invitee_user.username == username
 
     ####################################################################
     #
-    def test_raises_for_existing_active_user(
+    def test_existing_user_gets_reset_sent_invitation(
         self,
         fake_request,
         user_factory: Callable,
         faker: Faker,
     ) -> None:
         """
-        GIVEN: an email that already belongs to an active user
-        WHEN:  create_user_invitation is called
-        THEN:  InvitationError is raised
+        GIVEN: a username that already belongs to an existing user
+        WHEN:  create_user_invitation is called with that username
+        THEN:  a RESET_SENT invitation is created and linked to the existing
+               user; send_count is 1
         """
-        email = faker.email()
-        existing = user_factory(email=email)
-        existing.is_active = True
-        existing.save()
+        existing = user_factory(email=faker.email())
 
-        with pytest.raises(InvitationError):
-            create_user_invitation(fake_request.user, email, fake_request)
+        inv = create_user_invitation(
+            fake_request.user, existing.username, fake_request
+        )
+
+        assert inv.status == UserInvitation.Status.RESET_SENT
+        assert inv.invitee_user == existing
+        assert inv.send_count == 1
+
+    ####################################################################
+    #
+    def test_existing_user_email_used_regardless_of_supplied_email(
+        self,
+        fake_request,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a username that already exists
+        WHEN:  create_user_invitation is called and an email is also supplied
+        THEN:  the invitation uses the existing user's registered email, not
+               the supplied one
+        """
+        existing = user_factory(email=faker.email())
+
+        inv = create_user_invitation(
+            fake_request.user,
+            existing.username,
+            fake_request,
+            invitee_email="ignored@example.com",
+        )
+
+        assert inv.invitee_email == existing.email.lower()
+
+    ####################################################################
+    #
+    def test_raises_when_email_missing_for_new_user(
+        self,
+        fake_request,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a username that does not exist and no email provided
+        WHEN:  create_user_invitation is called
+        THEN:  InvitationError is raised before any user is created
+        """
+        username = faker.user_name()
+
+        with pytest.raises(InvitationError, match="email address is required"):
+            create_user_invitation(fake_request.user, username, fake_request)
+
+        assert not User.objects.filter(username=username).exists()
 
     ####################################################################
     #
     def test_raises_window_cap(self, fake_request, faker: Faker) -> None:
         """
-        GIVEN: INVITATION_MAX_PER_WINDOW pending invitations already sent
+        GIVEN: INVITATION_MAX_PER_WINDOW invitations already sent to one address
         WHEN:  another invitation is attempted for the same email
         THEN:  InvitationWindowCapError is raised
         """
         email = faker.email()
-        for _ in range(settings.INVITATION_MAX_PER_WINDOW):
-            create_user_invitation(fake_request.user, email, fake_request)
+        for i in range(settings.INVITATION_MAX_PER_WINDOW):
+            create_user_invitation(
+                fake_request.user,
+                f"windowtestuser{i}",
+                fake_request,
+                invitee_email=email,
+            )
 
         with pytest.raises(InvitationWindowCapError):
-            create_user_invitation(fake_request.user, email, fake_request)
+            create_user_invitation(
+                fake_request.user,
+                "windowtestuserextra",
+                fake_request,
+                invitee_email=email,
+            )
 
 
 ########################################################################
@@ -229,6 +291,24 @@ class TestCancelUserInvitation:
         assert pending_invitation.status == UserInvitation.Status.CANCELLED
         assert pending_invitation.cancelled_at is not None
 
+    ####################################################################
+    #
+    def test_cancel_reset_sent_invitation(
+        self, pending_invitation: UserInvitation
+    ) -> None:
+        """
+        GIVEN: a RESET_SENT invitation
+        WHEN:  cancel_user_invitation is called
+        THEN:  the invitation is cancelled (prevents future resends)
+        """
+        pending_invitation.status = UserInvitation.Status.RESET_SENT
+        pending_invitation.save()
+
+        cancel_user_invitation(pending_invitation)
+        pending_invitation.refresh_from_db()
+
+        assert pending_invitation.status == UserInvitation.Status.CANCELLED
+
 
 ########################################################################
 ########################################################################
@@ -249,7 +329,7 @@ class TestResendUserInvitation:
         ],
         ids=["accepted", "cancelled", "expired", "max-resends", "cooldown"],
     )
-    def test_resend_raises_when_not_allowed(
+    def test_resend_pending_raises_when_not_allowed(
         self,
         pending_invitation: UserInvitation,
         fake_request,
@@ -257,7 +337,7 @@ class TestResendUserInvitation:
         expected_error: type,
     ) -> None:
         """
-        GIVEN: an invitation in a state that blocks resending
+        GIVEN: a PENDING invitation in a state that blocks resending
         WHEN:  resend_user_invitation is called
         THEN:  the appropriate guard error is raised
         """
@@ -289,7 +369,7 @@ class TestResendUserInvitation:
         fake_request,
     ) -> None:
         """
-        GIVEN: a valid pending invitation past its cooldown
+        GIVEN: a valid PENDING invitation past its cooldown
         WHEN:  resend_user_invitation is called
         THEN:  send_count is incremented and last_sent_at is updated
         """
@@ -300,6 +380,46 @@ class TestResendUserInvitation:
         pending_invitation.refresh_from_db()
         assert pending_invitation.send_count == before + 1
         assert pending_invitation.last_sent_at is not None
+
+    ####################################################################
+    #
+    def test_resend_reset_sent_increments_send_count(
+        self,
+        pending_invitation: UserInvitation,
+        fake_request,
+    ) -> None:
+        """
+        GIVEN: a valid RESET_SENT invitation past its cooldown
+        WHEN:  resend_user_invitation is called
+        THEN:  send_count is incremented (a fresh admin reset email is sent)
+        """
+        pending_invitation.status = UserInvitation.Status.RESET_SENT
+        pending_invitation.save()
+        before = pending_invitation.send_count
+
+        resend_user_invitation(pending_invitation, fake_request)
+
+        pending_invitation.refresh_from_db()
+        assert pending_invitation.send_count == before + 1
+
+    ####################################################################
+    #
+    def test_resend_reset_sent_ignores_expiry(
+        self,
+        pending_invitation: UserInvitation,
+        fake_request,
+    ) -> None:
+        """
+        GIVEN: a RESET_SENT invitation whose expires_at is in the past
+        WHEN:  resend_user_invitation is called
+        THEN:  no InvitationExpiredError is raised (expiry only blocks PENDING)
+        """
+        pending_invitation.status = UserInvitation.Status.RESET_SENT
+        pending_invitation.expires_at = timezone.now() - timedelta(days=1)
+        pending_invitation.save()
+
+        # Should not raise.
+        resend_user_invitation(pending_invitation, fake_request)
 
 
 ########################################################################
@@ -316,8 +436,9 @@ class TestAcceptUserInvitation:
             ("accepted", InvitationAlreadyAcceptedError),
             ("cancelled", InvitationCancelledError),
             ("expired", InvitationExpiredError),
+            ("reset_sent", InvitationError),
         ],
-        ids=["already-accepted", "cancelled", "expired"],
+        ids=["already-accepted", "cancelled", "expired", "reset-sent"],
     )
     def test_accept_raises_when_not_allowed(
         self,
@@ -340,6 +461,8 @@ class TestAcceptUserInvitation:
                 pending_invitation.expires_at = timezone.now() - timedelta(
                     days=1
                 )
+            case "reset_sent":
+                pending_invitation.status = UserInvitation.Status.RESET_SENT
         pending_invitation.save()
 
         with pytest.raises(expected_error):
@@ -353,7 +476,7 @@ class TestAcceptUserInvitation:
         fake_request,
     ) -> None:
         """
-        GIVEN: a valid pending invitation
+        GIVEN: a valid pending invitation for an inactive placeholder user
         WHEN:  accept_user_invitation is called
         THEN:  the invitee user is activated, a verified primary EmailAddress
                is created, and the invitation is marked accepted with a timestamp
@@ -372,6 +495,52 @@ class TestAcceptUserInvitation:
         assert EmailAddress.objects.filter(
             user=user,
             email=pending_invitation.invitee_email,
+            primary=True,
+            verified=True,
+        ).exists()
+
+    ####################################################################
+    #
+    def test_accept_already_active_user_marks_accepted(
+        self,
+        fake_request,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a PENDING invitation linked to an already-active user
+              (e.g. created directly rather than via the service layer)
+        WHEN:  accept_user_invitation is called
+        THEN:  the invitation is marked accepted, the user stays active,
+               and a verified EmailAddress record is ensured
+        """
+        email = faker.email()
+        active_user = user_factory(email=email)
+        active_user.is_active = True
+        active_user.save()
+
+        invitation = UserInvitation.objects.create(
+            invited_by=fake_request.user,
+            invitee_email=email,
+            invitee_user=active_user,
+            token=faker.uuid4(),
+            status=UserInvitation.Status.PENDING,
+            expires_at=timezone.now() + timedelta(days=7),
+            send_count=1,
+            last_sent_at=timezone.now() - timedelta(hours=2),
+        )
+
+        accept_user_invitation(invitation, fake_request)
+
+        active_user.refresh_from_db()
+        invitation.refresh_from_db()
+
+        assert active_user.is_active
+        assert invitation.status == UserInvitation.Status.ACCEPTED
+        assert invitation.accepted_at is not None
+        assert EmailAddress.objects.filter(
+            user=active_user,
+            email=email,
             primary=True,
             verified=True,
         ).exists()

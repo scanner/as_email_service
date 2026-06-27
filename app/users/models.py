@@ -129,6 +129,7 @@ class UserInvitation(models.Model):
         ACCEPTED = "accepted", "Accepted"
         CANCELLED = "cancelled", "Cancelled"
         EXPIRED = "expired", "Expired"
+        RESET_SENT = "reset_sent", "Password Reset Sent"
 
     invited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
