@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Admin invitation form now accepts an optional username for new accounts; left blank, it is auto-derived from the email local part
 - Admins can invite existing accounts (active or inactive) by email; the invitation is linked to the existing user and a password-reset email is sent on acceptance
+- Invitations now support multiple accounts sharing the same email address: invitees are identified by username rather than email
+- Inviting an existing username sends an admin-initiated password-reset email immediately (status: Password Reset Sent) rather than creating an acceptance link
+- New email templates for the admin-initiated password-reset path include the account username so recipients know which account the link is for
+- RESET_SENT invitations can be resent and cancelled; resending generates a fresh allauth password-reset token each time
 
 ### Fixed
 

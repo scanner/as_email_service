@@ -56,23 +56,31 @@ class UserInvitationAdminForm(forms.ModelForm):
     """
     Form used only when creating a new invitation.
 
-    Validates the rolling window cap and, when a username is provided for a
-    new account, that the username is not already taken.
+    If the username already exists, a RESET_SENT invitation is created
+    and an admin-initiated password-reset email is sent immediately.
+    If the username does not exist, a new inactive account is created
+    using the provided email address and a standard invitation is sent.
     """
 
-    invitee_email = forms.EmailField(
-        label="Invitee email address",
-        help_text="The email address to send the invitation to.",
-    )
     username = forms.CharField(
         label="Username",
-        required=False,
+        required=True,
         help_text=(
-            "Username for the new account. Leave blank to auto-derive from "
-            "the email address. Ignored when the address belongs to an "
-            "existing account."
+            "Username of the account to invite. If this user already exists, "
+            "a password-reset email is sent to their registered address "
+            "immediately -- no acceptance link is required. If they do not "
+            "exist, a new account is created and a standard invitation is "
+            "sent to the email address below."
         ),
         max_length=150,
+    )
+    invitee_email = forms.EmailField(
+        label="Email address",
+        required=False,
+        help_text=(
+            "Required when the username does not yet exist. "
+            "Ignored when the username already belongs to an existing account."
+        ),
     )
 
     ####################################################################
@@ -83,38 +91,48 @@ class UserInvitationAdminForm(forms.ModelForm):
 
     ####################################################################
     #
+    def clean_username(self) -> str:
+        return self.cleaned_data.get("username", "").strip()
+
+    ####################################################################
+    #
     def clean_invitee_email(self) -> str:
-        email = self.cleaned_data["invitee_email"].strip().lower()
-        count = window_count(email)
+        email = self.cleaned_data.get("invitee_email", "")
+        return email.strip().lower() if email else ""
+
+    ####################################################################
+    #
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned is None:
+            return cleaned
+        username = cleaned.get("username", "").strip()
+        email = cleaned.get("invitee_email", "")
+
+        if not username:
+            return cleaned
+
+        existing_user = User.objects.filter(username=username).first()
+        if existing_user:
+            effective_email = existing_user.email.lower()
+        else:
+            if not email:
+                self.add_error(
+                    "invitee_email",
+                    "An email address is required when creating a new account.",
+                )
+                return cleaned
+            effective_email = email
+
+        count = window_count(effective_email)
         if count >= settings.INVITATION_MAX_PER_WINDOW:
             raise forms.ValidationError(
                 f"Too many invitations to this address in the last "
                 f"{settings.INVITATION_WINDOW_DAYS} days "
                 f"(limit: {settings.INVITATION_MAX_PER_WINDOW}, current: {count})."
             )
-        return email
 
-    ####################################################################
-    #
-    def clean_username(self) -> str:
-        username = self.cleaned_data.get("username", "").strip()
-        if not username:
-            return username
-
-        # Skip uniqueness check when inviting an existing account -- the
-        # username field is ignored by the service layer in that case.
-        invitee_email = self.cleaned_data.get("invitee_email", "")
-        if (
-            invitee_email
-            and User.objects.filter(email__iexact=invitee_email).exists()
-        ):
-            return username
-
-        if User.objects.filter(username=username).exists():
-            raise forms.ValidationError(
-                f"The username {username!r} is already taken."
-            )
-        return username
+        return cleaned
 
 
 ########################################################################
@@ -165,7 +183,7 @@ class UserInvitationAdmin(admin.ModelAdmin):
     #
     def get_fields(self, request, obj=None):
         if obj is None:
-            return ("invitee_email", "username")
+            return ("username", "invitee_email")
         return (
             "invitee_email",
             "status",
@@ -186,15 +204,22 @@ class UserInvitationAdmin(admin.ModelAdmin):
         if not change:
             # Creating -- delegate entirely to the service layer.
             try:
-                create_user_invitation(
+                inv = create_user_invitation(
                     invited_by=request.user,
-                    invitee_email=form.cleaned_data["invitee_email"],
+                    username=form.cleaned_data["username"],
                     request=request,
-                    username=form.cleaned_data.get("username") or None,
+                    invitee_email=form.cleaned_data.get("invitee_email")
+                    or None,
+                )
+                verb = (
+                    "Password reset sent"
+                    if inv.status == UserInvitation.Status.RESET_SENT
+                    else "Invitation sent"
                 )
                 self.message_user(
                     request,
-                    f"Invitation sent to {form.cleaned_data['invitee_email']!r}.",
+                    f"{verb} to {inv.invitee_email!r} "
+                    f"(username: {form.cleaned_data['username']!r}).",
                     level=messages.SUCCESS,
                 )
             except InvitationError as e:

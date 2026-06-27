@@ -99,8 +99,15 @@ class TestAcceptInvitationView:
             "expired",
             "cancelled",
             "accepted",
+            "reset_sent",
         ],
-        ids=["bad-token", "expired", "cancelled", "already-accepted"],
+        ids=[
+            "bad-token",
+            "expired",
+            "cancelled",
+            "already-accepted",
+            "reset-sent",
+        ],
     )
     def test_invalid_invitation_shows_error(
         self,
@@ -125,6 +132,10 @@ class TestAcceptInvitationView:
                 token = invitation.token
             case "accepted":
                 invitation.status = UserInvitation.Status.ACCEPTED
+                invitation.save()
+                token = invitation.token
+            case "reset_sent":
+                invitation.status = UserInvitation.Status.RESET_SENT
                 invitation.save()
                 token = invitation.token
             case "bad_token":
