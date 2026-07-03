@@ -170,9 +170,10 @@ class TestEmailChangeSecurity:
         GIVEN: a user with an active or expired EmailChangeCooldown
         WHEN:  they view Account Info
         THEN:  active -> cooldown notice shown, record still present;
-               expired -> notice absent, stale record auto-deleted
+               expired -> notice absent, stale record auto-deleted;
+               the current email address is visible either way
         """
-        user, password, _old_email = user_with_verified_email
+        user, password, old_email = user_with_verified_email
         EmailChangeCooldown.objects.create(
             user=user,
             expires_at=timezone.now() + timedelta(days=days_offset),
@@ -187,6 +188,7 @@ class TestEmailChangeSecurity:
             EmailChangeCooldown.objects.filter(user=user).exists()
             == expect_blocked
         )
+        assert old_email.encode() in resp.content
 
     ####################################################################
     #

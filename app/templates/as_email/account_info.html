@@ -9,6 +9,13 @@
 
   <h2 class="subtitle">{% trans "Email Address" %}</h2>
 
+  <div class="block">
+    <p>
+      <strong>{% trans "Current address" %}:</strong>
+      {% if current_email_str %}{{ current_email_str }}{% else %}<em>{% trans "none" %}</em>{% endif %}
+    </p>
+  </div>
+
   {% if new_emailaddress %}
     <div class="notification is-warning is-light">
       <p>
