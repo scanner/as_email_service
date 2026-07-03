@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-07-02
+
+### Added
+
+- Documentation: reading Local Delivery mail via POP3S (port 995) is now documented alongside IMAP (port 993)
+- Documentation: every section heading has a linkable anchor for sharing direct links to specific topics
+
+### Changed
+
+- Documentation: clarified the distinction between "Local Delivery" (reading mail stored on this server via IMAP/POP3S) and "IMAP Delivery" (forwarding mail to an external IMAP account), which used the term "IMAP" for two different things
+
+### Fixed
+
+- Account Info page no longer hides the current email address during an active email-change cooldown period
+
 ## [0.8.1] - 2026-06-19
 
 ### Added

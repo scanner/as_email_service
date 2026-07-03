@@ -9,7 +9,26 @@
 {% block content %}
 <div class="content">
 
-  <h2 class="subtitle" id="email-accounts">Your Email Accounts</h2>
+  <style>
+    .content h2[id], .content h3[id], .content h4[id] {
+      scroll-margin-top: 1rem;
+    }
+    .header-anchor {
+      margin-left: 0.4em;
+      font-size: 0.8em;
+      font-weight: normal;
+      color: #b5b5b5;
+      text-decoration: none;
+    }
+    .header-anchor:hover {
+      color: #3273dc;
+      text-decoration: underline;
+    }
+  </style>
+
+  <h2 class="subtitle" id="email-accounts">Your Email Accounts
+    <a class="header-anchor" href="#email-accounts" title="Link to this section">#</a>
+  </h2>
   <p>
     You may have one or more email accounts on this server, each with its own email
     address. All of your email accounts are listed on the
@@ -38,7 +57,9 @@
     </figcaption>
   </figure>
 
-  <h2 class="subtitle" id="sending-email">Sending Email</h2>
+  <h2 class="subtitle" id="sending-email">Sending Email
+    <a class="header-anchor" href="#sending-email" title="Link to this section">#</a>
+  </h2>
   <p>
     Configure your email client with one set of SMTP credentials per email account.
     Use the email address and its account password (not your web login password).
@@ -53,31 +74,55 @@
     </tbody>
   </table>
 
-  <h2 class="subtitle" id="local-delivery">Local Delivery</h2>
+  <h2 class="subtitle" id="local-delivery">Local Delivery
+    <a class="header-anchor" href="#local-delivery" title="Link to this section">#</a>
+  </h2>
   <p>
     Local delivery stores incoming mail in directories on this server. This is the
-    simplest delivery method and requires no external accounts or services.
+    simplest delivery method and requires no external accounts or services. All
+    email accounts start with a local delivery method by default.
   </p>
+  <div class="notification is-warning is-light">
+    <p>
+      <strong>Not to be confused with the "IMAP Delivery" method below.</strong>
+      "IMAP Delivery" forwards incoming mail to a different, <em>external</em> mailbox.
+      The instructions on this page are for reading mail that Local Delivery already
+      stored on <em>this</em> server, using IMAP only as the read-access protocol.
+    </p>
+  </div>
+
+  <h3 id="reading-local-delivery-mail">Reading your Local Delivery mail via IMAP or POP3S
+    <a class="header-anchor" href="#reading-local-delivery-mail" title="Link to this section">#</a>
+  </h3>
   <p>
-    This server also runs an IMAP service that provides access to those local mail
-    directories. To read your email directly from this service, configure your email
-    client to connect via IMAP using your email account's address and password:
+    This server also runs IMAP and POP3S services that provide access to those local
+    mail directories. To read your email directly from this service, configure your
+    email client with whichever protocol it supports — use the IMAP port for IMAP, or
+    the POP3S port for POP3S — along with your email account's address and password:
   </p>
-  <table class="table">
+  <div class="notification is-link" style="margin-bottom: 0; border-radius: 4px 4px 0 0; padding: 0.75rem 1.25rem;">
+    <p class="has-text-weight-bold">Mail client configuration — IMAP &amp; POP3S</p>
+  </div>
+  <table class="table" style="margin-top: 0;">
     <tbody>
       <tr><th>Server</th><td>{{ settings.SITE_NAME }}</td></tr>
-      <tr><th>Port</th><td>993 (SSL)</td></tr>
+      <tr><th>Port (IMAP)</th><td>993 (SSL)</td></tr>
+      <tr><th>Port (POP3S)</th><td>995 (SSL)</td></tr>
       <tr><th>Username</th><td>The email address shown in your email account card{% if email_accounts %} (e.g. <strong>{{ email_accounts.0 }}</strong>){% endif %}</td></tr>
       <tr><th>Password</th><td>The email account password (set on the main page)</td></tr>
     </tbody>
   </table>
 
-  <h2 class="subtitle" id="imap-delivery">IMAP Delivery</h2>
+  <h2 class="subtitle" id="imap-delivery">IMAP Delivery
+    <a class="header-anchor" href="#imap-delivery" title="Link to this section">#</a>
+  </h2>
   <p>
-    IMAP delivery forwards incoming mail received by this service to a remote IMAP
-    server of your choice — Gmail, Fastmail, or any hosted or self-hosted server.
-    Each message is deposited via the IMAP protocol directly into that remote account.
-    Configure IMAP delivery per email account on the main page.
+    IMAP delivery is a separate, optional delivery method — it is not the same as the
+    read-access instructions above. Instead of storing mail locally, it forwards
+    incoming mail received by this service to a remote IMAP server of your choice —
+    Gmail, Fastmail, or any hosted or self-hosted server. Each message is deposited via
+    the IMAP protocol directly into that remote account. Configure IMAP delivery per
+    email account on the main page.
   </p>
   <ul>
     <li>Set the remote IMAP server hostname, port, username, and password.</li>
@@ -86,9 +131,13 @@
       server's designated junk folder is used automatically; if none exists,
       a folder named <em>Junk</em> is used; otherwise mail falls back to the inbox).</li>
   </ul>
-  <h3>Provider-specific setup</h3>
+  <h3 id="provider-specific-setup">Provider-specific setup
+    <a class="header-anchor" href="#provider-specific-setup" title="Link to this section">#</a>
+  </h3>
 
-  <h4>Gmail</h4>
+  <h4 id="gmail">Gmail
+    <a class="header-anchor" href="#gmail" title="Link to this section">#</a>
+  </h4>
   <p>
     Gmail does not allow regular account passwords for third-party IMAP access.
     You must use an <strong>app password</strong> — a 16-character password generated
@@ -133,7 +182,9 @@
     IMAP delivery will fail and the method will be auto-disabled after the retry window.
   </div>
 
-  <h4>iCloud Mail</h4>
+  <h4 id="icloud-mail">iCloud Mail
+    <a class="header-anchor" href="#icloud-mail" title="Link to this section">#</a>
+  </h4>
   <p>
     iCloud Mail requires an <strong>app-specific password</strong> for third-party IMAP
     access. Your regular Apple ID password will not work.
@@ -176,7 +227,9 @@
     the password in your Apple ID account settings will cause IMAP delivery to fail.
   </div>
 
-  <h3>Credentials and re-enabling</h3>
+  <h3 id="credentials-and-re-enabling">Credentials and re-enabling
+    <a class="header-anchor" href="#credentials-and-re-enabling" title="Link to this section">#</a>
+  </h3>
   <p>
     When you save an IMAP delivery method with a password, the service immediately
     tests the connection. The save is rejected if the credentials are invalid, so
@@ -187,7 +240,9 @@
     If your credentials have changed since the method was disabled, update the
     password at the same time as you re-enable it.
   </p>
-  <h3>Automatic retries and failure handling</h3>
+  <h3 id="automatic-retries-and-failure-handling">Automatic retries and failure handling
+    <a class="header-anchor" href="#automatic-retries-and-failure-handling" title="Link to this section">#</a>
+  </h3>
   <p>
     If delivery to your remote server fails (e.g. the server is temporarily
     unreachable), the service retries automatically. Retries are spaced out with
@@ -208,7 +263,9 @@
     notification explaining which method was disabled and why.
   </p>
 
-  <h2 class="subtitle" id="alias-delivery">Alias Delivery</h2>
+  <h2 class="subtitle" id="alias-delivery">Alias Delivery
+    <a class="header-anchor" href="#alias-delivery" title="Link to this section">#</a>
+  </h2>
   <p>
     Alias delivery lets you receive email sent to multiple addresses and have it all
     delivered to a single email account. For example, if you have a primary account
@@ -223,7 +280,9 @@
     managing separate inboxes for each one.
   </p>
 
-  <h2 class="subtitle" id="spam-filtering">Spam Filtering</h2>
+  <h2 class="subtitle" id="spam-filtering">Spam Filtering
+    <a class="header-anchor" href="#spam-filtering" title="Link to this section">#</a>
+  </h2>
   <p>
     Each email account has a <strong>Scan incoming email for spam</strong> toggle
     (enabled by default). When on, incoming messages are run through SpamAssassin
@@ -244,7 +303,9 @@
   </p>
 
   {% if settings.SPAM_TRAINING_ADDRESS %}
-  <h3>Reporting Misclassified Messages</h3>
+  <h3 id="reporting-misclassified-messages">Reporting Misclassified Messages
+    <a class="header-anchor" href="#reporting-misclassified-messages" title="Link to this section">#</a>
+  </h3>
   <p>
     You can help improve spam filtering by reporting messages that were
     incorrectly classified:
@@ -268,7 +329,9 @@
   </p>
   {% endif %}
 
-  <h2 class="subtitle" id="need-help">Need Help?</h2>
+  <h2 class="subtitle" id="need-help">Need Help?
+    <a class="header-anchor" href="#need-help" title="Link to this section">#</a>
+  </h2>
   <p>
     Contact the administrator at
     <a href="mailto:{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}">{{ settings.ADMINISTRATIVE_EMAIL_ADDRESS }}</a>
