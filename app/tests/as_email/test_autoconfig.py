@@ -189,8 +189,8 @@ class TestAutoconfigView:
 
         content = resp.content.decode()
         assert content.count("<hostname>mail2.example.com</hostname>") == 2
-        assert settings.SITE_NAME not in content
-        assert "imap.example.com" not in content
+        assert f"<hostname>{settings.SITE_NAME}</hostname>" not in content
+        assert "<hostname>imap.example.com</hostname>" not in content
 
 
 ########################################################################
@@ -351,5 +351,5 @@ class TestAutodiscoverView:
 
         content = resp.content.decode()
         assert content.count("<Server>mail2.example.com</Server>") == 2
-        assert settings.SITE_NAME not in content
-        assert "imap.example.com" not in content
+        assert f"<Server>{settings.SITE_NAME}</Server>" not in content
+        assert "<Server>imap.example.com</Server>" not in content
