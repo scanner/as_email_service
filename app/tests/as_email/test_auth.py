@@ -57,6 +57,38 @@ class TestLogin:
         resp = client.post(url, {"login": user.username, "password": submitted})
         assert resp.status_code == expected_status
 
+    ####################################################################
+    #
+    def test_login_without_next_param_redirects_to_home_page(
+        self,
+        client: Client,
+        user_factory: Callable,
+        faker: Faker,
+    ) -> None:
+        """
+        GIVEN: a login page visited with no `next` query param
+        WHEN:  the login form is rendered and then submitted with valid
+               credentials
+        THEN:  the hidden `next` field is absent (not the literal string
+               "None"), and the login redirect chain lands on the app's
+               home page rather than a broken intermediate URL
+        """
+        password = faker.pystr(min_chars=8, max_chars=32)
+        user = user_factory(password=password)
+        user.save()
+
+        url = reverse("account_login")
+        get_resp = client.get(url)
+        assert b'value="None"' not in get_resp.content
+
+        resp = client.post(
+            url,
+            {"login": user.username, "password": password},
+            follow=True,
+        )
+        assert resp.status_code == 200
+        assert resp.redirect_chain[-1][0] == reverse("as_email:index")
+
 
 ########################################################################
 ########################################################################

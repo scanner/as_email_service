@@ -6,7 +6,9 @@
   <form method="post" action="{% url 'account_login' %}">
     {% csrf_token %}
     {{ form|crispy }}
-    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+    {% if redirect_field_value %}
+      <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+    {% endif %}
     <div class="field">
       <div class="control">
         <button type="submit" class="button is-primary">{% trans "Sign In" %}</button>

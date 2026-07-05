@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-07-04
+
+### Fixed
+
+- Login no longer redirects to the broken URL `/accounts/login/None` when signing in without a `next` parameter (e.g. right after a password reset)
+
 ## [0.8.2] - 2026-07-02
 
 ### Added
