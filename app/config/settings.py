@@ -81,6 +81,9 @@ env = environ.FileAwareEnv(
     SENTRY_TRACES_SAMPLE_RATE=(float, 0.0),
     GITHUB_URL=(str, "https://github.com/scanner/as_email_service"),
     SITE_NAME=(str, "example.com"),
+    IMAP_HOSTNAME=(str, ""),
+    IMAP_PORT=(int, 993),
+    SMTP_SUBMISSION_PORT=(int, 587),
     SPAM_TRAINING_ADDRESS=(str, None),
     NOT_SPAM_TRAINING_ADDRESS=(str, None),
     SPAMD_HOST=(str, "spamassassin:783"),
@@ -136,6 +139,9 @@ DELIVERY_RETRY_BACKOFF = env("DELIVERY_RETRY_BACKOFF", default="exponential")
 VERSION = env("VERSION")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 SITE_NAME = env("SITE_NAME")
+IMAP_HOSTNAME = env("IMAP_HOSTNAME") or SITE_NAME
+IMAP_PORT = env.int("IMAP_PORT")
+SMTP_SUBMISSION_PORT = env.int("SMTP_SUBMISSION_PORT")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 if ALLOWED_HOSTS:
     CSRF_TRUSTED_ORIGINS = [f"https://{x}" for x in ALLOWED_HOSTS]

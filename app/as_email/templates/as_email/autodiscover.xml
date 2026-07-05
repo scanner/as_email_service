@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006">
+  <Response xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a">
+    <Account>
+      <AccountType>email</AccountType>
+      <Action>settings</Action>
+{% if include_imap %}
+      <Protocol>
+        <Type>IMAP</Type>
+        <Server>{{ imap_hostname }}</Server>
+        <Port>{{ imap_port }}</Port>
+        <DomainRequired>on</DomainRequired>
+        <SPA>off</SPA>
+        <SSL>on</SSL>
+        <AuthRequired>on</AuthRequired>
+        <LoginName>{{ email_address }}</LoginName>
+      </Protocol>
+{% endif %}
+{% if include_smtp %}
+      <Protocol>
+        <Type>SMTP</Type>
+        <Server>{{ smtp_hostname }}</Server>
+        <Port>{{ smtp_port }}</Port>
+        <DomainRequired>on</DomainRequired>
+        <SPA>off</SPA>
+        <Encryption>TLS</Encryption>
+        <AuthRequired>on</AuthRequired>
+        <UsePOPAuth>on</UsePOPAuth>
+        <SMTPLast>on</SMTPLast>
+        <LoginName>{{ email_address }}</LoginName>
+      </Protocol>
+{% endif %}
+    </Account>
+  </Response>
+</Autodiscover>

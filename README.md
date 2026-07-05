@@ -122,7 +122,24 @@ configurable thresholds and ban durations.
 See [docs/fail2ban-integration.md](docs/fail2ban-integration.md) for setup
 instructions and configuration details.
 
+### Autoconfig / Autodiscover
+
+Email clients (Thunderbird, Evolution, KMail, Outlook) can automatically
+configure IMAP/SMTP settings for an account instead of requiring the user to
+enter server names and ports by hand. This requires DNS records per hosted
+domain and reverse-proxy configuration to route those requests without
+needing a TLS certificate for every hosted domain.
+
+See [docs/autoconfig-autodiscover.md](docs/autoconfig-autodiscover.md) for
+the required DNS records and nginx/Caddy configuration.
+
 ## Design
+
+- [docs/delivery-methods.md](docs/delivery-methods.md) — the `DeliveryMethod`
+  subclasses (`LocalDelivery`, `AliasToDelivery`, `ImapDelivery`) and how
+  incoming mail is dispatched to them.
+- [docs/email-change.md](docs/email-change.md) — the security design behind
+  the Account Info email-change flow (verification, cancellation, cooldown).
 
 ## Local Development
 
