@@ -221,6 +221,19 @@ class Server(models.Model):
         null=True,
         blank=True,
     )
+    mail_hostname = models.CharField(
+        help_text=_(
+            "The hostname advertised to email clients for both IMAP and SMTP "
+            "in the autoconfig/autodiscover responses for this domain. If not "
+            "set, settings.SITE_NAME is used. Unlike the spool/mail_dir "
+            "fields above, this is resolved at request time, not filled in "
+            "when the Server is created -- so it always reflects the current "
+            "settings.SITE_NAME until a domain-specific override is set here."
+        ),
+        max_length=200,
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -240,6 +253,16 @@ class Server(models.Model):
     #
     def __str__(self):
         return self.domain_name
+
+    ####################################################################
+    #
+    @property
+    def resolved_mail_hostname(self) -> str:
+        """
+        The hostname to advertise for this domain in autoconfig/autodiscover
+        responses: this Server's override if set, otherwise settings.SITE_NAME.
+        """
+        return self.mail_hostname or settings.SITE_NAME
 
     ####################################################################
     #

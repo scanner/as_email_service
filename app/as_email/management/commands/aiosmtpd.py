@@ -56,7 +56,6 @@ from as_email.models import EmailAccount, InactiveEmail, Server
 from as_email.tasks import dispatch_incoming_email
 from as_email.utils import msg_froms, write_spooled_email
 
-SUBMISSION_PORT = 587
 SMTP_PORT = 25
 LISTEN_HOST = "0.0.0.0"
 
@@ -454,7 +453,7 @@ class Command(BaseCommand):
             "--submission_port",
             type=port_or_off,
             action="store",
-            default=SUBMISSION_PORT,
+            default=settings.SMTP_SUBMISSION_PORT,
         )
         parser.add_argument(
             "--smtp_port",

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-05
+
+### Added
+
+- Autoconfig (Thunderbird/Evolution/KMail) and Autodiscover (Outlook) endpoints so email clients can automatically configure IMAP and SMTP settings for an account
+- `Server.mail_hostname`: optional per-domain override of the hostname advertised in autoconfig/autodiscover responses, for domains that need to point somewhere other than this deployment's default host
+- `IMAP_HOSTNAME`, `IMAP_PORT`, and `SMTP_SUBMISSION_PORT` settings so autoconfig/autodiscover can advertise the correct IMAP/SMTP connection details
+- `docs/autoconfig-autodiscover.md`: required DNS records and reverse-proxy (nginx, Caddy) configuration for serving autoconfig/autodiscover across multiple hosted domains without per-domain TLS certificates
+
 ## [0.8.3] - 2026-07-04
 
 ### Fixed

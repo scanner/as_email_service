@@ -16,9 +16,11 @@ These views are for users. It needs to provide functions to:
 # System imports
 #
 import logging
+import xml.etree.ElementTree as ET
 
 # 3rd party imports
 #
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Prefetch, Q
@@ -28,9 +30,10 @@ from django.http import (
     HttpResponseBadRequest,
 )
 from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from drf_spectacular.utils import (
     PolymorphicProxySerializer,
@@ -78,6 +81,14 @@ from .serializers import (
 )
 
 logger = logging.getLogger("as_email.views")
+
+# Namespace for the <EMailAddress> element in an Outlook Autodiscover
+# request body. See: https://learn.microsoft.com/en-us/exchange/client-developer/exchange-web-services/autodiscover-for-exchange
+#
+AUTODISCOVER_REQUEST_NS = (
+    "http://schemas.microsoft.com/exchange/autodiscover/"
+    "outlook/requestschema/2006"
+)
 
 
 ####################################################################
@@ -380,6 +391,114 @@ def hook_forward_valid(request):
     # indicating the forwarding is okay.
     #
     return HttpResponse("Ok.. ")
+
+
+####################################################################
+#
+def _domain_from_email(email_address: str | None) -> str | None:
+    """
+    Extract and lowercase the domain part of an email address.
+
+    Returns None if `email_address` is empty or not in `local@domain` form.
+    """
+    if not email_address or "@" not in email_address:
+        return None
+    return email_address.rsplit("@", 1)[1].strip().lower()
+
+
+####################################################################
+#
+def _mail_config_context(server: Server, email_address: str) -> dict:
+    """
+    Build the template context shared by the autoconfig and autodiscover
+    views: the resolved SMTP/IMAP hostnames and whether each section should
+    be included in the response.
+
+    The SMTP section is only advertised when the server has a send_provider
+    configured. The IMAP section is only advertised when settings.IMAP_HOSTNAME
+    is set (a deployment with no local IMAP service can leave it blank). A
+    Server's mail_hostname, if set, overrides settings.SITE_NAME /
+    settings.IMAP_HOSTNAME for both sections.
+    """
+    return {
+        "domain": server.domain_name,
+        "email_address": email_address,
+        "include_smtp": server.send_provider_id is not None,
+        "smtp_hostname": server.mail_hostname or settings.SITE_NAME,
+        "smtp_port": settings.SMTP_SUBMISSION_PORT,
+        "include_imap": bool(settings.IMAP_HOSTNAME),
+        "imap_hostname": server.mail_hostname or settings.IMAP_HOSTNAME,
+        "imap_port": settings.IMAP_PORT,
+    }
+
+
+####################################################################
+#
+@require_GET
+def autoconfig_mail_config(request):
+    """
+    Mozilla autoconfig endpoint (Thunderbird/Evolution/KDE Kmail).
+
+    Served at both /.well-known/autoconfig/mail/config-v1.1.xml and
+    /mail/config-v1.1.xml (see config/urls.py). The client passes the
+    account's email address as the `emailaddress` query parameter; the
+    domain is looked up against Server.domain_name.
+    """
+    email_address = request.GET.get("emailaddress", "")
+    domain = _domain_from_email(email_address)
+    if not domain:
+        return HttpResponseBadRequest(
+            "Missing or invalid 'emailaddress' parameter"
+        )
+
+    try:
+        server = Server.objects.get(domain_name=domain)
+    except Server.DoesNotExist:
+        raise Http404(f"No server configured for domain '{domain}'") from None
+
+    xml = render_to_string(
+        "as_email/autoconfig.xml",
+        _mail_config_context(server, email_address),
+    )
+    return HttpResponse(xml, content_type="application/xml")
+
+
+####################################################################
+#
+@csrf_exempt
+@require_POST
+def autodiscover_config(request):
+    """
+    Microsoft autodiscover endpoint (Outlook).
+
+    Served at /autodiscover/autodiscover.xml (see config/urls.py). The
+    client POSTs an XML body containing the account's email address; the
+    domain is looked up against Server.domain_name.
+    """
+    try:
+        root = ET.fromstring(request.body)
+    except ET.ParseError:
+        return HttpResponseBadRequest("Malformed XML request body")
+
+    email_el = root.find(f".//{{{AUTODISCOVER_REQUEST_NS}}}EMailAddress")
+    email_address = None
+    if email_el is not None and email_el.text:
+        email_address = email_el.text.strip()
+    domain = _domain_from_email(email_address)
+    if not domain:
+        return HttpResponseBadRequest("Missing or invalid EMailAddress element")
+    assert email_address is not None  # narrowed by _domain_from_email above
+
+    try:
+        server = Server.objects.get(domain_name=domain)
+    except Server.DoesNotExist:
+        raise Http404(f"No server configured for domain '{domain}'") from None
+
+    xml = render_to_string(
+        "as_email/autodiscover.xml",
+        _mail_config_context(server, email_address),
+    )
+    return HttpResponse(xml, content_type="application/xml")
 
 
 ########################################################################
