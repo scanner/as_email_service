@@ -567,7 +567,7 @@ class TestForwardEmailBackend:
         )
 
         # Verify logging
-        assert "deliver_email_locally: Queued delivery for" in caplog.text
+        assert "Queued " in caplog.text
         assert email_account.email_address in caplog.text
         assert message_id in caplog.text
         assert from_email in caplog.text
@@ -627,9 +627,7 @@ class TestForwardEmailBackend:
         assert nonexistent_email in response_data["failed_recipients"]
 
         # Verify logging - should have two successful deliveries
-        assert (
-            caplog.text.count("deliver_email_locally: Queued delivery for") == 2
-        )
+        assert caplog.text.count("Queued ") == 2
         assert account1.email_address in caplog.text
         assert account2.email_address in caplog.text
         assert "EmailAccount that does not exist" in caplog.text
@@ -680,7 +678,7 @@ class TestForwardEmailBackend:
         assert response_data["delivered"] == 1
 
         # Verify logging shows the hash address was used
-        assert "deliver_email_locally: Queued delivery for" in caplog.text
+        assert "Queued " in caplog.text
         assert hash_addr in caplog.text
 
 
@@ -727,6 +725,68 @@ class TestForwardEmailAPIMethods:
         )
 
         assert backend.get_bounce_webhook_url(server) == expected_url
+
+    ####################################################################
+    #
+    def test_get_webhook_url(
+        self,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+    ) -> None:
+        """
+        GIVEN: an email account
+        WHEN:  get_webhook_url is called
+        THEN:  the returned URL exactly matches the hook_incoming URL for
+               this provider and domain, prefixed with https://SITE_NAME,
+               carrying both api_key and recipient query parameters
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        email_account = email_account_factory(server=server)
+
+        expected_path = reverse(
+            "as_email:hook_incoming",
+            kwargs={
+                "provider_name": "forwardemail",
+                "domain_name": server.domain_name,
+            },
+        )
+        query = urlencode(
+            {
+                "api_key": server.api_key,
+                "recipient": email_account.email_address,
+            }
+        )
+        expected_url = f"https://{settings.SITE_NAME}{expected_path}?{query}"
+
+        assert backend.get_webhook_url(email_account) == expected_url
+
+    ####################################################################
+    #
+    def test_get_webhook_url_unique_per_email_account(
+        self,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+    ) -> None:
+        """
+        GIVEN: two email accounts on the same server
+        WHEN:  get_webhook_url is called for each
+        THEN:  the two URLs must differ from each other
+
+        forwardemail.net suppresses repeat deliveries keyed on message
+        fingerprint + webhook URL (1-day TTL).  If two aliases shared an
+        identical webhook URL, a message sent to both addresses in separate
+        SMTP transactions would only trigger a webhook for the first one -
+        the second copy would be silently dropped.
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        account1 = email_account_factory(server=server)
+        account2 = email_account_factory(server=server)
+
+        assert backend.get_webhook_url(account1) != backend.get_webhook_url(
+            account2
+        )
 
     ####################################################################
     #

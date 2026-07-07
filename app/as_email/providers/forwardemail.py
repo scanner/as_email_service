@@ -20,6 +20,12 @@ flow is:
 Because the webhook URL is stored per-alias, ``create_update_email_account``
 always includes it when creating or updating an alias via the API.
 
+NOTE: Each alias's webhook URL MUST be unique (we append a ``recipient``
+query parameter to guarantee this).  forwardemail.net suppresses repeat
+deliveries keyed on message fingerprint + webhook URL for one day, so two
+aliases sharing one URL would lose mail whenever a single message is sent
+to both addresses in separate SMTP transactions.  See ``get_webhook_url``.
+
 **Outbound mail**
 
 Outbound email is sent via the ``/v1/emails`` REST API endpoint using the
@@ -1029,7 +1035,7 @@ class ForwardEmailBackend(ProviderBackend):
             delivered_count += 1
 
             logger.info(
-                "deliver_email_locally: Queued delivery for '%s', message %s, from %s",
+                "Queued '%s', message %s, from %s",
                 recipient,
                 message_id,
                 from_addr_str,
@@ -1501,11 +1507,23 @@ class ForwardEmailBackend(ProviderBackend):
         """
         Construct the incoming webhook URL for an email account.
 
+        The URL includes a ``recipient`` query parameter with the account's
+        email address so that every alias has a *unique* webhook URL.
+
+        IMPORTANT: forwardemail.net deduplicates deliveries by message
+        fingerprint (Message-ID/Date/From/To/Cc/Subject) plus webhook URL,
+        with a 1-day TTL.  If two aliases shared an identical webhook URL, a
+        message sent to both addresses in separate SMTP transactions would
+        only trigger a webhook for the first one - the second delivery would
+        be silently marked as accepted and dropped.  The ``recipient``
+        parameter exists solely to keep the URLs distinct per alias; the
+        webhook view itself ignores it.
+
         Args:
             email_account: The EmailAccount to get the webhook URL for
 
         Returns:
-            The full webhook URL with api_key query parameter
+            The full webhook URL with api_key and recipient query parameters
         """
         # Get the base incoming webhook URL for this provider
         #
@@ -1523,7 +1541,7 @@ class ForwardEmailBackend(ProviderBackend):
         webhook_url_base = urljoin(base_url, webhook_path)
         webhook_url = (
             f"{webhook_url_base}?"
-            f"{urlencode({'api_key': email_account.server.api_key})}"
+            f"{urlencode({'api_key': email_account.server.api_key, 'recipient': email_account.email_address})}"
         )
 
         return webhook_url

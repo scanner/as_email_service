@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-07
+
+### Fixed
+
+- ForwardEmail: a message sent to multiple accounts in the same domain is now delivered to all of them. Every alias's incoming webhook URL now includes a unique `recipient` parameter, preventing forwardemail.net's duplicate-delivery suppression (keyed on message fingerprint + webhook URL) from silently dropping copies for all but the first recipient when the message arrives in separate SMTP transactions
+
 ## [0.9.0] - 2026-07-05
 
 ### Added
