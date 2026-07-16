@@ -574,6 +574,51 @@ class TestForwardEmailBackend:
 
     ####################################################################
     #
+    def test_handle_incoming_webhook_github_style_message_id(
+        self,
+        server_factory: Callable[..., Server],
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+        faker: Faker,
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        Given an incoming webhook whose Message-ID contains `/` characters
+              (as GitHub notification emails do)
+        When the webhook is processed
+        Then it should spool the email and return success instead of failing
+
+        Regression test: the Message-ID used to be embedded verbatim in the
+        spool file name, so the `/` characters made it a path into
+        non-existent subdirectories, raising FileNotFoundError and returning
+        a 500 to ForwardEmail.
+        """
+        backend = ForwardEmailBackend()
+        server = server_factory()
+        email_account = email_account_factory(server=server)
+        msg = email_factory()
+        raw_email = msg.as_string(policy=email.policy.default)
+
+        message_id = "<kubestellar/console/issues/21134/3123456789@github.com>"
+
+        payload = {
+            "messageId": message_id,
+            "from": {"text": faker.email()},
+            "raw": raw_email,
+            "recipients": [email_account.email_address],
+        }
+
+        request = mocker.Mock(spec=HttpRequest)
+        request.body = json.dumps(payload).encode()
+
+        response = backend.handle_incoming_webhook(request, server)
+
+        response_data = json.loads(response.content)
+        assert response_data["status"] == "all good"
+        assert response_data["delivered"] == 1
+
+    ####################################################################
+    #
     def test_handle_incoming_webhook_multiple_recipients(
         self,
         server_factory: Callable[..., Server],
