@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-07-16
+
+### Fixed
+
+- Incoming messages whose Message-ID contains characters that are invalid in file names (e.g. the `/` in GitHub notification Message-IDs) no longer fail to spool, which caused the provider's incoming webhook to return a 500 and the message to not be delivered
+
 ## [0.9.1] - 2026-07-07
 
 ### Fixed

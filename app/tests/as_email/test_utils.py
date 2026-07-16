@@ -6,6 +6,7 @@ Test various functions in the utils module
 
 # system imports
 #
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from as_email.utils import (
     split_email_mailbox_hash,
     utc_now_str,
     write_emailaccount_pwfile,
+    write_spooled_email,
 )
 
 
@@ -63,6 +65,68 @@ def test_write_read_emailaccount_pwfile(
         assert rpw_user.username == pw_user.username
         assert rpw_user.maildir == pw_user.maildir
         assert rpw_user.pw_hash == pw_user.pw_hash
+
+
+####################################################################
+#
+def test_write_spooled_email_with_unsafe_message_id(
+    tmp_path: Path, faker: Faker
+) -> None:
+    """
+    GIVEN a message whose Message-ID contains characters that are not valid
+           in a file name (GitHub Message-IDs contain `/`)
+    WHEN  the message is written to the spool directory
+    THEN  the spool file is created directly inside the spool directory and
+          the json payload preserves the original, unmodified Message-ID
+
+    Regression test: GitHub Message-IDs such as
+    `<kubestellar/console/issues/21134/3123456789@github.com>` used to be
+    embedded verbatim in the spool file name, making the file name a path
+    into non-existent subdirectories and raising FileNotFoundError (which
+    surfaced as a 500 to the provider's incoming webhook).
+    """
+    recipient = faker.email()
+    msg_id = "<kubestellar/console/issues/21134/3123456789@github.com>"
+    raw_email = "Subject: test\n\ntest body\n"
+
+    msg_path = write_spooled_email(
+        recipient, tmp_path, raw_email, msg_id=msg_id
+    )
+
+    assert msg_path.parent == tmp_path
+    assert msg_path.exists()
+
+    spooled = json.loads(msg_path.read_text())
+    assert spooled["recipient"] == recipient
+    assert spooled["message-id"] == msg_id
+    assert spooled["raw_email"] == raw_email
+
+
+####################################################################
+#
+def test_write_spooled_email_with_overlong_message_id(
+    tmp_path: Path, faker: Faker
+) -> None:
+    """
+    GIVEN a message whose Message-ID is longer than the filesystem's file
+          name limit
+    WHEN  the message is written to the spool directory
+    THEN  the spool file is created with a truncated file name and the json
+          payload preserves the original, unmodified Message-ID
+    """
+    recipient = faker.email()
+    msg_id = f"<{'x' * 300}@example.com>"
+
+    msg_path = write_spooled_email(
+        recipient, tmp_path, "Subject: test\n\ntest body\n", msg_id=msg_id
+    )
+
+    assert msg_path.parent == tmp_path
+    assert msg_path.exists()
+    assert len(msg_path.name) <= 255
+
+    spooled = json.loads(msg_path.read_text())
+    assert spooled["message-id"] == msg_id
 
 
 ####################################################################

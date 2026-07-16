@@ -20,6 +20,7 @@ from email.message import EmailMessage
 from email.utils import make_msgid
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 import redis
 from django.conf import settings
@@ -28,6 +29,12 @@ if TYPE_CHECKING:
     from _typeshed import StrPath
 
 DATETIME_FMT_STR = "%Y.%m.%d-%H.%M.%S.%f%z"
+
+# Maximum length of the message-id portion of a spooled email file name.
+# Most filesystems limit file names to 255 bytes; this leaves room for the
+# ISO timestamp prefix and the ".json" suffix.
+#
+MAX_MSG_ID_FILENAME_LEN = 200
 
 logger = logging.getLogger("as_email.utils")
 
@@ -233,7 +240,15 @@ def write_spooled_email(
         else datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
     now = datetime.now().isoformat()
-    email_file_name = f"{now}-{msg_id}.json"
+
+    # Message-IDs come straight from message headers and may contain
+    # characters that are not valid in a file name (GitHub Message-IDs
+    # contain `/`, for example). Percent-encode the msg_id for the file name
+    # and truncate it so the file name stays within filesystem limits. The
+    # unmodified msg_id is still recorded in the spooled json below.
+    #
+    safe_msg_id = quote(str(msg_id), safe="")[:MAX_MSG_ID_FILENAME_LEN]
+    email_file_name = f"{now}-{safe_msg_id}.json"
     fname = Path(spool_dir) / email_file_name
 
     # To account for other mail providers in the future and to reduce the json
