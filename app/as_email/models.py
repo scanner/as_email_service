@@ -39,7 +39,7 @@ from postmarker.core import PostmarkClient
 # project imports
 #
 from .providers import get_backend
-from .utils import get_spam_score
+from .utils import get_spam_score, message_as_bytes
 
 # Various models that belong to a specific user need the User object.
 #
@@ -1467,13 +1467,7 @@ class ImapDelivery(DeliveryMethod):
             msg: The email message to deliver.
             visited_accounts: Unused for IMAP delivery; required by interface.
         """
-        # Use as_string() + encode() instead of as_bytes() to avoid
-        # UnicodeEncodeError on malformed messages with non-ASCII content
-        # but no charset declaration.  as_string() returns a Python str
-        # (Unicode), sidestepping the ASCII-only serialization in
-        # as_bytes().
-        #
-        msg_bytes = msg.as_string(policy=email.policy.default).encode("utf-8")
+        msg_bytes = message_as_bytes(msg)
 
         with imapclient.IMAPClient(
             host=self.imap_host, port=self.imap_port, ssl=True

@@ -316,14 +316,28 @@ def test_scan_message_for_spam_failure(
 
 ####################################################################
 #
-def test_scan_message_for_spam_non_ascii(
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        # Non-ASCII content but no charset declaration: as_bytes() raises
+        # UnicodeEncodeError on this (common in spam).
+        #
+        "malformed_non_ascii_email",
+        # Undecodable bytes with a declared charset (euc-jp): as_string()
+        # raises UnicodeEncodeError on this (AS-EMAIL-SERVICE-3S).
+        #
+        "undecodable_charset_email",
+    ],
+)
+def test_scan_message_for_spam_malformed(
+    request: pytest.FixtureRequest,
     mocker: MockerFixture,
-    malformed_non_ascii_email: EmailMessage,
     caplog: LogCaptureFixture,
+    fixture_name: str,
 ) -> None:
     """
-    GIVEN a malformed message with non-ASCII content but no charset
-          declaration (common in spam)
+    GIVEN a malformed message that as_string() or as_bytes() can not
+          serialize
     WHEN  scan_message_for_spam is called
     THEN  the message is serialized to spamd without UnicodeEncodeError
     """
@@ -337,8 +351,9 @@ def test_scan_message_for_spam_non_ascii(
         new_callable=AsyncMock,
         return_value=mock_result,
     )
+    msg = request.getfixturevalue(fixture_name)
 
-    result = scan_message_for_spam(malformed_non_ascii_email)
+    result = scan_message_for_spam(msg)
 
     assert result["X-Spam-Score"] == "9.0"
     assert "Spam scan failed" not in caplog.text

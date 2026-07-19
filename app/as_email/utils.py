@@ -212,6 +212,78 @@ def split_email_mailbox_hash(email_address: str) -> tuple[str, str | None]:
 
 ####################################################################
 #
+def message_as_bytes(
+    msg: EmailMessage, policy: email.policy.Policy = email.policy.default
+) -> bytes:
+    """
+    Serialize an email message to bytes, tolerating malformed messages.
+
+    Messages from the wild are frequently malformed in ways that make one
+    of the email package's generators raise UnicodeEncodeError:
+
+    - as_bytes() fails on messages with non-ASCII text content but no
+      charset declaration (the payload can not be encoded as ascii).
+    - as_string() fails on messages whose undecodable bytes were parsed
+      into surrogate-escaped characters and whose declared charset is
+      re-encoded by the generator (eg: a euc-jp or shift_jis text part is
+      re-encoded through iso-2022-jp, which can never encode surrogates).
+
+    These failure modes are complementary, so try as_bytes() first -- it
+    reproduces the original message bytes exactly as received -- and fall
+    back to as_string() for the messages as_bytes() can not handle.
+
+    Args:
+        msg: The email message to serialize.
+        policy: The email policy to serialize with.
+
+    Returns:
+        The serialized message as bytes.
+    """
+    try:
+        return msg.as_bytes(policy=policy)
+    except (UnicodeError, LookupError):
+        pass
+    # NOTE: 'surrogateescape' turns any surrogate-escaped characters in the
+    #       generated string back into the raw bytes of the original message
+    #       instead of raising UnicodeEncodeError.
+    #
+    return msg.as_string(policy=policy).encode(
+        "utf-8", errors="surrogateescape"
+    )
+
+
+####################################################################
+#
+def message_as_string(
+    msg: EmailMessage, policy: email.policy.Policy = email.policy.default
+) -> str:
+    """
+    Serialize an email message to a str, tolerating malformed messages.
+
+    The str counterpart of message_as_bytes() -- see its docstring for the
+    two complementary generator failure modes. Tries as_string() first and
+    falls back to as_bytes() decoded with 'surrogateescape' so undecodable
+    bytes in the original message survive as surrogate-escaped characters.
+    The result can be written to json (json.dumps escapes the surrogates)
+    and encoding it with 'utf-8'/'surrogateescape' restores the original
+    bytes.
+
+    Args:
+        msg: The email message to serialize.
+        policy: The email policy to serialize with.
+
+    Returns:
+        The serialized message as a str.
+    """
+    try:
+        return msg.as_string(policy=policy)
+    except (UnicodeError, LookupError):
+        pass
+    return msg.as_bytes(policy=policy).decode("utf-8", errors="surrogateescape")
+
+
+####################################################################
+#
 # XXX Should we make this an async function since it writes a file? Or at least
 #     make an async equivalent.
 #
@@ -228,11 +300,7 @@ def write_spooled_email(
     spool message and meta information was written to (as json).
     """
     spool_dir = spool_dir if isinstance(spool_dir, Path) else Path(spool_dir)
-    msg = (
-        msg
-        if isinstance(msg, str)
-        else msg.as_string(policy=email.policy.default)
-    )
+    msg = msg if isinstance(msg, str) else message_as_string(msg)
     msg_id = msg_id if msg_id is not None else make_msgid(recipient)
     msg_date = (
         msg_date

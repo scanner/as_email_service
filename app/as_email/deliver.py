@@ -41,9 +41,7 @@ from mailbox import MH, ExternalClashError, NoSuchMailboxError
 # Project imports
 #
 from .models import EmailAccount, LocalDelivery, MessageFilterRule
-from .utils import get_spam_score
-
-ENCODINGS = ("ascii", "iso-8859-1", "utf-8")
+from .utils import get_spam_score, message_as_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -130,20 +128,7 @@ def _add_msg_to_folder(folder: MH, msg: EmailMessage):
     Adding a message to a MH folder requires several simple steps. This
     wraps those steps.
     """
-    # To deal with encoding snafus from whoever sent this message we try to
-    # encode it as bytes using several different encoders.
-    #
-    msg_bytes = None
-    msg_text = msg.as_string(policy=email.policy.default)
-    for encoding in ENCODINGS:
-        try:
-            msg_bytes = msg_text.encode(encoding)
-            break
-        except ValueError:
-            pass
-
-    if msg_bytes is None:
-        raise ValueError(f"Unable to encode message using any of {ENCODINGS}")
+    msg_bytes = message_as_bytes(msg)
 
     with lock_folder(folder):
         msg_id = int(folder.add(msg_bytes))

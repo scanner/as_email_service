@@ -38,6 +38,7 @@ from ..tasks import (
 from ..utils import (
     BOUNCE_TYPES_BY_TYPE_CODE,
     get_smtp_client,
+    message_as_bytes,
     msg_froms,
     sendmail,
     split_email_mailbox_hash,
@@ -172,7 +173,9 @@ class PostmarkBackend(ProviderBackend):
             )
             if spool_on_retryable:
                 assert server.outgoing_spool_dir is not None
-                spool_message(server.outgoing_spool_dir, message.as_bytes())
+                spool_message(
+                    server.outgoing_spool_dir, message_as_bytes(message)
+                )
             return False
         finally:
             smtp_client.quit()
@@ -218,7 +221,9 @@ class PostmarkBackend(ProviderBackend):
             )
             if spool_on_retryable:
                 assert server.outgoing_spool_dir is not None
-                spool_message(server.outgoing_spool_dir, message.as_bytes())
+                spool_message(
+                    server.outgoing_spool_dir, message_as_bytes(message)
+                )
             return False
         except ClientError as exc:
             # For certain error codes we spool for retry. For everything else
@@ -231,7 +236,9 @@ class PostmarkBackend(ProviderBackend):
             ):
                 if spool_on_retryable:
                     assert server.outgoing_spool_dir is not None
-                    spool_message(server.outgoing_spool_dir, message.as_bytes())
+                    spool_message(
+                        server.outgoing_spool_dir, message_as_bytes(message)
+                    )
                     logger.warning("Spooling message for retry (%r)", exc)
                 else:
                     logger.warning("Message retry failed: (%r)", exc)

@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 #
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, RequestDataTooBig
 from django.db.models import Count, Prefetch, Q
 from django.http import (
     Http404,
@@ -296,7 +296,22 @@ def hook_incoming(request, provider_name: str, domain_name: str):
             f"Provider '{provider_name}' does not support incoming webhooks"
         )
 
-    return provider.backend.handle_incoming_webhook(request, server)
+    # NOTE: RequestDataTooBig is raised when the provider backend reads
+    #       request.body and it exceeds DATA_UPLOAD_MAX_MEMORY_SIZE. Return a
+    #       413 so the provider knows the message was too large instead of
+    #       letting the error propagate as an unhandled 400.
+    #
+    try:
+        return provider.backend.handle_incoming_webhook(request, server)
+    except RequestDataTooBig:
+        logger.warning(
+            "Incoming webhook for %s via %s: request body exceeds "
+            "DATA_UPLOAD_MAX_MEMORY_SIZE (%d)",
+            domain_name,
+            provider_name,
+            settings.DATA_UPLOAD_MAX_MEMORY_SIZE,
+        )
+        return HttpResponse("Request body too large", status=413)
 
 
 ####################################################################

@@ -54,7 +54,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from as_email.deliver import make_delivery_status_notification
 from as_email.models import EmailAccount, InactiveEmail, Server
 from as_email.tasks import dispatch_incoming_email
-from as_email.utils import msg_froms, write_spooled_email
+from as_email.utils import message_as_string, msg_froms, write_spooled_email
 
 SMTP_PORT = 25
 LISTEN_HOST = "0.0.0.0"
@@ -1079,7 +1079,7 @@ async def deliver_email_locally(
     #
     msg = email.message_from_bytes(msg_bytes, policy=email.policy.default)
     msg_id = msg.get("Message-ID", "unknown")
-    msg_str = msg.as_string(policy=email.policy.default)
+    msg_str = message_as_string(msg)
 
     # Get the a formatted list of all the 'from's for this message. Almost
     # always there will only be one from, but it is not specifically disallowed

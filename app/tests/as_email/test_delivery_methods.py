@@ -680,25 +680,43 @@ class TestImapDeliveryModel:
 
     ####################################################################
     #
-    def test_deliver_non_ascii_message(
+    @pytest.mark.parametrize(
+        "fixture_name,marker",
+        [
+            # Non-ASCII content but no charset declaration: as_bytes()
+            # raises UnicodeEncodeError on this (common in spam).
+            #
+            ("malformed_non_ascii_email", b"special"),
+            # Undecodable bytes with a declared charset (euc-jp):
+            # as_string() raises UnicodeEncodeError on this
+            # (AS-EMAIL-SERVICE-3S).
+            #
+            ("undecodable_charset_email", b"Hello from a broken mailer"),
+        ],
+    )
+    def test_deliver_malformed_message(
         self,
+        request: pytest.FixtureRequest,
         imap_delivery_factory: Callable[..., ImapDelivery],
-        malformed_non_ascii_email: EmailMessage,
         mocker: MockerFixture,
+        fixture_name: str,
+        marker: bytes,
     ) -> None:
         """
-        GIVEN a malformed email with non-ASCII characters in the subject
-              and body but no charset declaration (common in spam)
+        GIVEN a malformed email that as_string() or as_bytes() can not
+              serialize
         WHEN  deliver() is called
         THEN  the message is serialized and appended without raising
               UnicodeEncodeError
         """
         mock_cls = mocker.patch("as_email.models.imapclient.IMAPClient")
         mock_client = mock_cls.return_value.__enter__.return_value
+        msg = request.getfixturevalue(fixture_name)
 
         imap_d = imap_delivery_factory()
-        imap_d.deliver(malformed_non_ascii_email, set())
+        imap_d.deliver(msg, set())
 
         mock_client.append.assert_called_once()
         appended_bytes = mock_client.append.call_args[0][1]
         assert isinstance(appended_bytes, bytes)
+        assert marker in appended_bytes

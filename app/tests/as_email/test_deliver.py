@@ -105,6 +105,46 @@ def test_deliver_message_locally(
 
 ####################################################################
 #
+@pytest.mark.parametrize(
+    "fixture_name,marker",
+    [
+        # as_string() raises UnicodeEncodeError: the declared charset
+        # (euc-jp -> iso-2022-jp) can not encode the surrogate-escaped
+        # payload (AS-EMAIL-SERVICE-3S).
+        #
+        ("undecodable_charset_email", b"Hello from a broken mailer"),
+        # as_bytes() raises UnicodeEncodeError: non-ASCII content with no
+        # charset declaration.
+        #
+        ("malformed_non_ascii_email", b"special"),
+    ],
+)
+def test_deliver_message_locally_malformed_encoding(
+    request: pytest.FixtureRequest,
+    email_account_factory: Callable[..., EmailAccount],
+    fixture_name: str,
+    marker: bytes,
+) -> None:
+    """
+    GIVEN a malformed message that the email generators can not serialize
+          via as_string() or as_bytes()
+    WHEN  the message is delivered locally
+    THEN  it is stored in the inbox instead of raising UnicodeEncodeError
+    """
+    ea = email_account_factory()
+    ld = LocalDelivery.objects.get(email_account=ea)
+    msg = request.getfixturevalue(fixture_name)
+
+    deliver_message_locally(ld, msg)
+
+    mh = ld.MH()
+    folder = mh.get_folder("inbox")
+    assert len(folder.keys()) == 1
+    assert marker in folder.get_bytes(str(1))
+
+
+####################################################################
+#
 def test_deliver_spam_locally(
     email_account_factory: Callable[..., EmailAccount],
     email_factory: Callable[..., EmailMessage],
