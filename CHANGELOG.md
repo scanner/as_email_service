@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-07-19
+
+### Fixed
+
+- Malformed email messages that Python's email generators can not serialize (e.g. 8-bit messages declaring a euc-jp/shift_jis charset, or non-ASCII content with no charset declaration) no longer fail local, IMAP, or spam-scan delivery with UnicodeEncodeError; all message serialization now goes through encoding-tolerant helpers
+- Incoming webhook requests larger than the request body limit now receive a 413 response instead of an unhandled 400 error; the limit was raised from 10MiB to 50MiB to match ForwardEmail's maximum message size
+
 ## [0.9.2] - 2026-07-16
 
 ### Fixed

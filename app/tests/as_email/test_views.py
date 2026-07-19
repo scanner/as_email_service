@@ -16,7 +16,8 @@ from urllib.parse import urlencode, urlparse
 #
 import pytest
 from dirty_equals import IsPartialDict
-from django.http import JsonResponse
+from django.conf import LazySettings
+from django.http import HttpRequest, JsonResponse
 from django.urls import resolve, reverse
 from faker import Faker
 from pytest_mock import MockerFixture
@@ -272,6 +273,53 @@ def test_incoming_webhook(
     mock_provider.backend.handle_incoming_webhook.assert_called_once()
     call_args = mock_provider.backend.handle_incoming_webhook.call_args
     assert call_args[0][1] == server  # Second argument should be the server
+
+
+####################################################################
+#
+def test_incoming_webhook_too_big_returns_413(
+    email_account_factory: Callable[..., EmailAccount],
+    api_client: type[APIClient],
+    mock_webhook_provider: Callable,
+    settings: LazySettings,
+) -> None:
+    """
+    GIVEN a webhook POST whose body exceeds DATA_UPLOAD_MAX_MEMORY_SIZE
+    WHEN  the provider backend tries to read request.body
+    THEN  the view returns a 413 instead of an unhandled RequestDataTooBig
+          error (AS-EMAIL-SERVICE-3K)
+    """
+    ea = email_account_factory()
+    ea.save()
+    server = ea.server
+    settings.DATA_UPLOAD_MAX_MEMORY_SIZE = 1024
+
+    # The provider backend reads request.body, which is what raises
+    # RequestDataTooBig when the body exceeds the limit.
+    #
+    def read_body(request: HttpRequest, server: Server) -> JsonResponse:
+        _ = request.body
+        return JsonResponse({"status": "all good"})
+
+    mock_provider = mock_webhook_provider("handle_incoming_webhook", None)
+    mock_provider.backend.handle_incoming_webhook.side_effect = read_body
+
+    url = (
+        reverse(
+            "as_email:hook_incoming",
+            kwargs={
+                "provider_name": "dummy",
+                "domain_name": server.domain_name,
+            },
+        )
+        + "?"
+        + urlencode({"api_key": server.api_key})
+    )
+
+    client = api_client()
+    r = client.post(url, "x" * 2048, content_type="application/json")
+
+    assert r.status_code == 413
 
 
 ####################################################################

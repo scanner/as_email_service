@@ -244,6 +244,32 @@ def malformed_non_ascii_email() -> EmailMessage:
 ####################################################################
 #
 @pytest.fixture
+def undecodable_charset_email() -> EmailMessage:
+    """
+    An email whose text part contains bytes that can not be decoded and
+    declares a charset (euc-jp) that the email generator re-encodes through
+    iso-2022-jp.  Mimics real spam messages that cause UnicodeEncodeError
+    ('iso2022_jp' codec can not encode character '\\udcef') when serialized
+    with as_string(policy=default) because the generator re-encodes the
+    surrogate-escaped payload with the declared charset (see
+    AS-EMAIL-SERVICE-3S).
+    """
+    raw = (
+        b"From: sender@example.com\n"
+        b"To: recipient@example.com\n"
+        b"Subject: undecodable bytes\n"
+        b"MIME-Version: 1.0\n"
+        b"Content-Type: text/plain; charset=euc-jp\n"
+        b"Content-Transfer-Encoding: 8bit\n"
+        b"\n"
+        b"\xef\xbb\xbfHello from a broken mailer\n"
+    )
+    return email.message_from_bytes(raw, policy=email.policy.default)
+
+
+####################################################################
+#
+@pytest.fixture
 def email_account_factory(
     server_factory: Callable[..., Server], settings: LazySettings, faker: Faker
 ) -> Iterator[Callable[..., EmailAccount]]:

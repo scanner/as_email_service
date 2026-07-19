@@ -6,12 +6,14 @@ Test various functions in the utils module
 
 # system imports
 #
+import email.policy
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 # 3rd party imports
 #
+import pytest
 from django.conf import LazySettings
 from django.contrib.auth.hashers import make_password
 from faker import Faker
@@ -20,6 +22,8 @@ from faker import Faker
 #
 from as_email.utils import (
     PWUser,
+    message_as_bytes,
+    message_as_string,
     now_str_datetime,
     read_emailaccount_pwfile,
     split_email_mailbox_hash,
@@ -27,6 +31,62 @@ from as_email.utils import (
     write_emailaccount_pwfile,
     write_spooled_email,
 )
+
+
+####################################################################
+#
+@pytest.mark.parametrize(
+    "fixture_name,marker",
+    [
+        # A well formed message; both native serializations work and the
+        # helpers must match them exactly.
+        #
+        ("email_factory", "A well formed message"),
+        # as_string() raises UnicodeEncodeError on this one: surrogate
+        # escaped payload with a declared charset (euc-jp) that gets
+        # re-encoded through iso-2022-jp (AS-EMAIL-SERVICE-3S).
+        #
+        ("undecodable_charset_email", "Hello from a broken mailer"),
+        # as_bytes() raises UnicodeEncodeError on this one: non-ASCII
+        # content with no charset declaration.
+        #
+        ("malformed_non_ascii_email", "special"),
+    ],
+)
+def test_message_serialization(
+    request: pytest.FixtureRequest, fixture_name: str, marker: str
+) -> None:
+    """
+    GIVEN an email message, well formed or malformed in a way that
+          as_string() or as_bytes() can not serialize
+    WHEN  serialized with message_as_bytes / message_as_string
+    THEN  serialization succeeds, preserves the message content, matches
+          the email package's own serialization whenever that works, and
+          the string form can be embedded in json (as write_spooled_email
+          does)
+    """
+    msg = request.getfixturevalue(fixture_name)
+    if callable(msg):
+        msg = msg(subject=marker)
+
+    msg_bytes = message_as_bytes(msg)
+    msg_str = message_as_string(msg)
+
+    # Whenever the native serialization works, the helper must produce
+    # identical output.
+    #
+    try:
+        assert msg_bytes == msg.as_bytes(policy=email.policy.default)
+    except UnicodeEncodeError:
+        pass
+    try:
+        assert msg_str == msg.as_string(policy=email.policy.default)
+    except UnicodeEncodeError:
+        pass
+
+    assert marker.encode() in msg_bytes
+    assert marker in msg_str
+    assert json.dumps({"raw_email": msg_str})
 
 
 ####################################################################

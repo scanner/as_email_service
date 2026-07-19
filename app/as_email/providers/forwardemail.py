@@ -106,6 +106,8 @@ from as_email.models import EmailAccount
 from as_email.provider_tokens import get_provider_token
 from as_email.tasks import dispatch_incoming_email, process_bounce
 from as_email.utils import (
+    message_as_bytes,
+    message_as_string,
     now_str_datetime,
     redis_client,
     split_email_mailbox_hash,
@@ -859,7 +861,7 @@ class ForwardEmailBackend(ProviderBackend):
         Raises:
             HTTPError: For non-retryable provider errors (e.g. 400, 422)
         """
-        data = {"raw": message.as_string(policy=email.policy.SMTP)}
+        data = {"raw": message_as_string(message, policy=email.policy.SMTP)}
         try:
             self.api.req(HTTPMethod.POST, "v1/emails", data=data)
             return True
@@ -878,7 +880,9 @@ class ForwardEmailBackend(ProviderBackend):
                 )
                 if spool_on_retryable:
                     assert server.outgoing_spool_dir is not None
-                    spool_message(server.outgoing_spool_dir, message.as_bytes())
+                    spool_message(
+                        server.outgoing_spool_dir, message_as_bytes(message)
+                    )
                 return False
             logger.error(
                 "Failed to send email via %s: %d %s",

@@ -42,6 +42,7 @@ from .providers.base import BounceEvent, BounceType, Capability
 from .reports import REPORTS, ReportSchedule, get_reports_by_schedule
 from .utils import (
     PWUser,
+    message_as_bytes,
     read_emailaccount_pwfile,
     redis_client,
     write_emailaccount_pwfile,
@@ -603,11 +604,7 @@ def scan_message_for_spam(
         message when the scan fails.
     """
     try:
-        # Use as_string() + encode() instead of as_bytes() to avoid
-        # UnicodeEncodeError on malformed messages with non-ASCII content
-        # but no charset declaration.
-        #
-        msg_bytes = msg.as_string(policy=email.policy.default).encode("utf-8")
+        msg_bytes = message_as_bytes(msg)
 
         # NOTE: Use new_event_loop() + run_until_complete() instead of
         # asyncio.run() to avoid touching the global event loop policy.
