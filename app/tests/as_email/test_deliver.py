@@ -20,7 +20,7 @@ from pytest_mock import MockerFixture
 #
 from as_email.deliver import (
     apply_message_filter_rules,
-    deliver_message_to_mh,
+    deliver_message_via_mh,
     make_delivery_status_notification,
     report_failed_message,
 )
@@ -66,7 +66,7 @@ def test_apply_message_filter_rules(
 
 ####################################################################
 #
-def test_deliver_message_to_mh(
+def test_deliver_message_via_mh(
     email_account_factory: Callable[..., EmailAccount],
     message_filter_rule_factory: Callable[..., MessageFilterRule],
     email_factory: Callable[..., EmailMessage],
@@ -75,7 +75,7 @@ def test_deliver_message_to_mh(
     ld = MHDelivery.objects.get(email_account=ea)
     msg = email_factory()
 
-    deliver_message_to_mh(ld, msg)
+    deliver_message_via_mh(ld, msg)
 
     # The message should have been delivered to the inbox since there are no
     # mail filter rules. And it should be the only message in the mailbox.
@@ -98,7 +98,7 @@ def test_deliver_message_to_mh(
         destination=folder_name,
     )
     mfr.save()
-    deliver_message_to_mh(ld, msg)
+    deliver_message_via_mh(ld, msg)
     stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
@@ -119,7 +119,7 @@ def test_deliver_message_to_mh(
         ("malformed_non_ascii_email", b"special"),
     ],
 )
-def test_deliver_message_to_mh_malformed_encoding(
+def test_deliver_message_via_mh_malformed_encoding(
     request: pytest.FixtureRequest,
     email_account_factory: Callable[..., EmailAccount],
     fixture_name: str,
@@ -135,7 +135,7 @@ def test_deliver_message_to_mh_malformed_encoding(
     ld = MHDelivery.objects.get(email_account=ea)
     msg = request.getfixturevalue(fixture_name)
 
-    deliver_message_to_mh(ld, msg)
+    deliver_message_via_mh(ld, msg)
 
     mh = ld.MH()
     folder = mh.get_folder("inbox")
@@ -157,7 +157,7 @@ def test_deliver_spam_locally(
     msg = email_factory()
     msg["X-Spam-Status"] = "No, score=-0.0 required=5.0 tests=NONE"
 
-    deliver_message_to_mh(ld, msg)
+    deliver_message_via_mh(ld, msg)
 
     mh = ld.MH()
     folder = mh.get_folder("inbox")
@@ -170,7 +170,7 @@ def test_deliver_spam_locally(
         "X-Spam-Status",
         f"Yes, score={ld.spam_score_threshold}.0 required=5.0 tests=NONE",
     )
-    deliver_message_to_mh(ld, msg)
+    deliver_message_via_mh(ld, msg)
 
     # The message should land in the spam folder.
     #

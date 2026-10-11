@@ -1239,9 +1239,9 @@ class MHDelivery(LocalDelivery):
             visited_accounts: Unused for local delivery; required by interface
         """
         # Inline import to avoid circular: deliver.py -> models -> MHDelivery
-        from .deliver import deliver_message_to_mh
+        from .deliver import deliver_message_via_mh
 
-        deliver_message_to_mh(self, msg)
+        deliver_message_via_mh(self, msg)
 
 
 ########################################################################

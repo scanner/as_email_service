@@ -21,7 +21,7 @@ contexts where per-method failure tracking is not needed:
 
 This module provides the lower-level helpers called by those delivery methods:
 
-- `deliver_message_to_mh(mh_delivery, msg)` — called by
+- `deliver_message_via_mh(mh_delivery, msg)` — called by
   `MHDelivery.deliver()`. Applies message filter rules, spam auto-filing,
   and writes the message to the MH mailbox.
 - `deliver_message_via_spool(asimap_delivery, msg)` — called by
@@ -228,7 +228,7 @@ def _write_to_mh_folders(
 
 ####################################################################
 #
-def deliver_message_to_mh(mh_delivery: MHDelivery, msg: EmailMessage) -> None:
+def deliver_message_via_mh(mh_delivery: MHDelivery, msg: EmailMessage) -> None:
     """
     Deliver the email message by writing it straight into the MH mail store
     of the given MHDelivery.
