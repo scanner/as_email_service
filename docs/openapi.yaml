@@ -55,8 +55,8 @@ paths:
     post:
       operationId: v1_email_accounts_delivery_methods_create
       description:
-        Create a new delivery method. Include `delivery_type` ("LocalDelivery"
-        or "AliasToDelivery") to select the subtype.
+        Create a new delivery method. Include `delivery_type` ("MHDelivery",
+        "ASIMAPDelivery", "AliasToDelivery", or "ImapDelivery") to select the subtype.
       parameters:
         - in: path
           name: email_account_pk
@@ -119,9 +119,9 @@ paths:
       description: |-
         CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-        Supports LocalDelivery and AliasToDelivery subtypes. The request body
-        must include a `delivery_type` field (e.g. "LocalDelivery") to select
-        the correct subtype serializer on create/update.
+        Supports MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery
+        subtypes. The request body must include a `delivery_type` field (e.g.
+        "MHDelivery") to select the correct subtype serializer on create/update.
       parameters:
         - in: path
           name: email_account_pk
@@ -162,9 +162,9 @@ paths:
       description: |-
         CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-        Supports LocalDelivery and AliasToDelivery subtypes. The request body
-        must include a `delivery_type` field (e.g. "LocalDelivery") to select
-        the correct subtype serializer on create/update.
+        Supports MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery
+        subtypes. The request body must include a `delivery_type` field (e.g.
+        "MHDelivery") to select the correct subtype serializer on create/update.
       parameters:
         - in: path
           name: email_account_pk
@@ -205,9 +205,9 @@ paths:
       description: |-
         CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-        Supports LocalDelivery and AliasToDelivery subtypes. The request body
-        must include a `delivery_type` field (e.g. "LocalDelivery") to select
-        the correct subtype serializer on create/update.
+        Supports MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery
+        subtypes. The request body must include a `delivery_type` field (e.g.
+        "MHDelivery") to select the correct subtype serializer on create/update.
       parameters:
         - in: path
           name: email_account_pk
@@ -228,6 +228,48 @@ paths:
       responses:
         "204":
           description: No response body
+  /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/test_imap/:
+    post:
+      operationId: v1_email_accounts_delivery_methods_test_imap_create
+      description:
+        Test IMAP connection credentials without saving to the database.
+        Returns {success, message}.
+      parameters:
+        - in: path
+          name: email_account_pk
+          schema:
+            type: integer
+          required: true
+      tags:
+        - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestImapConnectionRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/TestImapConnectionRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/TestImapConnectionRequest"
+        required: true
+      security:
+        - sessionAuth: []
+        - basicAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestImapOk"
+          description: ""
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestImapFail"
+          description: ""
   /as_email/api/v1/email_accounts/{email_account_pk}/message_filter_rules/:
     get:
       operationId: v1_email_accounts_message_filter_rules_list
@@ -497,6 +539,17 @@ paths:
           required: true
       tags:
         - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailAccountRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/EmailAccountRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/EmailAccountRequest"
       security:
         - sessionAuth: []
         - basicAuth: []
@@ -523,6 +576,17 @@ paths:
           required: true
       tags:
         - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchedEmailAccountRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/PatchedEmailAccountRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PatchedEmailAccountRequest"
       security:
         - sessionAuth: []
         - basicAuth: []
@@ -574,6 +638,92 @@ paths:
           description: ""
 components:
   schemas:
+    ASIMAPDelivery:
+      type: object
+      description: Fields shared by the MHDelivery and ASIMAPDelivery serializers.
+      properties:
+        url:
+          type: string
+          format: uri
+          readOnly: true
+        pk:
+          type: integer
+          readOnly: true
+          title: ID
+        delivery_type:
+          type: string
+          readOnly: true
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        maildir_path:
+          type: string
+          readOnly: true
+          nullable: true
+          description:
+            Root folder for the local MH mailbox. Left blank it will be
+            auto-filled from the account's email address when first saved.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages above the spam score threshold are automatically
+            filed in the spam delivery folder.
+        spam_delivery_folder:
+          type: string
+          description: Folder to deliver spam into when autofile_spam is enabled.
+          maxLength: 1024
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
+      required:
+        - created_at
+        - delivery_type
+        - maildir_path
+        - modified_at
+        - pk
+        - url
+    ASIMAPDeliveryRequest:
+      type: object
+      description: Fields shared by the MHDelivery and ASIMAPDelivery serializers.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages above the spam score threshold are automatically
+            filed in the spam delivery folder.
+        spam_delivery_folder:
+          type: string
+          minLength: 1
+          description: Folder to deliver spam into when autofile_spam is enabled.
+          maxLength: 1024
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
     ActionEnum:
       enum:
         - folder
@@ -586,7 +736,7 @@ components:
       type: object
       description: |-
         Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-        concrete subclass name so clients can distinguish LocalDelivery from
+        concrete subclass name so clients can distinguish MHDelivery from
         AliasToDelivery.
       properties:
         url:
@@ -628,7 +778,7 @@ components:
       type: object
       description: |-
         Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-        concrete subclass name so clients can distinguish LocalDelivery from
+        concrete subclass name so clients can distinguish MHDelivery from
         AliasToDelivery.
       properties:
         enabled:
@@ -659,20 +809,24 @@ components:
         * `top` - top
     DeliveryMethodPolymorphic:
       oneOf:
-        - $ref: "#/components/schemas/LocalDelivery"
+        - $ref: "#/components/schemas/MHDelivery"
+        - $ref: "#/components/schemas/ASIMAPDelivery"
         - $ref: "#/components/schemas/AliasToDelivery"
+        - $ref: "#/components/schemas/ImapDelivery"
       discriminator:
         propertyName: delivery_type
         mapping:
-          NoneType: "#/components/schemas/AliasToDelivery"
+          NoneType: "#/components/schemas/ImapDelivery"
     DeliveryMethodPolymorphicRequest:
       oneOf:
-        - $ref: "#/components/schemas/LocalDeliveryRequest"
+        - $ref: "#/components/schemas/MHDeliveryRequest"
+        - $ref: "#/components/schemas/ASIMAPDeliveryRequest"
         - $ref: "#/components/schemas/AliasToDeliveryRequest"
+        - $ref: "#/components/schemas/ImapDeliveryRequest"
       discriminator:
         propertyName: delivery_type
         mapping:
-          NoneType: "#/components/schemas/AliasToDeliveryRequest"
+          NoneType: "#/components/schemas/ImapDeliveryRequest"
     EmailAccount:
       type: object
       properties:
@@ -680,6 +834,12 @@ components:
           type: integer
           readOnly: true
           title: ID
+        aliased_from:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -733,6 +893,12 @@ components:
         owner:
           type: string
           readOnly: true
+        scan_incoming_spam:
+          type: boolean
+          description:
+            When enabled, incoming email is scanned by SpamAssassin and
+            X-Spam-* headers are added. When disabled, provider-injected spam headers
+            are preserved without rescanning (if they exist).
         server:
           type: string
           readOnly: true
@@ -741,6 +907,7 @@ components:
           format: uri
           readOnly: true
       required:
+        - aliased_from
         - created_at
         - deactivated
         - deactivated_reason
@@ -753,6 +920,15 @@ components:
         - pk
         - server
         - url
+    EmailAccountRequest:
+      type: object
+      properties:
+        scan_incoming_spam:
+          type: boolean
+          description:
+            When enabled, incoming email is scanned by SpamAssassin and
+            X-Spam-* headers are added. When disabled, provider-injected spam headers
+            are preserved without rescanning (if they exist).
     HeaderEnum:
       enum:
         - addr
@@ -783,12 +959,126 @@ components:
         * `x-spam-status` - x-spam-status
         * `subject` - subject
         * `to` - to
-    LocalDelivery:
+    ImapDelivery:
       type: object
       description: |-
-        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-        concrete subclass name so clients can distinguish LocalDelivery from
-        AliasToDelivery.
+        Serializer for ImapDelivery. The `password` field is write-only — it is
+        accepted on create and update but never returned in GET responses. On
+        PATCH, omitting `password` leaves the stored value unchanged.
+      properties:
+        url:
+          type: string
+          format: uri
+          readOnly: true
+        pk:
+          type: integer
+          readOnly: true
+          title: ID
+        delivery_type:
+          type: string
+          readOnly: true
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        imap_host:
+          type: string
+          description: Hostname of the remote IMAP server.
+          maxLength: 253
+        imap_port:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: IMAP port (default 993 for IMAPS).
+        username:
+          type: string
+          description: IMAP login username. Stored encrypted at rest.
+          maxLength: 254
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages whose spam score (from X-Spam-Status)
+            meets or exceeds the threshold are filed in the server's Junk folder instead
+            of INBOX.
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
+      required:
+        - created_at
+        - delivery_type
+        - imap_host
+        - modified_at
+        - pk
+        - url
+        - username
+    ImapDeliveryRequest:
+      type: object
+      description: |-
+        Serializer for ImapDelivery. The `password` field is write-only — it is
+        accepted on create and update but never returned in GET responses. On
+        PATCH, omitting `password` leaves the stored value unchanged.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        imap_host:
+          type: string
+          minLength: 1
+          description: Hostname of the remote IMAP server.
+          maxLength: 253
+        imap_port:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: IMAP port (default 993 for IMAPS).
+        username:
+          type: string
+          minLength: 1
+          description: IMAP login username. Stored encrypted at rest.
+          maxLength: 254
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: IMAP login password. Stored encrypted at rest.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages whose spam score (from X-Spam-Status)
+            meets or exceeds the threshold are filed in the server's Junk folder instead
+            of INBOX.
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
+      required:
+        - imap_host
+        - username
+    MHDelivery:
+      type: object
+      description: Fields shared by the MHDelivery and ASIMAPDelivery serializers.
       properties:
         url:
           type: string
@@ -836,8 +1126,8 @@ components:
           minimum: -9223372036854775808
           format: int64
           description:
-            Messages with an X-Spam-Score at or above this value are considered
-            spam. 15 is a reasonable default.
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
       required:
         - created_at
         - delivery_type
@@ -845,12 +1135,9 @@ components:
         - modified_at
         - pk
         - url
-    LocalDeliveryRequest:
+    MHDeliveryRequest:
       type: object
-      description: |-
-        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-        concrete subclass name so clients can distinguish LocalDelivery from
-        AliasToDelivery.
+      description: Fields shared by the MHDelivery and ASIMAPDelivery serializers.
       properties:
         enabled:
           type: boolean
@@ -873,8 +1160,8 @@ components:
           minimum: -9223372036854775808
           format: int64
           description:
-            Messages with an X-Spam-Score at or above this value are considered
-            spam. 15 is a reasonable default.
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
     MessageFilterRule:
       type: object
       description: |-
@@ -985,37 +1272,9 @@ components:
           minLength: 1
       required:
         - password
-    PatchedAliasToDeliveryRequest:
+    PatchedASIMAPDeliveryRequest:
       type: object
-      description: |-
-        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-        concrete subclass name so clients can distinguish LocalDelivery from
-        AliasToDelivery.
-      properties:
-        enabled:
-          type: boolean
-          description:
-            When disabled, this delivery method is skipped during message
-            delivery.
-        target_account:
-          type: string
-          format: email
-          minLength: 1
-          description: The EmailAccount messages will be aliased to.
-    PatchedDeliveryMethodPolymorphicRequest:
-      oneOf:
-        - $ref: "#/components/schemas/PatchedLocalDeliveryRequest"
-        - $ref: "#/components/schemas/PatchedAliasToDeliveryRequest"
-      discriminator:
-        propertyName: delivery_type
-        mapping:
-          NoneType: "#/components/schemas/PatchedAliasToDeliveryRequest"
-    PatchedLocalDeliveryRequest:
-      type: object
-      description: |-
-        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-        concrete subclass name so clients can distinguish LocalDelivery from
-        AliasToDelivery.
+      description: Fields shared by the MHDelivery and ASIMAPDelivery serializers.
       properties:
         enabled:
           type: boolean
@@ -1038,8 +1297,118 @@ components:
           minimum: -9223372036854775808
           format: int64
           description:
-            Messages with an X-Spam-Score at or above this value are considered
-            spam. 15 is a reasonable default.
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
+    PatchedAliasToDeliveryRequest:
+      type: object
+      description: |-
+        Base serializer for DeliveryMethod. The `delivery_type` field exposes the
+        concrete subclass name so clients can distinguish MHDelivery from
+        AliasToDelivery.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        target_account:
+          type: string
+          format: email
+          minLength: 1
+          description: The EmailAccount messages will be aliased to.
+    PatchedDeliveryMethodPolymorphicRequest:
+      oneOf:
+        - $ref: "#/components/schemas/PatchedMHDeliveryRequest"
+        - $ref: "#/components/schemas/PatchedASIMAPDeliveryRequest"
+        - $ref: "#/components/schemas/PatchedAliasToDeliveryRequest"
+        - $ref: "#/components/schemas/PatchedImapDeliveryRequest"
+      discriminator:
+        propertyName: delivery_type
+        mapping:
+          NoneType: "#/components/schemas/PatchedImapDeliveryRequest"
+    PatchedEmailAccountRequest:
+      type: object
+      properties:
+        scan_incoming_spam:
+          type: boolean
+          description:
+            When enabled, incoming email is scanned by SpamAssassin and
+            X-Spam-* headers are added. When disabled, provider-injected spam headers
+            are preserved without rescanning (if they exist).
+    PatchedImapDeliveryRequest:
+      type: object
+      description: |-
+        Serializer for ImapDelivery. The `password` field is write-only — it is
+        accepted on create and update but never returned in GET responses. On
+        PATCH, omitting `password` leaves the stored value unchanged.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        imap_host:
+          type: string
+          minLength: 1
+          description: Hostname of the remote IMAP server.
+          maxLength: 253
+        imap_port:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: IMAP port (default 993 for IMAPS).
+        username:
+          type: string
+          minLength: 1
+          description: IMAP login username. Stored encrypted at rest.
+          maxLength: 254
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: IMAP login password. Stored encrypted at rest.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages whose spam score (from X-Spam-Status)
+            meets or exceeds the threshold are filed in the server's Junk folder instead
+            of INBOX.
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
+    PatchedMHDeliveryRequest:
+      type: object
+      description: Fields shared by the MHDelivery and ASIMAPDelivery serializers.
+      properties:
+        enabled:
+          type: boolean
+          description:
+            When disabled, this delivery method is skipped during message
+            delivery.
+        autofile_spam:
+          type: boolean
+          description:
+            When enabled, messages above the spam score threshold are automatically
+            filed in the spam delivery folder.
+        spam_delivery_folder:
+          type: string
+          minLength: 1
+          description: Folder to deliver spam into when autofile_spam is enabled.
+          maxLength: 1024
+        spam_score_threshold:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          description:
+            Messages with a spam score (from X-Spam-Status) at or above
+            this value are considered spam. 5 is a reasonable default.
     PatchedMessageFilterRuleRequest:
       type: object
       description: |-
@@ -1070,6 +1439,51 @@ components:
           type: string
       required:
         - status
+    TestImapConnectionRequest:
+      type: object
+      description: |-
+        Input for the ``test_imap`` action on DeliveryMethodViewSet.
+
+        Validates connection parameters without touching the database.
+      properties:
+        imap_host:
+          type: string
+          minLength: 1
+        imap_port:
+          type: integer
+          maximum: 65535
+          minimum: 1
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+      required:
+        - imap_host
+        - imap_port
+        - password
+        - username
+    TestImapFail:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - message
+        - success
+    TestImapOk:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - message
+        - success
   securitySchemes:
     basicAuth:
       type: http
