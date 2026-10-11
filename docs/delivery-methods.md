@@ -61,11 +61,18 @@ delivery method's pk and settings. The command never converts
 `SPAM_TRAINING_ADDRESS` or `NOT_SPAM_TRAINING_ADDRESS`.
 
 ```
+manage.py convert_to_asimap_delivery --list
 manage.py convert_to_asimap_delivery --all --dry-run
 manage.py convert_to_asimap_delivery user@example.com other@example.com
-manage.py convert_to_asimap_delivery --all
+manage.py convert_to_asimap_delivery --all --exclude bucket@example.com
 manage.py convert_to_asimap_delivery --revert user@example.com
 ```
+
+`--list` shows each account that has a local delivery, its type, and whether
+it is disabled, then a count per type; give addresses to list only those.
+`--exclude` (repeatable, with `--all`) leaves an account alone; the command
+refuses to run if an excluded address is not an existing account, so a typo
+can not convert the account you meant to keep.
 
 ---
 

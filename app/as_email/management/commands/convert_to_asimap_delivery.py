@@ -17,13 +17,15 @@ training, so they are never converted.
 
 Usage::
 
-    manage.py convert_to_asimap_delivery --all
+    manage.py convert_to_asimap_delivery --list
+    manage.py convert_to_asimap_delivery --all --exclude bucket@example.com
     manage.py convert_to_asimap_delivery user@example.com other@example.com
     manage.py convert_to_asimap_delivery --revert user@example.com
 """
 
 # system imports
 #
+from collections import Counter
 from typing import Any
 
 # 3rd party imports
@@ -39,8 +41,10 @@ from django.db.models import QuerySet
 from as_email.models import (
     ASIMAPDelivery,
     DeliveryMethod,
+    EmailAccount,
     LocalDelivery,
     MHDelivery,
+    local_deliveries,
 )
 
 
@@ -81,8 +85,9 @@ class Command(BaseCommand):
 
     help = (
         "Convert the MHDelivery of the given email accounts (or of every "
-        "account, with --all) to ASIMAPDelivery. With --revert, convert "
-        "ASIMAPDelivery back to MHDelivery."
+        "account, with --all, less any --exclude) to ASIMAPDelivery. With "
+        "--revert, convert ASIMAPDelivery back to MHDelivery. With --list, "
+        "show each account's local delivery type instead."
     )
 
     ####################################################################
@@ -91,12 +96,30 @@ class Command(BaseCommand):
         parser.add_argument(
             "email_addresses",
             nargs="*",
-            help="Email addresses of the accounts to convert.",
+            help="Email addresses of the accounts to convert (or list).",
         )
         parser.add_argument(
             "--all",
             action="store_true",
             help="Convert every account instead of the listed ones.",
+        )
+        parser.add_argument(
+            "--exclude",
+            action="append",
+            default=[],
+            metavar="ADDRESS",
+            help=(
+                "With --all, leave this account alone. Repeat for more. "
+                "Every excluded address must be an existing email account."
+            ),
+        )
+        parser.add_argument(
+            "--list",
+            action="store_true",
+            help=(
+                "List each account with a local delivery and its type (only "
+                "the given addresses, if any) and convert nothing."
+            ),
         )
         parser.add_argument(
             "--revert",
@@ -113,16 +136,92 @@ class Command(BaseCommand):
     #
     def handle(self, *args: Any, **options: Any) -> None:
         addresses = [a.lower() for a in options["email_addresses"]]
+        excluded = [a.lower() for a in options["exclude"]]
+
+        if options["list"]:
+            if options["all"] or options["revert"] or excluded:
+                raise CommandError(
+                    "--list takes only email addresses, not --all, "
+                    "--revert or --exclude."
+                )
+            self.list_local_deliveries(addresses)
+            return
+
         if options["all"] == bool(addresses):
             raise CommandError(
                 "Give --all or a list of email addresses, but not both."
             )
+        if excluded and not options["all"]:
+            raise CommandError("--exclude only works with --all.")
+        unknown = set(excluded) - set(
+            EmailAccount.objects.filter(email_address__in=excluded).values_list(
+                "email_address", flat=True
+            )
+        )
+        if unknown:
+            raise CommandError(
+                "No email account for --exclude "
+                f"{', '.join(sorted(unknown))}; nothing converted."
+            )
 
-        dry_run = options["dry_run"]
+        self.convert(addresses, excluded, options["revert"], options["dry_run"])
 
+    ####################################################################
+    #
+    def list_local_deliveries(self, addresses: list[str]) -> None:
+        """
+        Print each account's local delivery type, then a count per type.
+
+        Args:
+            addresses: Only list these accounts; all of them when empty.
+        """
+        deliveries = local_deliveries().select_related("email_account")
+        if addresses:
+            deliveries = deliveries.filter(
+                email_account__email_address__in=addresses
+            )
+        counts: Counter[str] = Counter()
+        for delivery in deliveries.order_by("email_account__email_address"):
+            type_name = type(delivery).__name__
+            counts[type_name] += 1
+            disabled = "" if delivery.enabled else "  (disabled)"
+            self.stdout.write(
+                f"{type_name:<15} {delivery.email_account.email_address}"
+                f"{disabled}"
+            )
+        listed = set(
+            deliveries.values_list("email_account__email_address", flat=True)
+        )
+        for address in sorted(set(addresses) - listed):
+            self.stderr.write(f"{address}: no local delivery")
+        self.stdout.write(
+            ", ".join(
+                f"{counts[t.__name__]} {t.__name__}"
+                for t in (MHDelivery, ASIMAPDelivery)
+            )
+        )
+
+    ####################################################################
+    #
+    def convert(
+        self,
+        addresses: list[str],
+        excluded: list[str],
+        revert: bool,
+        dry_run: bool,
+    ) -> None:
+        """
+        Convert the selected local deliveries and report what was done.
+
+        Args:
+            addresses: Only convert these accounts; every account when empty.
+            excluded: Accounts to leave alone.
+            revert: Convert ASIMAPDelivery to MHDelivery instead.
+            dry_run: Report without changing anything.
+        """
         source: type[LocalDelivery] = MHDelivery
         target: type[LocalDelivery] = ASIMAPDelivery
-        if options["revert"]:
+        if revert:
             source, target = target, source
 
         deliveries: QuerySet = source.objects.all()
@@ -130,9 +229,12 @@ class Command(BaseCommand):
             deliveries = deliveries.filter(
                 email_account__email_address__in=addresses
             )
+        deliveries = deliveries.exclude(
+            email_account__email_address__in=excluded
+        )
 
         skipped: list[str] = []
-        if not options["revert"]:
+        if not revert:
             training = [
                 a.lower()
                 for a in (
@@ -163,6 +265,8 @@ class Command(BaseCommand):
             verb = "Would convert" if dry_run else "Converted"
             self.stdout.write(f"{verb} {address} to {target.__name__}")
 
+        for address in sorted(excluded):
+            self.stderr.write(f"{address}: excluded")
         for address in skipped:
             self.stderr.write(
                 f"{address}: skipped, SA training reads its MH inbox directly"

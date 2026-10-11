@@ -176,6 +176,84 @@ class TestConvertToASIMAPDelivery:
 
     ####################################################################
     #
+    def test_all_with_exclude_leaves_excluded_alone(
+        self,
+        mh_accounts: list[EmailAccount],
+        run_command: Callable[..., tuple[str, str]],
+    ) -> None:
+        """
+        GIVEN accounts that each have an MHDelivery
+        WHEN  the command is run with --all and one of them --exclude'd
+        THEN  that account keeps its MHDelivery and is reported as
+              excluded, and the others are converted
+        """
+        kept, *others = mh_accounts
+
+        _, err = run_command("--all", "--exclude", kept.email_address)
+
+        check.equal(local_delivery_type(kept), MHDelivery)
+        for ea in others:
+            check.equal(
+                local_delivery_type(ea), ASIMAPDelivery, ea.email_address
+            )
+        check.is_in(f"{kept.email_address}: excluded", err)
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "listed,expected_out,expected_err",
+        [
+            (
+                [],
+                [
+                    "ASIMAPDelivery  {asimap}",
+                    "MHDelivery      {disabled}  (disabled)",
+                    "2 MHDelivery, 1 ASIMAPDelivery",
+                ],
+                [],
+            ),
+            (
+                ["{asimap}", "nobody@example.com"],
+                ["ASIMAPDelivery  {asimap}", "0 MHDelivery, 1 ASIMAPDelivery"],
+                ["nobody@example.com: no local delivery"],
+            ),
+        ],
+        ids=["all", "given-addresses"],
+    )
+    def test_list(
+        self,
+        mh_accounts: list[EmailAccount],
+        run_command: Callable[..., tuple[str, str]],
+        listed: list[str],
+        expected_out: list[str],
+        expected_err: list[str],
+    ) -> None:
+        """
+        GIVEN one account converted to ASIMAPDelivery and one MHDelivery
+              disabled
+        WHEN  the command is run with --list, alone or with addresses
+        THEN  each listed account is shown with its type, a disabled one is
+              marked, the counts cover what was listed, an address with no
+              local delivery is reported, and nothing is converted
+        """
+        asimap, disabled, _ = mh_accounts
+        run_command(asimap.email_address)
+        MHDelivery.objects.filter(email_account=disabled).update(enabled=False)
+        names = {
+            "asimap": asimap.email_address,
+            "disabled": disabled.email_address,
+        }
+
+        out, err = run_command("--list", *(a.format(**names) for a in listed))
+
+        for line in expected_out:
+            check.is_in(line.format(**names), out)
+        for line in expected_err:
+            check.is_in(line.format(**names), err)
+        check.equal(local_delivery_type(disabled), MHDelivery, "not converted")
+
+    ####################################################################
+    #
     def test_dry_run_changes_nothing(
         self,
         mh_accounts: list[EmailAccount],
@@ -194,19 +272,28 @@ class TestConvertToASIMAPDelivery:
     ####################################################################
     #
     @pytest.mark.parametrize(
-        "args", [(), ("--all", "someone@example.com")], ids=["none", "both"]
+        "args,match",
+        [
+            ((), "--all or a list of email addresses"),
+            (("--all", "a@example.com"), "--all or a list of email addresses"),
+            (("a@example.com", "--exclude", "b@example.com"), "only works"),
+            (("--all", "--exclude", "nobody@example.com"), "No email account"),
+            (("--list", "--all"), "--list takes only"),
+        ],
+        ids=["none", "both", "exclude-without-all", "unknown-exclude", "list"],
     )
-    def test_requires_all_or_addresses(
+    def test_rejects_bad_arguments(
         self,
         run_command: Callable[..., tuple[str, str]],
         args: tuple[str, ...],
+        match: str,
     ) -> None:
         """
-        GIVEN neither --all nor addresses, or both
+        GIVEN arguments that do not say clearly what to convert: neither or
+              both of --all and addresses, --exclude without --all, an
+              --exclude address with no account, or --list with --all
         WHEN  the command is run
-        THEN  it refuses with a CommandError
+        THEN  it refuses with a CommandError before changing anything
         """
-        with pytest.raises(
-            CommandError, match="--all or a list of email addresses"
-        ):
+        with pytest.raises(CommandError, match=match):
             run_command(*args)
