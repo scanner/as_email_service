@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Adding or deleting a local delivery updates the IMAP password file right away, so an account that switches between MH Delivery and ASIMAP Delivery keeps its IMAP login
 - Local delivery no longer writes the MH folder's `.mh_sequences` file. asimap is its only writer and marks unsequenced messages unseen itself; two processes rewriting it in place could corrupt it and wedge the mailbox (ASIMAP-68)
 
 ## [0.9.3] - 2026-07-19

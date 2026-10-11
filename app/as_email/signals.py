@@ -82,21 +82,22 @@ def create_local_delivery_mailbox(
 #
 @receiver(post_save, sender=MHDelivery)
 @receiver(post_save, sender=ASIMAPDelivery)
-def sync_pwfile_on_local_delivery_save(
+@receiver(post_delete, sender=MHDelivery)
+@receiver(post_delete, sender=ASIMAPDelivery)
+def sync_pwfile_on_local_delivery_change(
     sender: type[LocalDelivery],
     instance: LocalDelivery,
-    created: bool,
     **kwargs,
 ) -> None:
     """
-    When a local delivery's maildir_path is updated, queue a pwfile sync
-    so the IMAP service sees the new path promptly.
+    When a local delivery is created, saved, or deleted, queue a pwfile
+    sync so the IMAP service sees the account's mail store promptly.
 
-    Creation is excluded: the associated EmailAccount's password signal
-    handles the initial pwfile entry once a real password is set.
+    The pwfile lists every account that has a local delivery, so a user
+    switching type (deleting one and adding the other) drops out of it and
+    comes back.
     """
-    if not created and instance.maildir_path:
-        transaction.on_commit(request_pwfile_sync)
+    transaction.on_commit(request_pwfile_sync)
 
 
 ####################################################################

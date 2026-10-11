@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 # 3rd party imports
 #
 import pytest
+import pytest_check as check
 import requests.exceptions
 import requests_mock as rm_module
 from _pytest.logging import LogCaptureFixture
@@ -936,6 +937,53 @@ def test_sync_pwfile_creates_new_entry(
         settings.EXT_PW_FILE.parent
     )
     assert accounts[ea.email_address].maildir == expected_mail_dir
+
+
+####################################################################
+#
+@pytest.mark.parametrize(
+    "old_type,new_type",
+    [(MHDelivery, ASIMAPDelivery), (ASIMAPDelivery, MHDelivery)],
+)
+def test_switching_local_delivery_type_keeps_pwfile_entry(
+    settings: LazySettings,
+    local_delivery_factory: Callable[..., LocalDelivery],
+    faker: Faker,
+    django_capture_on_commit_callbacks: Callable,
+    old_type: type[LocalDelivery],
+    new_type: type[LocalDelivery],
+) -> None:
+    """
+    GIVEN an account with a password and a local delivery of one type
+    WHEN  the user deletes it and then adds one of the other type
+    THEN  the pwfile entry is removed while the account has no local
+          delivery, and is back with the same mail dir once the new one is
+          added
+    """
+    with django_capture_on_commit_callbacks(execute=True):
+        old = local_delivery_factory(old_type)
+        ea = old.email_account
+        ea.set_password(faker.password())
+
+    with django_capture_on_commit_callbacks(execute=True):
+        old.delete()
+    check.is_not_in(
+        ea.email_address,
+        read_emailaccount_pwfile(settings.EXT_PW_FILE),
+        "no entry while the account has no local delivery",
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        new = new_type.objects.create(email_account=ea)
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    check.is_in(ea.email_address, accounts, "entry is back")
+    check.equal(new.maildir_path, old.maildir_path, "same mail store")
+    assert old.maildir_path is not None
+    check.equal(
+        getattr(accounts.get(ea.email_address), "maildir", None),
+        Path(old.maildir_path).relative_to(settings.EXT_PW_FILE.parent),
+        "entry points at the mail store",
+    )
 
 
 ####################################################################

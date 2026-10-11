@@ -298,12 +298,19 @@ export default {
     //
     const destroy = async () => {
       const label = deliveryTypeLabel.value;
+      // Deleting a local delivery leaves the mail store alone, so switching
+      // type (delete, then add the other one) keeps existing mail.
+      const keptNote = LOCAL_DELIVERY_TYPES.includes(
+        props.deliveryMethod.delivery_type,
+      )
+        ? ` Mail already in your folders is kept.`
+        : ``;
       const confirmMsg =
         props.totalCount === 1
           ? `This is the only delivery method for this email account. ` +
-            `If you delete it, all emails sent to this account will be ` +
-            `dropped and cannot be recovered. Are you sure?`
-          : `Delete this ${label} delivery method?`;
+            `If you delete it, new emails sent to this account will be ` +
+            `dropped and cannot be recovered.${keptNote} Are you sure?`
+          : `Delete this ${label} method?${keptNote}`;
       if (!confirm(confirmMsg)) return;
 
       deleting.value = true;

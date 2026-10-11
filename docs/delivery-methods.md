@@ -53,9 +53,12 @@ No configuration beyond the spam settings is required.
 The web UI's add menu offers both types and lists this one first, marked as
 the default.
 
-Convert existing accounts with the `convert_to_asimap_delivery` management
-command. A conversion keeps the delivery method's pk and settings. The
-command never converts `SPAM_TRAINING_ADDRESS` or `NOT_SPAM_TRAINING_ADDRESS`.
+A user can switch an account's type themselves by deleting its local delivery
+and adding the other type; the mail store, and the mail in it, is kept. To
+convert accounts in bulk, or keep a delivery's settings, use the
+`convert_to_asimap_delivery` management command. A conversion keeps the
+delivery method's pk and settings. The command never converts
+`SPAM_TRAINING_ADDRESS` or `NOT_SPAM_TRAINING_ADDRESS`.
 
 ```
 manage.py convert_to_asimap_delivery --all --dry-run
