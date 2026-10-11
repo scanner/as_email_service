@@ -10,6 +10,9 @@ Tests for migrations 0009–0011 (the multiple-delivery-methods feature).
 
 Each migration is tested forward-only, plus reverse paths for the two
 data/schema migrations that are new and non-trivial (0010 and 0011).
+
+0018 – rename LocalDelivery to MHDelivery, and its ContentType with it;
+        tested forward and reverse.
 """
 
 # system imports
@@ -494,3 +497,95 @@ def test_0011_reverse_restores_alias_delivery_fields(
     ea_rev = EmailAccount2.objects.get(pk=ea_alias.pk)
     assert ea_rev.delivery_method == "AL"
     assert ea_rev.alias_for.filter(pk=ea_target.pk).exists()
+
+
+########################################################################
+########################################################################
+#
+@pytest.fixture
+def local_delivery_at_0017(
+    migrator_factory: Callable, make_migration_context: Callable
+) -> tuple[Any, int]:
+    """
+    Migrate to 0017 and create a LocalDelivery whose polymorphic_ctype is
+    the 'localdelivery' ContentType, as rows made before 0018 have.
+
+    Returns:
+        The migrator, and the LocalDelivery's pk.
+    """
+    migrator = migrator_factory()
+    old_state = migrator.apply_initial_migration(
+        ("as_email", "0017_server_mail_hostname")
+    )
+    ctx = make_migration_context(old_state.apps, "m18.example.com")
+    ContentType = old_state.apps.get_model("contenttypes", "ContentType")
+    local_ct, _ = ContentType.objects.get_or_create(
+        app_label="as_email", model="localdelivery"
+    )
+    ea = ctx["EmailAccount"].objects.create(
+        email_address="local@m18.example.com",
+        server=ctx["server"],
+        owner=ctx["user"],
+    )
+    LocalDelivery = old_state.apps.get_model("as_email", "LocalDelivery")
+    ld = LocalDelivery.objects.create(
+        email_account=ea,
+        maildir_path="/tmp/maildir/m18",
+        spam_delivery_folder="Spam",
+        polymorphic_ctype=local_ct,
+    )
+    return migrator, ld.pk
+
+
+########################################################################
+########################################################################
+#
+@pytest.mark.django_db(transaction=True)
+def test_0018_renames_local_delivery_and_its_content_type(
+    local_delivery_at_0017: tuple[Any, int],
+) -> None:
+    """
+    GIVEN  a LocalDelivery row at migration 0017
+    WHEN   migration 0018 is applied
+    THEN   the row is an MHDelivery with the same settings, and its
+           polymorphic_ctype names 'mhdelivery'
+    """
+    migrator, pk = local_delivery_at_0017
+
+    new_state = migrator.apply_tested_migration(
+        ("as_email", "0018_rename_localdelivery_mhdelivery")
+    )
+
+    MHDelivery = new_state.apps.get_model("as_email", "MHDelivery")
+    mh = MHDelivery.objects.get(pk=pk)
+    assert mh.maildir_path == "/tmp/maildir/m18"
+    assert mh.spam_delivery_folder == "Spam"
+    assert mh.polymorphic_ctype.model == "mhdelivery"
+
+
+########################################################################
+########################################################################
+#
+@pytest.mark.django_db(transaction=True)
+def test_0018_reverse_restores_local_delivery_content_type(
+    local_delivery_at_0017: tuple[Any, int],
+) -> None:
+    """
+    GIVEN  migration 0018 has been applied to a LocalDelivery row
+    WHEN   migration 0018 is reversed (back to 0017)
+    THEN   the row is a LocalDelivery whose polymorphic_ctype names
+           'localdelivery' again
+    """
+    migrator, pk = local_delivery_at_0017
+    migrator.apply_tested_migration(
+        ("as_email", "0018_rename_localdelivery_mhdelivery")
+    )
+
+    reversed_state = migrator.apply_tested_migration(
+        ("as_email", "0017_server_mail_hostname")
+    )
+
+    LocalDelivery = reversed_state.apps.get_model("as_email", "LocalDelivery")
+    assert LocalDelivery.objects.get(pk=pk).polymorphic_ctype.model == (
+        "localdelivery"
+    )

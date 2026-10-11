@@ -60,21 +60,25 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 #
 from .models import (
     AliasToDelivery,
+    ASIMAPDelivery,
     DeliveryMethod,
     EmailAccount,
     ImapDelivery,
     LocalDelivery,
     MessageFilterRule,
+    MHDelivery,
     Provider,
     Server,
+    local_deliveries,
 )
 from .serializers import (
     AliasToDeliverySerializer,
+    ASIMAPDeliverySerializer,
     DeliveryMethodSerializer,
     EmailAccountSerializer,
     ImapDeliverySerializer,
-    LocalDeliverySerializer,
     MessageFilterRuleSerializer,
+    MHDeliverySerializer,
     MoveOrderSerializer,
     PasswordSerializer,
     TestImapConnectionSerializer,
@@ -764,7 +768,8 @@ class MessageFilterRuleViewSet(ModelViewSet):
 _DELIVERY_TYPE_MAP: dict[
     str, tuple[type[DeliveryMethod], type[DeliveryMethodSerializer]]
 ] = {
-    "LocalDelivery": (LocalDelivery, LocalDeliverySerializer),
+    "MHDelivery": (MHDelivery, MHDeliverySerializer),
+    "ASIMAPDelivery": (ASIMAPDelivery, ASIMAPDeliverySerializer),
     "AliasToDelivery": (AliasToDelivery, AliasToDeliverySerializer),
     "ImapDelivery": (ImapDelivery, ImapDeliverySerializer),
 }
@@ -788,7 +793,8 @@ class DeliveryMethodOwnerFilterBackend(DRYPermissionFiltersBase):
 _delivery_method_polymorphic = PolymorphicProxySerializer(
     component_name="DeliveryMethodPolymorphic",
     serializers=[
-        LocalDeliverySerializer,
+        MHDeliverySerializer,
+        ASIMAPDeliverySerializer,
         AliasToDeliverySerializer,
         ImapDeliverySerializer,
     ],
@@ -810,7 +816,8 @@ _delivery_method_polymorphic = PolymorphicProxySerializer(
         responses=_delivery_method_polymorphic,
         description=(
             "Create a new delivery method. Include `delivery_type` "
-            '("LocalDelivery", "AliasToDelivery", or "ImapDelivery") to select the subtype.'
+            '("MHDelivery", "ASIMAPDelivery", "AliasToDelivery", or "ImapDelivery") '
+            "to select the subtype."
         ),
     ),
     update=extend_schema(
@@ -826,9 +833,9 @@ class DeliveryMethodViewSet(ModelViewSet):
     """
     CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-    Supports LocalDelivery, AliasToDelivery, and ImapDelivery subtypes. The
-    request body must include a `delivery_type` field (e.g. "LocalDelivery")
-    to select the correct subtype serializer on create/update.
+    Supports MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery
+    subtypes. The request body must include a `delivery_type` field (e.g.
+    "MHDelivery") to select the correct subtype serializer on create/update.
     """
 
     permission_classes = (IsAuthenticated, DRYPermissions)
@@ -915,7 +922,7 @@ class DeliveryMethodViewSet(ModelViewSet):
         Create a new DeliveryMethod under the specified EmailAccount.
 
         The `delivery_type` field selects the concrete subtype
-        (LocalDelivery or AliasToDelivery).
+        (MHDelivery, ASIMAPDelivery, AliasToDelivery, or ImapDelivery).
         """
         delivery_type = request.data.get("delivery_type")
         if not delivery_type or delivery_type not in _DELIVERY_TYPE_MAP:
@@ -928,15 +935,16 @@ class DeliveryMethodViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Enforce max-one LocalDelivery per account.
+        # Enforce max-one local delivery (MHDelivery or ASIMAPDelivery) per
+        # account.
         #
-        if delivery_type == "LocalDelivery":
+        if issubclass(_DELIVERY_TYPE_MAP[delivery_type][0], LocalDelivery):
             ea_pk = kwargs["email_account_pk"]
-            if LocalDelivery.objects.filter(email_account_id=ea_pk).exists():
+            if local_deliveries().filter(email_account_id=ea_pk).exists():
                 return Response(
                     {
                         "delivery_type": (
-                            "An account may have at most one LocalDelivery."
+                            "An account may have at most one local delivery."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,

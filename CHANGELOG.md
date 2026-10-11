@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-11
+
+### Added
+
+- `ASIMAPDelivery` local delivery method: hands messages to asimap (2.7.0 or later) through its delivery spool, so asimap files them into the mail store itself; falls back to writing the MH folders directly if the spool can not be written
+- `convert_to_asimap_delivery` management command to convert `MHDelivery` methods to `ASIMAPDelivery` (one account, a list, or `--all`), and back with `--revert`
+- `DEFAULT_LOCAL_DELIVERY` setting selects the local delivery type given to new server admin accounts and created by the web UI (default `MHDelivery`)
+
+### Changed
+
+- `LocalDelivery` is renamed `MHDelivery`; API clients must use `delivery_type` `"MHDelivery"` instead of `"LocalDelivery"`
+
+### Fixed
+
+- Local delivery no longer writes the MH folder's `.mh_sequences` file. asimap is its only writer and marks unsequenced messages unseen itself; two processes rewriting it in place could corrupt it and wedge the mailbox (ASIMAP-68)
+
 ## [0.9.3] - 2026-07-19
 
 ### Fixed

@@ -16,6 +16,7 @@ import mailbox
 import shlex
 import socket
 import ssl
+from typing import cast
 
 # 3rd party imports
 #
@@ -363,7 +364,7 @@ class EmailAccount(models.Model):  # type: ignore[django-manager-missing]
     maps to an email address that can receive and store email.
 
     Email is delivered to an EmailAccount via one or more `DeliveryMethod`
-    objects. See `LocalDelivery` and `AliasToDelivery`.
+    objects. See `MHDelivery`, `ASIMAPDelivery` and `AliasToDelivery`.
     """
 
     # The number of bounced emails that you are allowed before your account
@@ -1124,7 +1125,10 @@ class DeliveryMethod(PolymorphicModel):
 #
 class LocalDelivery(DeliveryMethod):
     """
-    Delivers messages to a local MH mailbox on the filesystem.
+    Abstract base for delivery methods that deliver into the account's MH
+    mail store on the filesystem: `MHDelivery` and `ASIMAPDelivery`. An
+    account may have at most one local delivery; `local_deliveries()` queries
+    across the types.
 
     Spam filtering is applied before filing: messages above the score
     threshold are filed in `spam_delivery_folder` when `autofile_spam`
@@ -1163,13 +1167,12 @@ class LocalDelivery(DeliveryMethod):
     )
 
     class Meta:
-        verbose_name = "Local Delivery"
-        verbose_name_plural = "Local Deliveries"
+        abstract = True
 
     ####################################################################
     #
     def __str__(self) -> str:
-        return f"LocalDelivery({self.maildir_path})"
+        return f"{self.__class__.__name__}({self.maildir_path})"
 
     ####################################################################
     #
@@ -1207,6 +1210,20 @@ class LocalDelivery(DeliveryMethod):
             mh.add_folder(folder)
         return mh
 
+
+########################################################################
+########################################################################
+#
+class MHDelivery(LocalDelivery):
+    """
+    Delivers messages by writing them straight into the account's MH mail
+    store.
+    """
+
+    class Meta:
+        verbose_name = "MH Delivery"
+        verbose_name_plural = "MH Deliveries"
+
     ####################################################################
     #
     def deliver(
@@ -1221,10 +1238,69 @@ class LocalDelivery(DeliveryMethod):
             msg: The email message to deliver
             visited_accounts: Unused for local delivery; required by interface
         """
-        # Inline import to avoid circular: deliver.py → models → LocalDelivery
-        from .deliver import deliver_message_locally
+        # Inline import to avoid circular: deliver.py -> models -> MHDelivery
+        from .deliver import deliver_message_to_mh
 
-        deliver_message_locally(self, msg)
+        deliver_message_to_mh(self, msg)
+
+
+########################################################################
+########################################################################
+#
+class ASIMAPDelivery(LocalDelivery):
+    """
+    Delivers messages to the account's MH mail store through asimap's
+    delivery spool. asimap files each message into its folders, so it stays
+    the only writer of the mail store's '.mh_sequences' files.
+
+    When the spool can not be written the message is written straight into
+    the MH folders, as `MHDelivery` does.
+    """
+
+    class Meta:
+        verbose_name = "ASIMAP Delivery"
+        verbose_name_plural = "ASIMAP Deliveries"
+
+    ####################################################################
+    #
+    def deliver(
+        self,
+        msg: email.message.EmailMessage,
+        visited_accounts: set[int],
+    ) -> None:
+        """
+        Spool the message for asimap to deliver.
+
+        Args:
+            msg: The email message to deliver
+            visited_accounts: Unused for local delivery; required by interface
+        """
+        # Inline import to avoid circular: deliver.py -> models -> ASIMAPDelivery
+        from .deliver import deliver_message_via_spool
+
+        deliver_message_via_spool(self, msg)
+
+
+####################################################################
+#
+def local_deliveries() -> "QuerySet[LocalDelivery]":
+    """
+    Return every local delivery (MHDelivery or ASIMAPDelivery), each as its
+    concrete type.
+    """
+    return cast(
+        "QuerySet[LocalDelivery]",
+        DeliveryMethod.objects.instance_of(MHDelivery, ASIMAPDelivery),
+    )
+
+
+####################################################################
+#
+def default_local_delivery_class() -> type[LocalDelivery]:
+    """Return the local delivery type named by DEFAULT_LOCAL_DELIVERY."""
+    if settings.DEFAULT_LOCAL_DELIVERY == "ASIMAPDelivery":
+        return ASIMAPDelivery
+    return MHDelivery
 
 
 ########################################################################

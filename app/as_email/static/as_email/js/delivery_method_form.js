@@ -10,6 +10,7 @@ import {
   DELIVERY_TYPE_COMPONENTS,
   DELIVERY_TYPE_ICONS,
   DELIVERY_TYPE_LABELS,
+  LOCAL_DELIVERY_TYPES,
 } from "as-email/delivery-method-registry";
 
 ////////////////////////////////////////////////////////////////////////////
@@ -91,7 +92,7 @@ export default {
     //
     const deliverySummary = computed(() => {
       const d = formData.value;
-      if (d.delivery_type === "LocalDelivery") {
+      if (LOCAL_DELIVERY_TYPES.includes(d.delivery_type)) {
         return d.autofile_spam
           ? `Spam → ${d.spam_delivery_folder}`
           : "No spam filing";
@@ -349,6 +350,7 @@ export default {
       deliveryTypeLabel,
       deliveryTypeIcon,
       deliverySummary,
+      LOCAL_DELIVERY_TYPES,
       save,
       startEdit,
       cancelEdit,

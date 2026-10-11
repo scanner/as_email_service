@@ -61,6 +61,11 @@ DATABASE_URL=sqlite:////mnt/db/as_email_service.db
 EMAIL_SPOOL_DIR=/mnt/spool
 MAIL_DIRS=/mnt/mail_dirs
 
+# The local delivery type for new accounts: MHDelivery or ASIMAPDelivery.
+# ASIMAPDelivery needs asimap 2.7.0 or later. See docs/delivery-methods.md.
+#
+DEFAULT_LOCAL_DELIVERY=MHDelivery
+
 # External (host) directories mounted into the containers. Set these to
 # wherever you want data stored on the host.
 #
@@ -136,7 +141,8 @@ the required DNS records and nginx/Caddy configuration.
 ## Design
 
 - [docs/delivery-methods.md](docs/delivery-methods.md) — the `DeliveryMethod`
-  subclasses (`LocalDelivery`, `AliasToDelivery`, `ImapDelivery`) and how
+  subclasses (`MHDelivery`, `ASIMAPDelivery`, `AliasToDelivery`,
+  `ImapDelivery`) and how
   incoming mail is dispatched to them.
 - [docs/email-change.md](docs/email-change.md) — the security design behind
   the Account Info email-change flow (verification, cancellation, cooldown).

@@ -75,6 +75,7 @@ env = environ.FileAwareEnv(
     ),
     EMAIL_SPOOL_DIR=(str, "/mnt/spool"),
     MAIL_DIRS=(str, "/mnt/mail_dir"),
+    DEFAULT_LOCAL_DELIVERY=(str, "MHDelivery"),
     REDIS_SERVER=(str, "redis"),
     SENTRY_DSN=(str, None),
     SENTRY_PROFILES_SAMPLE_RATE=(float, 0.0),
@@ -439,6 +440,18 @@ DEFAULT_FOLDERS = (
     "Deleted Messages",
 )
 
+# The delivery method type used for an account's local mail store when one is
+# created: the first account of a new server, and the UI's add button. One of
+# "MHDelivery" (written straight into the MH folders) or "ASIMAPDelivery"
+# (handed to asimap through its delivery spool).
+#
+DEFAULT_LOCAL_DELIVERY = env("DEFAULT_LOCAL_DELIVERY")
+if DEFAULT_LOCAL_DELIVERY not in ("MHDelivery", "ASIMAPDelivery"):
+    raise ValueError(
+        "DEFAULT_LOCAL_DELIVERY must be 'MHDelivery' or 'ASIMAPDelivery', "
+        f"not {DEFAULT_LOCAL_DELIVERY!r}"
+    )
+
 # The external auth db is a sqlite db that we maintain one table in: "users"
 # The "user" table will at least have two columns: "password" and
 # "maildir". This is for use by external services (primarily for integration
@@ -456,15 +469,16 @@ EXTERNAL_AUTH_DB = (
     Path(env("EXTERNAL_AUTH_DB")) if "EXTERNAL_AUTH_DB" in env else None
 )
 
-# The security file handler is only added when the log directory exists
-# (i.e. in production with the Docker volume mount). In development and
-# test environments the security logger falls back to console only.
+# The security file handler is only added when SECURITY_LOG_FILE is set and
+# its directory exists (i.e. in production with the Docker volume mount).
+# Otherwise the security logger logs to the console only. The test suite sets
+# SECURITY_LOG_FILE empty (see pyproject.toml) so tests never write a host's
+# real security log, which fail2ban reads.
 #
-_security_log_dir = Path(SECURITY_LOG_FILE).parent
 _security_handlers: dict[str, dict] = {}
 _security_logger_handlers = ["console"]
 
-if _security_log_dir.is_dir():
+if SECURITY_LOG_FILE and Path(SECURITY_LOG_FILE).parent.is_dir():
     _security_handlers["security_file"] = {
         "class": "logging.handlers.RotatingFileHandler",
         "filename": SECURITY_LOG_FILE,
@@ -554,6 +568,7 @@ BULMA_SETTINGS = {
 SETTINGS_EXPORT = [
     "ADMINISTRATIVE_EMAIL_ADDRESS",
     "DEBUG",
+    "DEFAULT_LOCAL_DELIVERY",
     "DELIVERY_RETRY_DAYS",
     "GITHUB_URL",
     "NOT_SPAM_TRAINING_ADDRESS",

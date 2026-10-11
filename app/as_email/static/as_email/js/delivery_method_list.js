@@ -19,6 +19,7 @@ import DeliveryMethodForm from "as-email/delivery-method-form";
 import {
   DELIVERY_TYPE_LABELS,
   DELIVERY_TYPE_DEFAULTS,
+  LOCAL_DELIVERY_TYPES,
 } from "as-email/delivery-method-registry";
 
 ////////////////////////////////////////////////////////////////////////////
@@ -121,12 +122,14 @@ export default {
 
     ////////////////////////////////////////////////////////////////////////
     //
-    // Whether a LocalDelivery already exists on this account. The backend
-    // enforces max-one, so the "Add Local Mailbox" button is disabled when
-    // this is true.
+    // Whether a local delivery (MHDelivery or ASIMAPDelivery) already exists
+    // on this account. The backend enforces max-one, so the "Add Local
+    // Mailbox" button is disabled when this is true.
     //
     const hasLocalDelivery = computed(() =>
-      deliveryMethods.value.some((dm) => dm.delivery_type === "LocalDelivery"),
+      deliveryMethods.value.some((dm) =>
+        LOCAL_DELIVERY_TYPES.includes(dm.delivery_type),
+      ),
     );
 
     ////////////////////////////////////////////////////////////////////////

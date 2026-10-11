@@ -21,7 +21,7 @@ from django.core.management.base import CommandError
 
 # Project imports
 #
-from as_email.models import EmailAccount, LocalDelivery, Server
+from as_email.models import EmailAccount, MHDelivery, Server
 from as_email.reports import REPORTS, ReportSchedule, get_reports_by_schedule
 from as_email.reports.email_usage import generate_email_usage_report
 from as_email.tasks import run_report
@@ -81,7 +81,7 @@ class TestEmailUsageReport:
     #
     def test_no_local_deliveries(self) -> None:
         """
-        Given no LocalDelivery instances
+        Given no MHDelivery instances
         When generate_email_usage_report is called
         Then the report indicates no accounts found
         """
@@ -98,7 +98,7 @@ class TestEmailUsageReport:
         django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
-        Given an email account with LocalDelivery and some messages
+        Given an email account with MHDelivery and some messages
         When generate_email_usage_report is called
         Then the account appears in the report with message counts
         """
@@ -106,7 +106,7 @@ class TestEmailUsageReport:
             server = server_factory()
             ea = email_account_factory(server=server)
 
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         assert ld.maildir_path is not None
         _create_mh_messages(Path(ld.maildir_path), "inbox", 3)
 
@@ -123,7 +123,7 @@ class TestEmailUsageReport:
         server_factory: Callable[..., Server],
     ) -> None:
         """
-        Given a mail directory for an account with no LocalDelivery
+        Given a mail directory for an account with no MHDelivery
         When generate_email_usage_report is called
         Then the orphaned directory is listed
         """
@@ -167,7 +167,7 @@ class TestEmailUsageReport:
         django_capture_on_commit_callbacks: Callable,
     ) -> None:
         """
-        Given all mail directories match existing LocalDelivery instances
+        Given all mail directories match existing MHDelivery instances
         When generate_email_usage_report is called
         Then no orphan sections appear
         """

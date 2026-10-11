@@ -28,10 +28,13 @@ from huey.contrib.djhuey import HUEY
 #
 from .models import (
     AliasToDelivery,
+    ASIMAPDelivery,
     EmailAccount,
     LocalDelivery,
+    MHDelivery,
     Provider,
     Server,
+    default_local_delivery_class,
 )
 from .tasks import (
     provider_create_or_update_email_account,
@@ -59,7 +62,8 @@ def email_account_pre_save(
 
 ####################################################################
 #
-@receiver(post_save, sender=LocalDelivery)
+@receiver(post_save, sender=MHDelivery)
+@receiver(post_save, sender=ASIMAPDelivery)
 def create_local_delivery_mailbox(
     sender: type[LocalDelivery],
     instance: LocalDelivery,
@@ -67,8 +71,8 @@ def create_local_delivery_mailbox(
     **kwargs,
 ) -> None:
     """
-    When a LocalDelivery is created, ensure the MH mailbox directory
-    (and default folders) exist.
+    When an MHDelivery or ASIMAPDelivery is created, ensure the MH mailbox
+    directory (and default folders) exist.
     """
     if created:
         instance.MH()
@@ -76,7 +80,8 @@ def create_local_delivery_mailbox(
 
 ####################################################################
 #
-@receiver(post_save, sender=LocalDelivery)
+@receiver(post_save, sender=MHDelivery)
+@receiver(post_save, sender=ASIMAPDelivery)
 def sync_pwfile_on_local_delivery_save(
     sender: type[LocalDelivery],
     instance: LocalDelivery,
@@ -84,7 +89,7 @@ def sync_pwfile_on_local_delivery_save(
     **kwargs,
 ) -> None:
     """
-    When a LocalDelivery's maildir_path is updated, queue a pwfile sync
+    When a local delivery's maildir_path is updated, queue a pwfile sync
     so the IMAP service sees the new path promptly.
 
     Creation is excluded: the associated EmailAccount's password signal
@@ -254,12 +259,15 @@ def check_create_maintenance_email_accounts(
         )
         eas.append(ea)
 
-    # The first account gets a LocalDelivery. All subsequent accounts get an
-    # AliasToDelivery pointing to the first.
+    # The first account gets a local delivery of the DEFAULT_LOCAL_DELIVERY
+    # type. All subsequent accounts get an AliasToDelivery pointing to the
+    # first.
     #
     first = eas[0]
     first.save()
-    local_delivery = LocalDelivery.objects.create(email_account=first)
+    local_delivery = default_local_delivery_class().objects.create(
+        email_account=first
+    )
     local_delivery.MH()
     for ea in eas[1:]:
         ea.save()

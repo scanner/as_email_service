@@ -17,12 +17,13 @@ from rest_framework_nested.serializers import NestedHyperlinkedModelSerializer
 #
 from .models import (
     AliasToDelivery,
+    ASIMAPDelivery,
     DeliveryMethod,
     EmailAccount,
     ImapDelivery,
     InactiveEmail,
-    LocalDelivery,
     MessageFilterRule,
+    MHDelivery,
 )
 from .utils import clear_delivery_retry_for_method
 
@@ -203,7 +204,7 @@ class InactiveEmailSerializer(serializers.HyperlinkedModelSerializer):
 class DeliveryMethodSerializer(NestedHyperlinkedModelSerializer):
     """
     Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-    concrete subclass name so clients can distinguish LocalDelivery from
+    concrete subclass name so clients can distinguish MHDelivery from
     AliasToDelivery.
     """
 
@@ -262,8 +263,9 @@ class DeliveryMethodSerializer(NestedHyperlinkedModelSerializer):
 ########################################################################
 #
 class LocalDeliverySerializer(DeliveryMethodSerializer):
+    """Fields shared by the MHDelivery and ASIMAPDelivery serializers."""
+
     class Meta(DeliveryMethodSerializer.Meta):
-        model = LocalDelivery
         fields = DeliveryMethodSerializer.Meta.fields + [
             "maildir_path",
             "autofile_spam",
@@ -273,6 +275,22 @@ class LocalDeliverySerializer(DeliveryMethodSerializer):
         read_only_fields = DeliveryMethodSerializer.Meta.read_only_fields + [
             "maildir_path",
         ]
+
+
+########################################################################
+########################################################################
+#
+class MHDeliverySerializer(LocalDeliverySerializer):
+    class Meta(LocalDeliverySerializer.Meta):
+        model = MHDelivery
+
+
+########################################################################
+########################################################################
+#
+class ASIMAPDeliverySerializer(LocalDeliverySerializer):
+    class Meta(LocalDeliverySerializer.Meta):
+        model = ASIMAPDelivery
 
 
 ########################################################################

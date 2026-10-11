@@ -29,9 +29,11 @@ from pytest_mock import MockerFixture
 # Project imports
 #
 from as_email.models import (
+    ASIMAPDelivery,
     EmailAccount,
     InactiveEmail,
     LocalDelivery,
+    MHDelivery,
     Provider,
     Server,
 )
@@ -128,7 +130,7 @@ def test_dispatch_incoming_email(
     # The message should have been delivered to the inbox since there are no
     # mail filter rules. And it should be the only message in the mailbox.
     #
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     mh = ld.MH()
     folder = mh.get_folder("inbox")
     stored_msg = cast(EmailMessage, folder.get("1"))
@@ -153,7 +155,7 @@ def test_dispatch_incoming_mail_failure(
     ea.scan_incoming_spam = False
     ea.save()
     mocker.patch(
-        "as_email.models.LocalDelivery.deliver",
+        "as_email.models.MHDelivery.deliver",
         side_effect=Exception("connection refused"),
     )
     msg = email_factory(to=ea.email_address)
@@ -176,7 +178,7 @@ def test_dispatch_incoming_mail_failure(
     # A Redis retry record should exist with the failing method's PK.
     #
     r = redis_client()
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     redis_key = f"delivery_retry:{failed_files[0].stem}"
     retry_data = r.hgetall(redis_key)
     assert retry_data, "Expected Redis retry record"
@@ -202,7 +204,7 @@ def test_dispatch_incoming_email_auth_failure_auto_disables(
     ea.scan_incoming_spam = False
     ea.save()
     mocker.patch(
-        "as_email.models.LocalDelivery.deliver",
+        "as_email.models.MHDelivery.deliver",
         side_effect=Exception("AUTHENTICATIONFAILED Invalid credentials"),
     )
     msg = email_factory(to=ea.email_address)
@@ -216,7 +218,7 @@ def test_dispatch_incoming_email_auth_failure_auto_disables(
 
     # Delivery method must be disabled.
     #
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     ld.refresh_from_db()
     assert not ld.enabled
 
@@ -415,7 +417,7 @@ def test_dispatch_incoming_email_scan_disabled(
     res()
 
     assert mock_scan.call_count == 0
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     mh = ld.MH()
     folder = mh.get_folder("inbox")
     assert folder.get("1") is not None
@@ -490,7 +492,7 @@ def test_retry_failed_incoming_email(
             str(now),
             msg["Message-ID"],
         )
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         redis_key = f"delivery_retry:{fname.stem}"
         r.hset(
             redis_key,
@@ -538,7 +540,7 @@ def test_retry_respects_backoff(
         str(datetime.now()),
         msg["Message-ID"],
     )
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     redis_key = f"delivery_retry:{fname.stem}"
     r.hset(
         redis_key,
@@ -586,7 +588,7 @@ def test_retry_auto_disable_after_window(
         str(datetime.now()),
         msg["Message-ID"],
     )
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     redis_key = f"delivery_retry:{fname.stem}"
     # first_failure is 8 days ago; default DELIVERY_RETRY_DAYS is 7.
     #
@@ -902,14 +904,16 @@ def test_delete_email_account_removes_pwfile_entry(
 
 ####################################################################
 #
+@pytest.mark.parametrize("local_delivery_type", [MHDelivery, ASIMAPDelivery])
 def test_sync_pwfile_creates_new_entry(
     settings: LazySettings,
     email_account_factory: Callable[..., EmailAccount],
     faker: Faker,
     django_capture_on_commit_callbacks: Callable,
+    local_delivery_type: type[LocalDelivery],
 ) -> None:
     """
-    Given a new email account with password
+    Given a new email account with password and either type of local delivery
     When the account is saved
     Then a new entry is added to the pwfile via the signal-triggered sync task
     """
@@ -917,10 +921,9 @@ def test_sync_pwfile_creates_new_entry(
     # test transaction (which never commits) must be flushed explicitly.
     #
     with django_capture_on_commit_callbacks(execute=True):
-        ea = email_account_factory(password=faker.password())
-        ea.save()
-
-    ld = LocalDelivery.objects.get(email_account=ea)
+        ea = email_account_factory(local_delivery=False)
+        ld = local_delivery_type.objects.create(email_account=ea)
+        ea.set_password(faker.password())
 
     # Verify the account was added to pwfile
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
@@ -981,20 +984,20 @@ def test_sync_pwfile_updates_maildir(
 ) -> None:
     """
     Given an email account with password in pwfile
-    When the maildir_path on LocalDelivery is changed and saved
+    When the maildir_path on MHDelivery is changed and saved
     Then the pwfile entry is updated with the new maildir path via signal
     """
     with django_capture_on_commit_callbacks(execute=True):
         ea = email_account_factory(password=faker.password())
         ea.save()
 
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
 
     accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
     original_mail_dir = accounts[ea.email_address].maildir
 
-    # Change the maildir_path on LocalDelivery (simulate moving the mailbox).
-    # The post_save signal on LocalDelivery queues sync_pwfile via on_commit.
+    # Change the maildir_path on MHDelivery (simulate moving the mailbox).
+    # The post_save signal on MHDelivery queues sync_pwfile via on_commit.
     #
     new_mail_dir = settings.MAIL_DIRS / "new_location" / ea.email_address
     new_mail_dir.mkdir(parents=True, exist_ok=True)

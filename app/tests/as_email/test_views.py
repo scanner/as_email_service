@@ -30,8 +30,8 @@ from as_email.models import (
     DeliveryMethod,
     EmailAccount,
     ImapDelivery,
-    LocalDelivery,
     MessageFilterRule,
+    MHDelivery,
     Provider,
     Server,
 )
@@ -212,6 +212,35 @@ def test_index(
     assert resp
     resp = client.get(url)
     assert resp.status_code == 200
+
+
+####################################################################
+#
+@pytest.mark.parametrize(
+    "default_local_delivery", ["MHDelivery", "ASIMAPDelivery"]
+)
+def test_index_adds_default_local_delivery_type(
+    api_client: type[APIClient],
+    user_factory: Callable,
+    settings: LazySettings,
+    faker: Faker,
+    default_local_delivery: str,
+) -> None:
+    """
+    GIVEN DEFAULT_LOCAL_DELIVERY is set to a local delivery type
+    WHEN  a logged in user loads the index page
+    THEN  the "Local Delivery" add button creates that type
+    """
+    settings.DEFAULT_LOCAL_DELIVERY = default_local_delivery
+    password = faker.pystr(min_chars=8, max_chars=32)
+    user = user_factory(password=password)
+    user.save()
+    client = api_client()
+    assert client.login(username=user.username, password=password)
+
+    resp = client.get(reverse("as_email:index"))
+
+    assert f"startAdd('{default_local_delivery}')" in resp.content.decode()
 
 
 ####################################################################
@@ -1249,7 +1278,7 @@ class TestDeliveryMethodEndpoints:
     ) -> dict[str, Any]:
         """
         Set up a user with two email accounts:
-        - ea: the primary account (has a LocalDelivery created by the factory)
+        - ea: the primary account (has an MHDelivery created by the factory)
         - ea_other_user: an account owned by a different user (for permission tests)
         """
         password = faker.pystr(min_chars=8, max_chars=32)
@@ -1319,10 +1348,10 @@ class TestDeliveryMethodEndpoints:
         self, setup: dict[str, Any]
     ) -> None:
         """
-        GIVEN an authenticated user with one LocalDelivery on their account
+        GIVEN an authenticated user with one MHDelivery on their account
         WHEN  the delivery-method list endpoint is requested
         THEN  exactly one delivery method is returned for that account
-             including LocalDelivery-specific fields (not just base fields)
+             including MHDelivery-specific fields (not just base fields)
         """
         ea = setup["email_account"]
         client = setup["client"]
@@ -1330,7 +1359,7 @@ class TestDeliveryMethodEndpoints:
         assert resp.status_code == 200
         assert len(resp.data) == 1
         dm = resp.data[0]
-        assert dm["delivery_type"] == "LocalDelivery"
+        assert dm["delivery_type"] == "MHDelivery"
         # Subclass-specific fields must be present so the UI form can
         # display and edit them correctly on first load.
         assert "autofile_spam" in dm
@@ -1360,16 +1389,16 @@ class TestDeliveryMethodEndpoints:
     #
     def test_retrieve_local_delivery(self, setup: dict[str, Any]) -> None:
         """
-        GIVEN an account with a LocalDelivery
+        GIVEN an account with an MHDelivery
         WHEN  the detail endpoint is requested
         THEN  the correct delivery method is returned with expected fields
         """
         ea = setup["email_account"]
         client = setup["client"]
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         resp = client.get(self._detail_url(ea, ld))
         assert resp.status_code == 200
-        assert resp.data["delivery_type"] == "LocalDelivery"
+        assert resp.data["delivery_type"] == "MHDelivery"
         assert resp.data["pk"] == ld.pk
         assert resp.data["enabled"] is True
         assert "maildir_path" in resp.data
@@ -1385,7 +1414,7 @@ class TestDeliveryMethodEndpoints:
         THEN  403 is returned
         """
         ea = setup["email_account"]
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         client = api_client()
         resp = client.get(self._detail_url(ea, ld))
         assert resp.status_code == 403
@@ -1419,20 +1448,21 @@ class TestDeliveryMethodEndpoints:
 
     ####################################################################
     #
+    @pytest.mark.parametrize("delivery_type", ["MHDelivery", "ASIMAPDelivery"])
     def test_create_second_local_delivery_is_rejected(
-        self, setup: dict[str, Any]
+        self, setup: dict[str, Any], delivery_type: str
     ) -> None:
         """
-        GIVEN an account that already has a LocalDelivery
-        WHEN  a second LocalDelivery is POSTed
+        GIVEN an account that already has an MHDelivery
+        WHEN  a second local delivery of either type is POSTed
         THEN  400 is returned with a descriptive error
         """
         ea = setup["email_account"]
         client = setup["client"]
-        data = {"delivery_type": "LocalDelivery"}
+        data = {"delivery_type": delivery_type}
         resp = client.post(self._list_url(ea), data=data, format="json")
         assert resp.status_code == 400
-        assert "LocalDelivery" in str(resp.data)
+        assert "at most one local delivery" in str(resp.data)
 
     ####################################################################
     #
@@ -1499,15 +1529,15 @@ class TestDeliveryMethodEndpoints:
         self, setup: dict[str, Any]
     ) -> None:
         """
-        GIVEN a LocalDelivery
+        GIVEN an MHDelivery
         WHEN  autofile_spam and spam_score_threshold are updated via PUT
         THEN  200 is returned and the changes are persisted
         """
         ea = setup["email_account"]
         client = setup["client"]
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         data = {
-            "delivery_type": "LocalDelivery",
+            "delivery_type": "MHDelivery",
             "enabled": True,
             "autofile_spam": True,
             "spam_delivery_folder": "Junk",
@@ -1524,13 +1554,13 @@ class TestDeliveryMethodEndpoints:
     #
     def test_partial_update_local_delivery(self, setup: dict[str, Any]) -> None:
         """
-        GIVEN a LocalDelivery
+        GIVEN an MHDelivery
         WHEN  only autofile_spam is patched
         THEN  200 is returned and only that field changes
         """
         ea = setup["email_account"]
         client = setup["client"]
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         original_threshold = ld.spam_score_threshold
         resp = client.patch(
             self._detail_url(ea, ld),
@@ -1546,13 +1576,13 @@ class TestDeliveryMethodEndpoints:
     #
     def test_maildir_path_is_read_only(self, setup: dict[str, Any]) -> None:
         """
-        GIVEN a LocalDelivery
+        GIVEN an MHDelivery
         WHEN  a PATCH attempt is made to change maildir_path
         THEN  the field is silently ignored (read-only)
         """
         ea = setup["email_account"]
         client = setup["client"]
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         original_path = ld.maildir_path
         resp = client.patch(
             self._detail_url(ea, ld),
@@ -1619,13 +1649,13 @@ class TestDeliveryMethodEndpoints:
     #
     def test_delete_local_delivery(self, setup: dict[str, Any]) -> None:
         """
-        GIVEN an account with a LocalDelivery
-        WHEN  the LocalDelivery is deleted via DELETE
+        GIVEN an account with an MHDelivery
+        WHEN  the MHDelivery is deleted via DELETE
         THEN  204 is returned and the object no longer exists
         """
         ea = setup["email_account"]
         client = setup["client"]
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = MHDelivery.objects.get(email_account=ea)
         ld_pk = ld.pk
         resp = client.delete(self._detail_url(ea, ld))
         assert resp.status_code == 204
@@ -1643,7 +1673,7 @@ class TestDeliveryMethodEndpoints:
         """
         client = setup["client"]
         ea_other = setup["ea_other_user"]
-        ld_other = LocalDelivery.objects.get(email_account=ea_other)
+        ld_other = MHDelivery.objects.get(email_account=ea_other)
         resp = client.delete(self._detail_url(ea_other, ld_other))
         assert resp.status_code == 403
         assert DeliveryMethod.objects.filter(pk=ld_other.pk).exists()

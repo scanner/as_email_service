@@ -11,7 +11,8 @@ FROM python:${PYTHON_VERSION}-slim AS builder
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 
-# Install build dependencies needed to compile Python packages with C extensions
+# Install build dependencies needed to compile Python packages with C extensions,
+# and git for dependencies installed from a git source (asimap-spool).
 # These will NOT be in the final image
 #
 RUN apt-get update && \
@@ -20,6 +21,7 @@ RUN apt-get update && \
     g++ \
     make \
     libpq-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv

@@ -298,8 +298,8 @@
                       :disabled="hasLocalDelivery"
                       :class="{ 'has-text-grey-light': hasLocalDelivery }"
                       :data-tooltip="hasLocalDelivery ? 'This account already has a local delivery — only one is allowed' : 'Deliver email to a local mailbox folder on this server'"
-                      @click="startAdd('LocalDelivery')">
-                [[ DELIVERY_TYPE_LABELS.LocalDelivery ]]
+                      @click="startAdd('{{ settings.DEFAULT_LOCAL_DELIVERY }}')">
+                Local Delivery
               </button>
               <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
                       data-tooltip="Forward all incoming email to another account on this server"
@@ -382,8 +382,8 @@
         {# ---- View mode: summary + Edit button (existing methods only) ---- #}
         <div v-if="!isNew && !isEditing">
 
-          {# LocalDelivery summary #}
-          <div v-if="formData.delivery_type === 'LocalDelivery'" class="content is-small mb-3">
+          {# MHDelivery / ASIMAPDelivery summary #}
+          <div v-if="LOCAL_DELIVERY_TYPES.includes(formData.delivery_type)" class="content is-small mb-3">
             <p><strong>Auto-file spam:</strong> [[ formData.autofile_spam ? 'Yes' : 'No' ]]</p>
             <template v-if="formData.autofile_spam">
               <p><strong>Spam folder:</strong> [[ formData.spam_delivery_folder ]]</p>

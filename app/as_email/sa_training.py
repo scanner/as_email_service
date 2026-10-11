@@ -23,7 +23,12 @@ from django.core.management.base import CommandError
 
 # Project imports
 #
-from .models import EmailAccount, LocalDelivery
+from .models import (
+    DeliveryMethod,
+    EmailAccount,
+    LocalDelivery,
+    local_deliveries,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +55,15 @@ class TrainingResult:
 #
 def find_training_local_delivery() -> LocalDelivery:
     """
-    Find the LocalDelivery that receives spam/ham training messages.
+    Find the local delivery that receives spam/ham training messages.
 
     Checks both ``SPAM_TRAINING_ADDRESS`` and
     ``NOT_SPAM_TRAINING_ADDRESS``; returns whichever has an enabled
-    LocalDelivery.
+    local delivery (MHDelivery or ASIMAPDelivery).
 
     Raises:
         CommandError: if the settings are not configured or neither
-                      address has a LocalDelivery.
+                      address has a local delivery.
     """
     spam_addr = settings.SPAM_TRAINING_ADDRESS
     not_spam_addr = settings.NOT_SPAM_TRAINING_ADDRESS
@@ -76,13 +81,13 @@ def find_training_local_delivery() -> LocalDelivery:
             ea = EmailAccount.objects.get(
                 email_address=addr.lower(), enabled=True
             )
-            ld = LocalDelivery.objects.get(email_account=ea, enabled=True)
+            ld = local_deliveries().get(email_account=ea, enabled=True)
             return ld
-        except (EmailAccount.DoesNotExist, LocalDelivery.DoesNotExist):
+        except (EmailAccount.DoesNotExist, DeliveryMethod.DoesNotExist):
             continue
 
     raise CommandError(
-        "No enabled LocalDelivery found for either "
+        "No enabled local delivery found for either "
         f"SPAM_TRAINING_ADDRESS ({spam_addr!r}) or "
         f"NOT_SPAM_TRAINING_ADDRESS ({not_spam_addr!r})."
     )

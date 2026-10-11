@@ -15,7 +15,7 @@ from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 # 3rd party imports
@@ -24,7 +24,7 @@ import pytest
 import redis
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import Session as SMTPSession
-from django.conf import LazySettings
+from django.conf import LazySettings, settings
 from django.core import mail
 from faker import Faker
 from fakeredis import FakeConnection, FakeServer
@@ -58,6 +58,27 @@ register(UserFactory)
 register(ProviderFactory)
 register(ServerFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+@pytest.fixture(autouse=True, scope="session")
+def security_log_not_written_to_file() -> None:
+    """
+    Fail every test if the 'as_email.security' logger is configured to write
+    to a file.
+
+    Tests emit security events (AUTH_FAIL and the like). On a host that runs
+    the service, SECURITY_LOG_FILE is the log fail2ban reads, and test events
+    written there could get addresses banned. pyproject.toml sets
+    SECURITY_LOG_FILE empty for test runs, before Django configures logging;
+    this checks that it took effect.
+    """
+    loggers = cast(dict[str, Any], settings.LOGGING["loggers"])
+    handlers = loggers["as_email.security"]["handlers"]
+    assert handlers == ["console"], (
+        f"tests would write the security log to {settings.SECURITY_LOG_FILE!r}"
+    )
 
 
 ####################################################################

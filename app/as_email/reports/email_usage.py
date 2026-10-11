@@ -3,10 +3,10 @@
 """
 Generate a mailbox usage report for all email accounts with local delivery.
 
-Enumerates all LocalDelivery instances, counts messages per folder
-(Inbox, Deleted Messages, Junk, Archive), and calculates total disk
-usage per account. Also detects orphaned mail directories — both for
-accounts whose LocalDelivery was removed and for entire domain
+Enumerates all local deliveries (MHDelivery and ASIMAPDelivery), counts
+messages per folder (Inbox, Deleted Messages, Junk, Archive), and calculates
+total disk usage per account. Also detects orphaned mail directories — both for
+accounts whose local delivery was removed and for entire domain
 directories whose Server no longer exists in the database.
 """
 
@@ -20,7 +20,7 @@ from django.conf import settings
 
 # Project imports
 #
-from as_email.models import LocalDelivery, Server
+from as_email.models import Server, local_deliveries
 
 REPORT_FOLDERS = ("inbox", "Deleted Messages", "Junk", "Archive")
 
@@ -68,13 +68,15 @@ def _format_size(size_bytes: int) -> str:
 #
 def _report_active_accounts(lines: list[str]) -> set[Path]:
     """
-    Append per-account usage lines for all active LocalDelivery accounts.
+    Append per-account usage lines for all active local delivery accounts.
     Returns the set of maildir paths that are accounted for.
     """
-    deliveries = LocalDelivery.objects.select_related(
-        "email_account", "email_account__server"
-    ).order_by(
-        "email_account__server__domain_name", "email_account__email_address"
+    deliveries = (
+        local_deliveries()
+        .select_related("email_account", "email_account__server")
+        .order_by(
+            "email_account__server__domain_name", "email_account__email_address"
+        )
     )
 
     known_paths: set[Path] = set()
@@ -117,12 +119,12 @@ def _report_orphaned_directories(
 ) -> None:
     """
     Walk MAIL_DIRS and report mail directories that are not associated
-    with a current LocalDelivery or Server.
+    with a current local delivery or Server.
 
     Detects two kinds of orphans:
     - Domain directories (MAIL_DIRS/<domain>/) with no matching Server
     - Account directories (MAIL_DIRS/<domain>/<email>/) with no matching
-      LocalDelivery
+      local delivery
     """
     mail_dirs: Path = settings.MAIL_DIRS
     if not mail_dirs.is_dir():
@@ -176,7 +178,7 @@ def _report_orphaned_directories(
             f"({_format_size(total_bytes)} total) ==="
         )
         lines.append(
-            "These account directories have no matching LocalDelivery "
+            "These account directories have no matching local delivery "
             "and can be removed."
         )
         lines.append("")
@@ -197,10 +199,10 @@ def generate_email_usage_report() -> str:
     Generate a full email usage report as a string.
 
     The report includes:
-    - Per-account message counts and disk usage for active LocalDelivery
+    - Per-account message counts and disk usage for active local delivery
       accounts, grouped by domain
     - Orphaned domain directories with no matching Server in the database
-    - Orphaned account directories with no matching LocalDelivery
+    - Orphaned account directories with no matching local delivery
 
     Returns:
         The complete report as a single string.
