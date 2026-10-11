@@ -198,8 +198,9 @@ def test_index(
     GIVEN a user with email accounts, and DEFAULT_LOCAL_DELIVERY set to the
           non-default ASIMAPDelivery
     WHEN  the index page is loaded, logged out and then logged in
-    THEN  it redirects to login, then renders with the local delivery add
-          button creating an ASIMAPDelivery
+    THEN  it redirects to login, then renders an add menu offering both
+          local delivery types, ASIMAPDelivery first and marked as the
+          default
     """
     settings.DEFAULT_LOCAL_DELIVERY = "ASIMAPDelivery"
     password = faker.pystr(min_chars=8, max_chars=32)
@@ -221,7 +222,11 @@ def test_index(
     assert resp
     resp = client.get(url)
     assert resp.status_code == 200
-    assert "startAdd('ASIMAPDelivery')" in resp.content.decode()
+    body = resp.content.decode()
+    asimap = body.index("startAdd('ASIMAPDelivery')")
+    mh = body.index("startAdd('MHDelivery')")
+    assert asimap < mh
+    assert "DELIVERY_TYPE_LABELS.ASIMAPDelivery ]] (default)" in body
 
 
 ####################################################################

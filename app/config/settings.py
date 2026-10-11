@@ -440,10 +440,10 @@ DEFAULT_FOLDERS = (
     "Deleted Messages",
 )
 
-# The delivery method type used for an account's local mail store when one is
-# created: the first account of a new server, and the UI's add button. One of
-# "MHDelivery" (written straight into the MH folders) or "ASIMAPDelivery"
-# (handed to asimap through its delivery spool).
+# The default delivery method type for an account's local mail store: the
+# type given to the first account of a new server, and the one the UI's add
+# menu lists first. One of "MHDelivery" (written straight into the MH
+# folders) or "ASIMAPDelivery" (handed to asimap through its delivery spool).
 #
 DEFAULT_LOCAL_DELIVERY = env("DEFAULT_LOCAL_DELIVERY")
 if DEFAULT_LOCAL_DELIVERY not in ("MHDelivery", "ASIMAPDelivery"):
@@ -568,7 +568,6 @@ BULMA_SETTINGS = {
 SETTINGS_EXPORT = [
     "ADMINISTRATIVE_EMAIL_ADDRESS",
     "DEBUG",
-    "DEFAULT_LOCAL_DELIVERY",
     "DELIVERY_RETRY_DAYS",
     "GITHUB_URL",
     "NOT_SPAM_TRAINING_ADDRESS",

@@ -294,13 +294,15 @@
           </div>
           <div class="dropdown-menu" id="add-delivery-dropdown" role="menu">
             <div class="dropdown-content">
+              {% for delivery_type in local_delivery_types %}
               <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
                       :disabled="hasLocalDelivery"
                       :class="{ 'has-text-grey-light': hasLocalDelivery }"
-                      :data-tooltip="hasLocalDelivery ? 'This account already has an MH Delivery or ASIMAP Delivery — only one is allowed' : 'Deliver email to your mail folders on this server'"
-                      @click="startAdd('{{ settings.DEFAULT_LOCAL_DELIVERY }}')">
-                [[ DELIVERY_TYPE_LABELS['{{ settings.DEFAULT_LOCAL_DELIVERY }}'] ]]
+                      :data-tooltip="hasLocalDelivery ? 'This account already has an MH Delivery or ASIMAP Delivery — only one is allowed' : '{% if delivery_type == "MHDelivery" %}Write email straight into your mail folders on this server{% else %}Hand email to the IMAP service on this server, which files it into your mail folders{% endif %}'"
+                      @click="startAdd('{{ delivery_type }}')">
+                [[ DELIVERY_TYPE_LABELS.{{ delivery_type }} ]]{% if forloop.first %} (default){% endif %}
               </button>
+              {% endfor %}
               <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
                       data-tooltip="Forward all incoming email to another account on this server"
                       @click="startAdd('AliasToDelivery')">

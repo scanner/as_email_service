@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ASIMAPDelivery` local delivery method: hands messages to asimap (2.7.0 or later) through its delivery spool, so asimap files them into the mail store itself; falls back to writing the MH folders directly if the spool can not be written
 - `convert_to_asimap_delivery` management command to convert `MHDelivery` methods to `ASIMAPDelivery` (one account, a list, or `--all`), and back with `--revert`
-- `DEFAULT_LOCAL_DELIVERY` setting selects the local delivery type given to new server admin accounts and created by the web UI (default `MHDelivery`)
+- `DEFAULT_LOCAL_DELIVERY` setting selects the default local delivery type: the one given to new server admin accounts and listed first in the web UI's add menu, which offers both (default `MHDelivery`)
 
 ### Changed
 

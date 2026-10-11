@@ -230,9 +230,17 @@ def index(request):
         "valid_email_addresses": [x.email_address for x in email_accounts],
         "email_account_field_info": actions,
     }
+    # The add menu offers both local delivery types, the
+    # DEFAULT_LOCAL_DELIVERY one first.
+    #
+    local_delivery_types = sorted(
+        ("MHDelivery", "ASIMAPDelivery"),
+        key=lambda t: t != settings.DEFAULT_LOCAL_DELIVERY,
+    )
     context = {
         "email_accounts": list(email_accounts),
         "vue_data": vue_data,
+        "local_delivery_types": local_delivery_types,
     }
     return render(request, "as_email/index.html", context)
 

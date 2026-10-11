@@ -61,7 +61,7 @@ DATABASE_URL=sqlite:////mnt/db/as_email_service.db
 EMAIL_SPOOL_DIR=/mnt/spool
 MAIL_DIRS=/mnt/mail_dirs
 
-# The local delivery type for new accounts: MHDelivery or ASIMAPDelivery.
+# The default local delivery type: MHDelivery or ASIMAPDelivery.
 # ASIMAPDelivery needs asimap 2.7.0 or later. See docs/delivery-methods.md.
 #
 DEFAULT_LOCAL_DELIVERY=MHDelivery
