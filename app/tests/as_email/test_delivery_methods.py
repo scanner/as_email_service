@@ -24,6 +24,7 @@ from unittest.mock import MagicMock
 import pytest
 from asimap_spool import (
     Delivery,
+    SpoolFormatError,
     SpoolUnavailableError,
     ready_entries,
     spool_dir,
@@ -34,7 +35,7 @@ from pytest_mock import MockerFixture
 
 # Project imports
 #
-from as_email.deliver import SPOOL_SOURCE
+from as_email.deliver import SPOOL_SOURCE, deliver_message_via_spool
 from as_email.models import (
     AliasToDelivery,
     ASIMAPDelivery,
@@ -396,6 +397,51 @@ class TestASIMAPDeliveryModel:
 
         mock_spool_deliver.assert_called_once()
         assert mock_spool_deliver.call_args.args[2] == [expected]
+
+    ####################################################################
+    #
+    def test_flags_are_spooled(
+        self,
+        asimap_delivery: ASIMAPDelivery,
+        mock_spool_deliver: MagicMock,
+        email_factory: Callable[..., EmailMessage],
+    ) -> None:
+        """
+        GIVEN an ASIMAPDelivery
+        WHEN  a message is delivered with flags
+        THEN  the spooled destination carries those flags
+        """
+        msg = email_factory(to=asimap_delivery.email_account.email_address)
+
+        deliver_message_via_spool(
+            asimap_delivery, msg, flags=("\\Seen", "\\Flagged")
+        )
+
+        assert mock_spool_deliver.call_args.args[2] == [
+            Delivery("inbox", flags=("\\Seen", "\\Flagged"), create=True)
+        ]
+
+    ####################################################################
+    #
+    def test_invalid_flag_raises(
+        self,
+        asimap_delivery: ASIMAPDelivery,
+        mock_spool_deliver: MagicMock,
+        email_factory: Callable[..., EmailMessage],
+    ) -> None:
+        """
+        GIVEN an ASIMAPDelivery
+        WHEN  a message is delivered with a flag that can not be set
+        THEN  SpoolFormatError is raised and nothing is spooled or written
+              to the MH folders
+        """
+        msg = email_factory(to=asimap_delivery.email_account.email_address)
+
+        with pytest.raises(SpoolFormatError):
+            deliver_message_via_spool(asimap_delivery, msg, flags=("\\Recent",))
+
+        mock_spool_deliver.assert_not_called()
+        assert asimap_delivery.MH().get_folder("inbox").keys() == []
 
     ####################################################################
     #

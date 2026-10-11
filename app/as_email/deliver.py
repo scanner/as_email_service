@@ -36,6 +36,7 @@ This module provides the lower-level helpers called by those delivery methods:
 import email.utils
 import logging
 import time
+from collections.abc import Iterable
 from contextlib import contextmanager
 from email.message import EmailMessage
 from email.mime.text import MIMEText
@@ -47,6 +48,7 @@ from asimap_spool import (
     Delivery,
     SpoolFormatError,
     SpoolUnavailableError,
+    validate_flags,
 )
 from asimap_spool import deliver as spool_deliver
 
@@ -241,21 +243,38 @@ def deliver_message_via_mh(mh_delivery: MHDelivery, msg: EmailMessage) -> None:
 ####################################################################
 #
 def deliver_message_via_spool(
-    asimap_delivery: ASIMAPDelivery, msg: EmailMessage
+    asimap_delivery: ASIMAPDelivery,
+    msg: EmailMessage,
+    flags: Iterable[str] = (),
 ) -> None:
     """
     Deliver the email message by writing it to asimap's delivery spool in
     the account's mail store. asimap files it into the destination folders.
 
     If the message can not be spooled it is written straight into the MH
-    folders instead.
+    folders instead, without its flags.
+
+    Args:
+        asimap_delivery: The delivery method whose mail store and settings
+            apply.
+        msg: The message to deliver.
+        flags: IMAP flags (system flags such as '\\Seen', or keywords) to
+            set on the message in every destination folder. The default, no
+            flags, delivers it unread.
+
+    Raises:
+        SpoolFormatError: if any of `flags` is not a settable IMAP flag.
     """
+    # NOTE: Sieve's imap4flags can set different flags per destination; when
+    #       Sieve rules choose the destinations, the flags move into them.
+    #
+    flags = validate_flags(flags)
     assert asimap_delivery.maildir_path is not None
     mh = asimap_delivery.MH()
     destinations = _local_destinations(asimap_delivery, mh, msg)
     try:
         deliveries = [
-            Delivery(folder=folder_name, create=create)
+            Delivery(folder=folder_name, flags=flags, create=create)
             for folder_name, create in destinations
         ]
         spool_deliver(
@@ -267,8 +286,9 @@ def deliver_message_via_spool(
     except (SpoolFormatError, SpoolUnavailableError) as exc:
         logger.warning(
             "for email account %s, unable to spool message, writing it to "
-            "the MH folders instead: %r",
+            "the MH folders instead without flags %r: %r",
             asimap_delivery.email_account.email_address,
+            flags,
             exc,
         )
         _write_to_mh_folders(mh, destinations, msg)
