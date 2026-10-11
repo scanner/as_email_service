@@ -297,9 +297,9 @@
               <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
                       :disabled="hasLocalDelivery"
                       :class="{ 'has-text-grey-light': hasLocalDelivery }"
-                      :data-tooltip="hasLocalDelivery ? 'This account already has a local delivery — only one is allowed' : 'Deliver email to a local mailbox folder on this server'"
+                      :data-tooltip="hasLocalDelivery ? 'This account already has an MH Delivery or ASIMAP Delivery — only one is allowed' : 'Deliver email to your mail folders on this server'"
                       @click="startAdd('{{ settings.DEFAULT_LOCAL_DELIVERY }}')">
-                Local Delivery
+                [[ DELIVERY_TYPE_LABELS['{{ settings.DEFAULT_LOCAL_DELIVERY }}'] ]]
               </button>
               <button class="dropdown-item has-tooltip-arrow has-tooltip-right"
                       data-tooltip="Forward all incoming email to another account on this server"
@@ -738,9 +738,15 @@
     <div class="notification is-info is-light mt-6">
       <p class="mb-2"><strong>About Delivery Methods:</strong></p>
       <p class="mb-1">
-        <strong>Local Delivery:</strong> Delivers email to a local folder with
-        optional spam filtering. All email accounts start with a local delivery
-        method by default.
+        <strong>MH Delivery:</strong> Delivers email straight into your mail
+        folders on this server, with optional spam filtering.
+      </p>
+      <p class="mb-1">
+        <strong>ASIMAP Delivery:</strong> Hands email to this server's IMAP
+        service, which files it into your mail folders, with the same optional
+        spam filtering. New mail is filed while you are connected with IMAP or
+        POP3S, and otherwise when you next connect. An account can have an MH
+        Delivery or an ASIMAP Delivery, not both.
       </p>
       <p class="mb-1">
         <strong>Alias-To:</strong> Forwards email to another one of your email

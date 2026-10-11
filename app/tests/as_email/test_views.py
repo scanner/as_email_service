@@ -198,7 +198,7 @@ def test_index(
     GIVEN a user with email accounts, and DEFAULT_LOCAL_DELIVERY set to the
           non-default ASIMAPDelivery
     WHEN  the index page is loaded, logged out and then logged in
-    THEN  it redirects to login, then renders with the "Local Delivery" add
+    THEN  it redirects to login, then renders with the local delivery add
           button creating an ASIMAPDelivery
     """
     settings.DEFAULT_LOCAL_DELIVERY = "ASIMAPDelivery"

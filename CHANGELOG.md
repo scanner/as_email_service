@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `LocalDelivery` is renamed `MHDelivery`; API clients must use `delivery_type` `"MHDelivery"` instead of `"LocalDelivery"`
 - Published Docker images no longer carry a build-time `SALT_KEY` in their layer history; building an image needs no secret (`docker build` takes no `SALT_KEY` build argument)
+- Documentation and the web UI describe "MH Delivery" and "ASIMAP Delivery" instead of a single "Local Delivery"; the SA training account must use MH Delivery
 
 ### Fixed
 

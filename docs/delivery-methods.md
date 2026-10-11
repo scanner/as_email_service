@@ -50,7 +50,7 @@ No configuration beyond the spam settings is required.
 
 `DEFAULT_LOCAL_DELIVERY` (`MHDelivery` or `ASIMAPDelivery`, default
 `MHDelivery`) sets the type created for the first account of a new server and
-by the web UI's "Local Delivery" button.
+by the web UI's add button for a local delivery.
 
 Convert existing accounts with the `convert_to_asimap_delivery` management
 command. A conversion keeps the delivery method's pk and settings. The

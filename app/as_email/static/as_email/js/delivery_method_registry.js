@@ -35,8 +35,8 @@ export const DELIVERY_TYPE_COMPONENTS = {
 // Human-readable labels for each delivery type, used in the UI.
 //
 export const DELIVERY_TYPE_LABELS = {
-  MHDelivery: "Local Delivery (MH)",
-  ASIMAPDelivery: "Local Delivery (asimap)",
+  MHDelivery: "MH Delivery",
+  ASIMAPDelivery: "ASIMAP Delivery",
   AliasToDelivery: "Alias-To",
   ImapDelivery: "IMAP Delivery",
 };
