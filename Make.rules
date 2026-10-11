@@ -1,12 +1,18 @@
 # -*- Mode: Makefile -*-
 
 UV_RUN := uv run
-PYTHON_VERSION := $(shell grep 'requires-python' $(ROOT_DIR)/pyproject.toml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+PYTHON_VERSION := $(shell cat $(ROOT_DIR)/.python-version)
 
-.git/hooks/pre-commit .git/hooks/pre-push: .venv
-	@$(UV_RUN) pre-commit install
-	@echo "pre-commit hooks installed!"
-	@touch .git/hooks/pre-commit .git/hooks/pre-push
+# The hook runs pre-commit through `uv run` so that it uses whichever
+# machine's local `.venv` it is run on. `pre-commit install` would
+# write an absolute interpreter path into the hook, and `.git/hooks` is
+# shared between machines that sync the repository.
+#
+.git/hooks/pre-commit: Make.rules
+	@printf '%s\n' '#!/usr/bin/env bash' \
+	  'exec uv run --quiet pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit --hook-dir "$$(cd "$$(dirname "$$0")" && pwd)" -- "$$@"' > $@
+	@chmod +x $@
+	@echo "pre-commit hook installed!"
 
 clean::	## Swab the decks! Does not touch docker images or volumes.
 	@find $(ROOT_DIR) -name \*~ -exec rm '{}' +
@@ -22,9 +28,6 @@ clean::	## Swab the decks! Does not touch docker images or volumes.
 	@rm -rf ./ssl/*.pem
 	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
 	@mkdir -p .mypy_cache
-
-$(ROOT_DIR)/.python-version: $(ROOT_DIR)/pyproject.toml
-	@echo $(PYTHON_VERSION) > $@
 
 $(ROOT_DIR)/.venv: pyproject.toml uv.lock $(ROOT_DIR)/.python-version
 	@uv sync

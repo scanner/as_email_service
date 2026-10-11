@@ -1,6 +1,7 @@
 // LocalDeliveryForm component
 //
-// Renders editable fields for a LocalDelivery delivery method.
+// Renders editable fields for a local delivery method (MHDelivery or
+// ASIMAPDelivery).
 // Does NOT talk to the API — it only emits field changes up to
 // DeliveryMethodForm, which owns the save/delete logic.
 //

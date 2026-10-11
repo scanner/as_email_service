@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 #
 """
-Tests for LocalDelivery, AliasToDelivery, and ImapDelivery model behaviour.
+Tests for MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery model
+behaviour.
 
 Delivery integration tests (loops, hop limits, alias chains) live in
 test_deliver.py.  This file covers model-level properties — maildir creation,
@@ -15,45 +16,68 @@ import ssl
 from collections.abc import Callable
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Any, cast
+from unittest.mock import MagicMock
 
 # 3rd party imports
 #
 import pytest
+from asimap_spool import (
+    Delivery,
+    SpoolFormatError,
+    SpoolUnavailableError,
+    ready_entries,
+    spool_dir,
+)
 from django.conf import LazySettings
 from faker import Faker
 from pytest_mock import MockerFixture
 
 # Project imports
 #
+from as_email.deliver import SPOOL_SOURCE, deliver_message_via_spool
 from as_email.models import (
     AliasToDelivery,
+    ASIMAPDelivery,
     DeliveryMethod,
     EmailAccount,
     ImapDelivery,
     LocalDelivery,
+    MessageFilterRule,
+    MHDelivery,
 )
+from as_email.utils import message_as_bytes
+from tests.conftest import assert_email_equal
 
 pytestmark = pytest.mark.django_db
+
+
+####################################################################
+#
+@pytest.fixture
+def mock_spool_deliver(mocker: MockerFixture) -> MagicMock:
+    """Patch the asimap-spool `deliver()` that ASIMAPDelivery calls."""
+    return mocker.patch("as_email.deliver.spool_deliver")
 
 
 ########################################################################
 ########################################################################
 #
 class TestLocalDeliveryModel:
-    """Tests for LocalDelivery model properties and delivery behaviour."""
+    """Behaviour of the LocalDelivery base and its post_save signals."""
 
     ####################################################################
     #
     def test_maildir_path_auto_filled(
-        self, email_account_factory: Callable[..., EmailAccount]
+        self, local_delivery_factory: Callable[..., LocalDelivery]
     ) -> None:
         """
-        GIVEN a LocalDelivery created without an explicit maildir_path
+        GIVEN a local delivery created without an explicit maildir_path
         WHEN  it is saved
         THEN  maildir_path is auto-populated from the account's email address
         """
-        ea = email_account_factory()
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = local_delivery_factory(MHDelivery)
+        ea = ld.email_account
         assert ld.maildir_path
         assert ea.email_address in ld.maildir_path
         assert ea.server.domain_name in ld.maildir_path
@@ -62,164 +86,207 @@ class TestLocalDeliveryModel:
     #
     def test_maildir_path_preserved_when_set(
         self,
-        email_account_factory: Callable[..., EmailAccount],
+        local_delivery_factory: Callable[..., LocalDelivery],
         settings: LazySettings,
     ) -> None:
         """
-        GIVEN a LocalDelivery created with an explicit maildir_path
+        GIVEN a local delivery created with an explicit maildir_path
         WHEN  it is saved
         THEN  the explicit path is preserved
         """
-        ea = email_account_factory(local_delivery=False)
         custom = str(settings.MAIL_DIRS / "custom_dir")
         Path(custom).mkdir(parents=True, exist_ok=True)
-        ld = LocalDelivery.objects.create(email_account=ea, maildir_path=custom)
+        ld = local_delivery_factory(MHDelivery, maildir_path=custom)
         ld.refresh_from_db()
         assert ld.maildir_path == custom
 
     ####################################################################
     #
-    def test_mh_creates_mailbox_directory(
+    @pytest.mark.parametrize("delivery_type", [MHDelivery, ASIMAPDelivery])
+    def test_creating_makes_mailbox_and_default_folders(
         self,
-        email_account_factory: Callable[..., EmailAccount],
+        local_delivery_factory: Callable[..., LocalDelivery],
+        delivery_type: type[LocalDelivery],
         settings: LazySettings,
     ) -> None:
         """
-        GIVEN a LocalDelivery
-        WHEN  MH() is called
+        GIVEN a local delivery of either type
+        WHEN  it is created
         THEN  the maildir path exists on disk and default folders are created
+
+        The post_save signal is registered for each type separately, so
+        both are checked.
         """
-        ea = email_account_factory()
-        ld = LocalDelivery.objects.get(email_account=ea)
+        ld = local_delivery_factory(delivery_type)
         assert ld.maildir_path is not None
         assert Path(ld.maildir_path).is_dir()
         mh = ld.MH(create=False)
         for folder in settings.DEFAULT_FOLDERS:
             mh.get_folder(folder)  # raises NoSuchMailboxError if missing
 
+
+####################################################################
+#
+@pytest.fixture
+def asimap_delivery(
+    local_delivery_factory: Callable[..., LocalDelivery],
+) -> ASIMAPDelivery:
+    """A new email account whose only local delivery is an ASIMAPDelivery."""
+    return cast(ASIMAPDelivery, local_delivery_factory(ASIMAPDelivery))
+
+
+########################################################################
+########################################################################
+#
+class TestASIMAPDeliveryModel:
+    """
+    Tests for how ASIMAPDelivery hands messages to asimap-spool.
+
+    Only `test_delivery_writes_a_spool_entry` calls asimap-spool for real, to
+    show we call it the way it expects. The rest mock it and check what it
+    was asked to do; what asimap-spool then does is tested in asimap.
+    """
+
     ####################################################################
     #
-    def test_deliver_locally_puts_message_in_inbox(
+    def test_delivery_writes_a_spool_entry(
         self,
-        email_account_factory: Callable[..., EmailAccount],
+        asimap_delivery: ASIMAPDelivery,
         email_factory: Callable[..., EmailMessage],
     ) -> None:
         """
-        GIVEN a LocalDelivery with no filter rules
-        WHEN  a message is delivered
-        THEN  the message ends up in the inbox folder
-        """
-        ea = email_account_factory()
-        msg = email_factory(to=ea.email_address)
-        ea.deliver(msg)
-
-        ld = LocalDelivery.objects.get(email_account=ea)
-        folder = ld.MH().get_folder("inbox")
-        assert folder.get("1") is not None
-
-    ####################################################################
-    #
-    def test_disabled_local_delivery_skips_delivery(
-        self,
-        email_account_factory: Callable[..., EmailAccount],
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN a LocalDelivery with enabled=False
+        GIVEN an account with an ASIMAPDelivery
         WHEN  a message is delivered to the account
-        THEN  no message is stored in the mailbox
+        THEN  a ready entry appears in the spool and the MH inbox is empty
         """
-        ea = email_account_factory()
-        ld = LocalDelivery.objects.get(email_account=ea)
-        ld.enabled = False
-        ld.save()
+        ea = asimap_delivery.email_account
+        assert asimap_delivery.maildir_path
 
-        msg = email_factory(to=ea.email_address)
-        ea.deliver(msg)
+        ea.deliver(email_factory(to=ea.email_address))
 
-        folder = ld.MH().get_folder("inbox")
-        assert len(list(folder.values())) == 0
+        assert len(ready_entries(spool_dir(asimap_delivery.maildir_path))) == 1
+        assert asimap_delivery.MH().get_folder("inbox").keys() == []
 
     ####################################################################
     #
-    def test_spam_above_threshold_goes_to_spam_folder(
+    @pytest.mark.parametrize(
+        "kwargs,flags",
+        [
+            ({}, ()),
+            ({"flags": ("\\Seen", "\\Flagged")}, ("\\Seen", "\\Flagged")),
+        ],
+        ids=["default-unread", "flags"],
+    )
+    def test_spool_deliver_arguments(
         self,
-        email_account_factory: Callable[..., EmailAccount],
+        asimap_delivery: ASIMAPDelivery,
+        mock_spool_deliver: MagicMock,
         email_factory: Callable[..., EmailMessage],
+        kwargs: dict[str, Any],
+        flags: tuple[str, ...],
     ) -> None:
         """
-        GIVEN a LocalDelivery with autofile_spam=True and threshold=5
-        WHEN  a message with X-Spam-Status score above the threshold arrives
-        THEN  it is filed in spam_delivery_folder, not inbox
+        GIVEN an ASIMAPDelivery and no filter rules
+        WHEN  a message is delivered, with or without flags
+        THEN  asimap-spool is asked to deliver the message's bytes to the
+              inbox (created if missing) with those flags; no flags means
+              unread
         """
-        ea = email_account_factory()
-        ld = LocalDelivery.objects.get(email_account=ea)
-        ld.autofile_spam = True
-        ld.spam_score_threshold = 5
-        ld.spam_delivery_folder = "Junk"
-        ld.save()
+        msg = email_factory(to=asimap_delivery.email_account.email_address)
 
-        msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Status"] = "Yes, score=8.0 required=5.0 tests=NONE"
-        ea.deliver(msg)
+        deliver_message_via_spool(asimap_delivery, msg, **kwargs)
 
-        mh = ld.MH()
-        inbox = mh.get_folder("inbox")
-        junk = mh.get_folder("Junk")
-        assert len(list(inbox.values())) == 0
-        assert len(list(junk.values())) == 1
+        mock_spool_deliver.assert_called_once_with(
+            asimap_delivery.maildir_path,
+            message_as_bytes(msg),
+            [Delivery("inbox", flags=flags, create=True)],
+            source=SPOOL_SOURCE,
+        )
 
     ####################################################################
     #
-    def test_spam_below_threshold_goes_to_inbox(
+    @pytest.mark.parametrize(
+        "destination,expected",
+        [
+            ("Lists", Delivery("Lists")),
+            ("Missing", Delivery("inbox", create=True)),
+        ],
+    )
+    def test_filter_rule_destination(
         self,
-        email_account_factory: Callable[..., EmailAccount],
+        asimap_delivery: ASIMAPDelivery,
+        mock_spool_deliver: MagicMock,
+        message_filter_rule_factory: Callable[..., MessageFilterRule],
         email_factory: Callable[..., EmailMessage],
+        destination: str,
+        expected: Delivery,
     ) -> None:
         """
-        GIVEN a LocalDelivery with autofile_spam=True and threshold=10
-        WHEN  a message with X-Spam-Status score below the threshold arrives
-        THEN  it is delivered to inbox normally
+        GIVEN a filter rule matching the message, and a 'Lists' folder
+        WHEN  the message is delivered
+        THEN  it is spooled to the rule's folder if that folder exists, and
+              to the inbox otherwise
         """
-        ea = email_account_factory()
-        ld = LocalDelivery.objects.get(email_account=ea)
-        ld.autofile_spam = True
-        ld.spam_score_threshold = 10
-        ld.save()
-
+        ea = asimap_delivery.email_account
+        asimap_delivery.MH().add_folder("Lists")
         msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Status"] = "No, score=4.2 required=5.0 tests=NONE"
+        message_filter_rule_factory(
+            email_account=ea,
+            header=MessageFilterRule.FROM,
+            pattern=msg["from"],
+            destination=destination,
+        )
+
         ea.deliver(msg)
 
-        mh = ld.MH()
-        inbox = mh.get_folder("inbox")
-        assert len(list(inbox.values())) == 1
+        mock_spool_deliver.assert_called_once()
+        assert mock_spool_deliver.call_args.args[2] == [expected]
 
     ####################################################################
     #
-    def test_autofile_spam_disabled_delivers_to_inbox(
+    def test_invalid_flag_raises(
         self,
-        email_account_factory: Callable[..., EmailAccount],
+        asimap_delivery: ASIMAPDelivery,
+        mock_spool_deliver: MagicMock,
         email_factory: Callable[..., EmailMessage],
     ) -> None:
         """
-        GIVEN a LocalDelivery with autofile_spam=False
-        WHEN  a high-scoring spam message arrives
-        THEN  it is delivered to inbox (spam filtering disabled)
+        GIVEN an ASIMAPDelivery
+        WHEN  a message is delivered with a flag that can not be set
+        THEN  SpoolFormatError is raised and nothing is spooled or written
+              to the MH folders
         """
-        ea = email_account_factory()
-        ld = LocalDelivery.objects.get(email_account=ea)
-        ld.autofile_spam = False
-        ld.spam_score_threshold = 1
-        ld.save()
+        msg = email_factory(to=asimap_delivery.email_account.email_address)
 
+        with pytest.raises(SpoolFormatError):
+            deliver_message_via_spool(asimap_delivery, msg, flags=("\\Recent",))
+
+        mock_spool_deliver.assert_not_called()
+        assert asimap_delivery.MH().get_folder("inbox").keys() == []
+
+    ####################################################################
+    #
+    def test_unavailable_spool_falls_back_to_mh(
+        self,
+        asimap_delivery: ASIMAPDelivery,
+        mock_spool_deliver: MagicMock,
+        email_factory: Callable[..., EmailMessage],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        GIVEN an ASIMAPDelivery whose spool can not be written
+        WHEN  a message is delivered
+        THEN  it is written straight into the MH inbox and a warning logged
+        """
+        mock_spool_deliver.side_effect = SpoolUnavailableError("no spool")
+        ea = asimap_delivery.email_account
         msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Status"] = "Yes, score=99.0 required=5.0 tests=NONE"
+
         ea.deliver(msg)
 
-        mh = ld.MH()
-        inbox = mh.get_folder("inbox")
-        assert len(list(inbox.values())) == 1
+        inbox = asimap_delivery.MH().get_folder("inbox")
+        assert_email_equal(msg, cast(EmailMessage, inbox.get("1")))
+        assert "unable to spool message" in caplog.text
 
 
 ########################################################################
@@ -249,7 +316,7 @@ class TestAliasToDeliveryModel:
         msg = email_factory(to=ea_src.email_address)
         ea_src.deliver(msg)
 
-        ld = LocalDelivery.objects.get(email_account=ea_dst)
+        ld = MHDelivery.objects.get(email_account=ea_dst)
         folder = ld.MH().get_folder("inbox")
         assert folder.get("1") is not None
 
@@ -275,7 +342,7 @@ class TestAliasToDeliveryModel:
         msg = email_factory(to=ea_src.email_address)
         ea_src.deliver(msg)
 
-        ld = LocalDelivery.objects.get(email_account=ea_dst)
+        ld = MHDelivery.objects.get(email_account=ea_dst)
         folder = ld.MH().get_folder("inbox")
         assert len(list(folder.values())) == 0
 
@@ -311,11 +378,11 @@ class TestMultipleDeliveryMethods:
         email_factory: Callable[..., EmailMessage],
     ) -> None:
         """
-        GIVEN an account with both a LocalDelivery and an AliasToDelivery
+        GIVEN an account with both an MHDelivery and an AliasToDelivery
         WHEN  a message is delivered
         THEN  it reaches both the local mailbox and the alias target
         """
-        ea_main = email_account_factory()  # has LocalDelivery
+        ea_main = email_account_factory()  # has MHDelivery
         ea_alias_target = email_account_factory()
         AliasToDelivery.objects.create(
             email_account=ea_main, target_account=ea_alias_target
@@ -325,11 +392,11 @@ class TestMultipleDeliveryMethods:
         ea_main.deliver(msg)
 
         # Local copy
-        ld_main = LocalDelivery.objects.get(email_account=ea_main)
+        ld_main = MHDelivery.objects.get(email_account=ea_main)
         assert len(list(ld_main.MH().get_folder("inbox").values())) == 1
 
         # Aliased copy
-        ld_target = LocalDelivery.objects.get(email_account=ea_alias_target)
+        ld_target = MHDelivery.objects.get(email_account=ea_alias_target)
         assert len(list(ld_target.MH().get_folder("inbox").values())) == 1
 
     ####################################################################
@@ -355,7 +422,7 @@ class TestMultipleDeliveryMethods:
         ea_src.deliver(msg)
 
         for ea_tgt in targets:
-            ld = LocalDelivery.objects.get(email_account=ea_tgt)
+            ld = MHDelivery.objects.get(email_account=ea_tgt)
             assert len(list(ld.MH().get_folder("inbox").values())) == 1
 
     ####################################################################
@@ -383,10 +450,10 @@ class TestMultipleDeliveryMethods:
         msg = email_factory(to=ea_src.email_address)
         ea_src.deliver(msg)
 
-        ld_enabled = LocalDelivery.objects.get(email_account=ea_enabled)
+        ld_enabled = MHDelivery.objects.get(email_account=ea_enabled)
         assert len(list(ld_enabled.MH().get_folder("inbox").values())) == 1
 
-        ld_disabled = LocalDelivery.objects.get(email_account=ea_disabled)
+        ld_disabled = MHDelivery.objects.get(email_account=ea_disabled)
         assert len(list(ld_disabled.MH().get_folder("inbox").values())) == 0
 
     ####################################################################
@@ -395,7 +462,7 @@ class TestMultipleDeliveryMethods:
         self, email_account_factory: Callable[..., EmailAccount]
     ) -> None:
         """
-        GIVEN two accounts each with a LocalDelivery
+        GIVEN two accounts each with an MHDelivery
         WHEN  delivery_methods is queried on one account
         THEN  only that account's methods are returned
         """
@@ -720,3 +787,40 @@ class TestImapDeliveryModel:
         appended_bytes = mock_client.append.call_args[0][1]
         assert isinstance(appended_bytes, bytes)
         assert marker in appended_bytes
+
+
+########################################################################
+########################################################################
+#
+class TestMHDeliveryLeavesSequencesAlone:
+    """Local delivery must not write the folder's `.mh_sequences`."""
+
+    ####################################################################
+    #
+    def test_delivery_does_not_rewrite_existing_sequences(
+        self,
+        email_account_factory: Callable[..., EmailAccount],
+        email_factory: Callable[..., EmailMessage],
+    ) -> None:
+        """
+        GIVEN an inbox whose `.mh_sequences` asimap has already written
+        WHEN  a message is delivered into it
+        THEN  the file is byte-for-byte what it was
+
+        Rewriting it in place is what corrupted it (ASIMAP-68); asimap owns
+        the file and sorts unsequenced messages into `unseen` itself.
+        """
+        ea = email_account_factory()
+        ea.deliver(email_factory(to=ea.email_address))
+
+        folder = (
+            MHDelivery.objects.get(email_account=ea).MH().get_folder("inbox")
+        )
+        folder.set_sequences({"Seen": [1]})
+        seq_path = Path(folder._path) / ".mh_sequences"
+        before = seq_path.read_bytes()
+
+        ea.deliver(email_factory(to=ea.email_address))
+
+        assert folder.get("2") is not None
+        assert seq_path.read_bytes() == before

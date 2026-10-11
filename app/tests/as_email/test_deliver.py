@@ -20,15 +20,15 @@ from pytest_mock import MockerFixture
 #
 from as_email.deliver import (
     apply_message_filter_rules,
-    deliver_message_locally,
+    deliver_message_via_mh,
     make_delivery_status_notification,
     report_failed_message,
 )
 from as_email.models import (
     AliasToDelivery,
     EmailAccount,
-    LocalDelivery,
     MessageFilterRule,
+    MHDelivery,
 )
 from tests.conftest import assert_email_equal
 
@@ -66,16 +66,16 @@ def test_apply_message_filter_rules(
 
 ####################################################################
 #
-def test_deliver_message_locally(
+def test_deliver_message_via_mh(
     email_account_factory: Callable[..., EmailAccount],
     message_filter_rule_factory: Callable[..., MessageFilterRule],
     email_factory: Callable[..., EmailMessage],
 ) -> None:
     ea = email_account_factory()
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     msg = email_factory()
 
-    deliver_message_locally(ld, msg)
+    deliver_message_via_mh(ld, msg)
 
     # The message should have been delivered to the inbox since there are no
     # mail filter rules. And it should be the only message in the mailbox.
@@ -98,7 +98,7 @@ def test_deliver_message_locally(
         destination=folder_name,
     )
     mfr.save()
-    deliver_message_locally(ld, msg)
+    deliver_message_via_mh(ld, msg)
     stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
@@ -119,7 +119,7 @@ def test_deliver_message_locally(
         ("malformed_non_ascii_email", b"special"),
     ],
 )
-def test_deliver_message_locally_malformed_encoding(
+def test_deliver_message_via_mh_malformed_encoding(
     request: pytest.FixtureRequest,
     email_account_factory: Callable[..., EmailAccount],
     fixture_name: str,
@@ -132,10 +132,10 @@ def test_deliver_message_locally_malformed_encoding(
     THEN  it is stored in the inbox instead of raising UnicodeEncodeError
     """
     ea = email_account_factory()
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     msg = request.getfixturevalue(fixture_name)
 
-    deliver_message_locally(ld, msg)
+    deliver_message_via_mh(ld, msg)
 
     mh = ld.MH()
     folder = mh.get_folder("inbox")
@@ -145,38 +145,41 @@ def test_deliver_message_locally_malformed_encoding(
 
 ####################################################################
 #
-def test_deliver_spam_locally(
+@pytest.mark.parametrize(
+    "autofile_spam,spam_status,expected_folder",
+    [
+        (True, "No, score=4.0 required=5.0 tests=NONE", "inbox"),
+        (True, "Yes, score=5.0 required=5.0 tests=NONE", "Junk"),
+        (False, "Yes, score=99.0 required=5.0 tests=NONE", "inbox"),
+    ],
+    ids=["below-threshold", "at-threshold", "autofile-off"],
+)
+def test_deliver_message_via_mh_spam_filing(
     email_account_factory: Callable[..., EmailAccount],
     email_factory: Callable[..., EmailMessage],
+    autofile_spam: bool,
+    spam_status: str,
+    expected_folder: str,
 ) -> None:
+    """
+    GIVEN an MHDelivery with a spam threshold of 5 and no filter rules
+    WHEN  a message with the given X-Spam-Status is delivered
+    THEN  it is filed in the spam folder only when autofile_spam is on and
+          the score meets the threshold, and in the inbox otherwise
+    """
     ea = email_account_factory()
-    ld = LocalDelivery.objects.get(email_account=ea)
-
-    # Low spam score — should be delivered to inbox.
-    #
+    ld = MHDelivery.objects.get(email_account=ea)
+    ld.autofile_spam = autofile_spam
+    ld.spam_score_threshold = 5
+    ld.spam_delivery_folder = "Junk"
+    ld.save()
     msg = email_factory()
-    msg["X-Spam-Status"] = "No, score=-0.0 required=5.0 tests=NONE"
+    msg["X-Spam-Status"] = spam_status
 
-    deliver_message_locally(ld, msg)
+    deliver_message_via_mh(ld, msg)
 
-    mh = ld.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = cast(EmailMessage, folder.get(str(1)))
-    assert_email_equal(msg, stored_msg)
-
-    # Set the spam score over the limit configured on the LocalDelivery.
-    #
-    msg.replace_header(
-        "X-Spam-Status",
-        f"Yes, score={ld.spam_score_threshold}.0 required=5.0 tests=NONE",
-    )
-    deliver_message_locally(ld, msg)
-
-    # The message should land in the spam folder.
-    #
-    folder = mh.get_folder(ld.spam_delivery_folder)
-    stored_msg = cast(EmailMessage, folder.get(str(1)))
-    assert_email_equal(msg, stored_msg)
+    folder = ld.MH().get_folder(expected_folder)
+    assert_email_equal(msg, cast(EmailMessage, folder.get("1")))
 
 
 ####################################################################
@@ -199,7 +202,7 @@ def test_deliver_alias(
 
     # The message should have landed in ea_2's inbox.
     #
-    ld_2 = LocalDelivery.objects.get(email_account=ea_2)
+    ld_2 = MHDelivery.objects.get(email_account=ea_2)
     mh = ld_2.MH()
     folder = mh.get_folder("inbox")
     stored_msg = cast(EmailMessage, folder.get(str(1)))
@@ -216,7 +219,7 @@ def test_deliver_alias(
 
     # Message sent to ea_1 should now land in ea_3's inbox.
     #
-    ld_3 = LocalDelivery.objects.get(email_account=ea_3)
+    ld_3 = MHDelivery.objects.get(email_account=ea_3)
     mh = ld_3.MH()
     folder = mh.get_folder("inbox")
     stored_msg = cast(EmailMessage, folder.get(str(1)))
@@ -241,12 +244,12 @@ def test_deliver_to_multiple_aliases(
     msg = email_factory()
     ea_1.deliver(msg)
 
-    ld_2 = LocalDelivery.objects.get(email_account=ea_2)
+    ld_2 = MHDelivery.objects.get(email_account=ea_2)
     folder = ld_2.MH().get_folder("inbox")
     stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
 
-    ld_3 = LocalDelivery.objects.get(email_account=ea_3)
+    ld_3 = MHDelivery.objects.get(email_account=ea_3)
     folder = ld_3.MH().get_folder("inbox")
     stored_msg = cast(EmailMessage, folder.get(str(1)))
     assert_email_equal(msg, stored_msg)
@@ -362,7 +365,7 @@ def test_report_failed_message(
     faker: Faker,
 ) -> None:
     ea = email_account_factory()
-    ld = LocalDelivery.objects.get(email_account=ea)
+    ld = MHDelivery.objects.get(email_account=ea)
     msg = email_factory(msg_from=ea.email_address)
 
     report_failed_message(

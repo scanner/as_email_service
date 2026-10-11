@@ -30,17 +30,19 @@ on the user-facing documentation page automatically.
 On the server that will handle training submissions, create two email
 accounts:
 
-- `spam@<server>` — with **Local Delivery** enabled
+- `spam@<server>` — with **MH Delivery** enabled. Not ASIMAP Delivery:
+  the training command reads the inbox from disk, and ASIMAP Delivery
+  files new mail only while the account is connected over IMAP or POP3S.
 - `not-spam@<server>` — with an **Alias** delivery pointing to
   `spam@<server>` (so both addresses deliver to the same inbox)
 
-On the account that has Local Delivery (e.g. `spam@<server>`):
+On the account that has MH Delivery (e.g. `spam@<server>`):
 
 - **Disable** "Scan incoming email for spam" (`scan_incoming_spam = False`).
   Training messages include both known-spam and known-ham; scanning them
   would interfere with the forwarded content.
 - **Disable** "Auto-file spam" (`autofile_spam = False`) on the
-  LocalDelivery so all messages land in the inbox regardless of headers.
+  MHDelivery so all messages land in the inbox regardless of headers.
 
 ### 3. Running the command
 

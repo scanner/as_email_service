@@ -35,8 +35,8 @@ from as_email.models import (
     AliasToDelivery,
     EmailAccount,
     InactiveEmail,
-    LocalDelivery,
     MessageFilterRule,
+    MHDelivery,
     Provider,
     Server,
 )
@@ -461,18 +461,21 @@ class EmailAccountFactory(DjangoModelFactory):
         **kwargs: Any,
     ) -> None:
         """
-        Create a default LocalDelivery for every new EmailAccount unless
+        Create a default MHDelivery for every new EmailAccount unless
         `local_delivery=False` is passed explicitly.
 
+        This is MHDelivery whatever DEFAULT_LOCAL_DELIVERY says: tests read
+        delivered messages straight from the MH folders.
+
         NOTE: This must run before the `password` post-generation so that
-              LocalDelivery exists when the pwfile update task fires on
+              MHDelivery exists when the pwfile update task fires on
               password save.
         """
         if not create:
             return
         if extracted is False:
             return
-        LocalDelivery.objects.create(email_account=self)
+        MHDelivery.objects.create(email_account=self)
 
     @post_generation
     def password(
@@ -494,13 +497,13 @@ class EmailAccountFactory(DjangoModelFactory):
 ########################################################################
 ########################################################################
 #
-class LocalDeliveryFactory(DjangoModelFactory):
+class MHDeliveryFactory(DjangoModelFactory):
     email_account = factory.SubFactory(
         EmailAccountFactory, local_delivery=False
     )
 
     class Meta:
-        model = LocalDelivery
+        model = MHDelivery
 
 
 ########################################################################

@@ -15,7 +15,7 @@ from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import parseaddr
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 # 3rd party imports
@@ -24,7 +24,7 @@ import pytest
 import redis
 from aiosmtpd.smtp import Envelope as SMTPEnvelope
 from aiosmtpd.smtp import Session as SMTPSession
-from django.conf import LazySettings
+from django.conf import LazySettings, settings
 from django.core import mail
 from faker import Faker
 from fakeredis import FakeConnection, FakeServer
@@ -38,7 +38,7 @@ from rest_framework.test import APIClient, RequestsClient
 # Project imports
 #
 import as_email.utils
-from as_email.models import EmailAccount, InactiveEmail, Server
+from as_email.models import EmailAccount, InactiveEmail, LocalDelivery, Server
 from tests.as_email.factories import (
     DummyProviderBackend,
     EmailAccountFactory,
@@ -58,6 +58,27 @@ register(UserFactory)
 register(ProviderFactory)
 register(ServerFactory)
 register(MessageFilterRuleFactory)
+
+
+####################################################################
+#
+@pytest.fixture(autouse=True, scope="session")
+def security_log_not_written_to_file() -> None:
+    """
+    Fail every test if the 'as_email.security' logger is configured to write
+    to a file.
+
+    Tests emit security events (AUTH_FAIL and the like). On a host that runs
+    the service, SECURITY_LOG_FILE is the log fail2ban reads, and test events
+    written there could get addresses banned. pyproject.toml sets
+    SECURITY_LOG_FILE empty for test runs, before Django configures logging;
+    this checks that it took effect.
+    """
+    loggers = cast(dict[str, Any], settings.LOGGING["loggers"])
+    handlers = loggers["as_email.security"]["handlers"]
+    assert handlers == ["console"], (
+        f"tests would write the security log to {settings.SECURITY_LOG_FILE!r}"
+    )
 
 
 ####################################################################
@@ -305,6 +326,27 @@ def email_account_factory(
         return email_account
 
     yield make_email_account
+
+
+####################################################################
+#
+@pytest.fixture
+def local_delivery_factory(
+    email_account_factory: Callable[..., EmailAccount],
+) -> Callable[..., LocalDelivery]:
+    """
+    Returns a factory: `make(delivery_type, **fields)` creates a new email
+    account whose only local delivery is a `delivery_type` (MHDelivery or
+    ASIMAPDelivery) with `fields`.
+    """
+
+    def make(
+        delivery_type: type[LocalDelivery], **fields: Any
+    ) -> LocalDelivery:
+        ea = email_account_factory(local_delivery=False)
+        return delivery_type.objects.create(email_account=ea, **fields)
+
+    return make
 
 
 ####################################################################

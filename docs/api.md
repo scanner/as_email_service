@@ -40,7 +40,7 @@ List all delivery methods for the email account.
 
 **Operation:** `v1_email_accounts_delivery_methods_create`
 
-Create a new delivery method. Include `delivery_type` ("LocalDelivery" or "AliasToDelivery") to select the subtype.
+Create a new delivery method. Include `delivery_type` ("MHDelivery", "ASIMAPDelivery", "AliasToDelivery", or "ImapDelivery") to select the subtype.
 
 **Parameters:**
 
@@ -50,29 +50,37 @@ Create a new delivery method. Include `delivery_type` ("LocalDelivery" or "Alias
 
 One of:
 
-- `LocalDeliveryRequest`
+- `MHDeliveryRequest`
+- `ASIMAPDeliveryRequest`
 - `AliasToDeliveryRequest`
+- `ImapDeliveryRequest`
 
 **Request Body** (`application/x-www-form-urlencoded`):
 
 One of:
 
-- `LocalDeliveryRequest`
+- `MHDeliveryRequest`
+- `ASIMAPDeliveryRequest`
 - `AliasToDeliveryRequest`
+- `ImapDeliveryRequest`
 
 **Request Body** (`multipart/form-data`):
 
 One of:
 
-- `LocalDeliveryRequest`
+- `MHDeliveryRequest`
+- `ASIMAPDeliveryRequest`
 - `AliasToDeliveryRequest`
+- `ImapDeliveryRequest`
 
 **Response 201:**
 
 One of:
 
-- `LocalDelivery`
+- `MHDelivery`
+- `ASIMAPDelivery`
 - `AliasToDelivery`
+- `ImapDelivery`
 
 #### `GET /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/{id}/`
 
@@ -89,8 +97,10 @@ Retrieve a specific delivery method.
 
 One of:
 
-- `LocalDelivery`
+- `MHDelivery`
+- `ASIMAPDelivery`
 - `AliasToDelivery`
+- `ImapDelivery`
 
 #### `PUT /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/{id}/`
 
@@ -98,9 +108,9 @@ One of:
 
 CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-Supports LocalDelivery and AliasToDelivery subtypes. The request body
-must include a `delivery_type` field (e.g. "LocalDelivery") to select
-the correct subtype serializer on create/update.
+Supports MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery
+subtypes. The request body must include a `delivery_type` field (e.g.
+"MHDelivery") to select the correct subtype serializer on create/update.
 
 **Parameters:**
 
@@ -111,29 +121,37 @@ the correct subtype serializer on create/update.
 
 One of:
 
-- `LocalDeliveryRequest`
+- `MHDeliveryRequest`
+- `ASIMAPDeliveryRequest`
 - `AliasToDeliveryRequest`
+- `ImapDeliveryRequest`
 
 **Request Body** (`application/x-www-form-urlencoded`):
 
 One of:
 
-- `LocalDeliveryRequest`
+- `MHDeliveryRequest`
+- `ASIMAPDeliveryRequest`
 - `AliasToDeliveryRequest`
+- `ImapDeliveryRequest`
 
 **Request Body** (`multipart/form-data`):
 
 One of:
 
-- `LocalDeliveryRequest`
+- `MHDeliveryRequest`
+- `ASIMAPDeliveryRequest`
 - `AliasToDeliveryRequest`
+- `ImapDeliveryRequest`
 
 **Response 200:**
 
 One of:
 
-- `LocalDelivery`
+- `MHDelivery`
+- `ASIMAPDelivery`
 - `AliasToDelivery`
+- `ImapDelivery`
 
 #### `PATCH /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/{id}/`
 
@@ -141,9 +159,9 @@ One of:
 
 CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-Supports LocalDelivery and AliasToDelivery subtypes. The request body
-must include a `delivery_type` field (e.g. "LocalDelivery") to select
-the correct subtype serializer on create/update.
+Supports MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery
+subtypes. The request body must include a `delivery_type` field (e.g.
+"MHDelivery") to select the correct subtype serializer on create/update.
 
 **Parameters:**
 
@@ -154,29 +172,37 @@ the correct subtype serializer on create/update.
 
 One of:
 
-- `PatchedLocalDeliveryRequest`
+- `PatchedMHDeliveryRequest`
+- `PatchedASIMAPDeliveryRequest`
 - `PatchedAliasToDeliveryRequest`
+- `PatchedImapDeliveryRequest`
 
 **Request Body** (`application/x-www-form-urlencoded`):
 
 One of:
 
-- `PatchedLocalDeliveryRequest`
+- `PatchedMHDeliveryRequest`
+- `PatchedASIMAPDeliveryRequest`
 - `PatchedAliasToDeliveryRequest`
+- `PatchedImapDeliveryRequest`
 
 **Request Body** (`multipart/form-data`):
 
 One of:
 
-- `PatchedLocalDeliveryRequest`
+- `PatchedMHDeliveryRequest`
+- `PatchedASIMAPDeliveryRequest`
 - `PatchedAliasToDeliveryRequest`
+- `PatchedImapDeliveryRequest`
 
 **Response 200:**
 
 One of:
 
-- `LocalDelivery`
+- `MHDelivery`
+- `ASIMAPDelivery`
 - `AliasToDelivery`
+- `ImapDelivery`
 
 #### `DELETE /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/{id}/`
 
@@ -184,9 +210,9 @@ One of:
 
 CRUD + ordering for DeliveryMethod objects nested under an EmailAccount.
 
-Supports LocalDelivery and AliasToDelivery subtypes. The request body
-must include a `delivery_type` field (e.g. "LocalDelivery") to select
-the correct subtype serializer on create/update.
+Supports MHDelivery, ASIMAPDelivery, AliasToDelivery, and ImapDelivery
+subtypes. The request body must include a `delivery_type` field (e.g.
+"MHDelivery") to select the correct subtype serializer on create/update.
 
 **Parameters:**
 
@@ -194,6 +220,47 @@ the correct subtype serializer on create/update.
 - `id` (path, required) — A unique integer value identifying this delivery method.
 
 **Response 204:** No response body
+
+#### `POST /as_email/api/v1/email_accounts/{email_account_pk}/delivery_methods/test_imap/`
+
+**Operation:** `v1_email_accounts_delivery_methods_test_imap_create`
+
+Test IMAP connection credentials without saving to the database. Returns {success, message}.
+
+**Parameters:**
+
+- `email_account_pk` (path, required)
+
+**Request Body** (`application/json`):
+
+- **`imap_host`** (`string`) _(required)_
+- **`imap_port`** (`integer`) _(required)_
+- **`username`** (`string`) _(required)_
+- **`password`** (`string`) _(required)_
+
+**Request Body** (`application/x-www-form-urlencoded`):
+
+- **`imap_host`** (`string`) _(required)_
+- **`imap_port`** (`integer`) _(required)_
+- **`username`** (`string`) _(required)_
+- **`password`** (`string`) _(required)_
+
+**Request Body** (`multipart/form-data`):
+
+- **`imap_host`** (`string`) _(required)_
+- **`imap_port`** (`integer`) _(required)_
+- **`username`** (`string`) _(required)_
+- **`password`** (`string`) _(required)_
+
+**Response 200:**
+
+- **`success`** (`boolean`) _(required)_
+- **`message`** (`string`) _(required)_
+
+**Response 400:**
+
+- **`success`** (`boolean`) _(required)_
+- **`message`** (`string`) _(required)_
 
 #### `GET /as_email/api/v1/email_accounts/{email_account_pk}/message_filter_rules/`
 
@@ -473,6 +540,7 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 **Response 200:**
 
 - **`pk`** (`integer`) _(required, read-only)_
+- **`aliased_from`** (`array`) _(required, read-only)_
 - **`created_at`** (`string`) _(required, read-only)_
 - **`deactivated`** (`boolean`) _(required, read-only)_ — If an account is deactivated it can still receive email. However it is no longer allowed to send email. Aliasing to other email accounts is allowed, but no forwarding to an email account not on on the system is allowed.
 - **`deactivated_reason`** (`string`) _(required, read-only)_ — Reason for the account being deactivated
@@ -482,6 +550,7 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 - **`modified_at`** (`string`) _(required, read-only)_
 - **`num_bounces`** (`integer`) _(required, read-only)_ — Every time this email account sends an email and it results in a bounce this counter will increment. The mail provider does not allow excessive bounced email and this is a check to make sure that does not happen. An asynchronous task will go through all accounts that have a non-zero number of bounces and reduce them by 1 once a day. If you have more than the limit your account will be deactivated until it goes under the limit.
 - **`owner`** (`string`) _(required, read-only)_
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
 - **`server`** (`string`) _(required, read-only)_
 - **`url`** (`string`) _(required, read-only)_
 
@@ -498,9 +567,22 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 
 - `id` (path, required) — A unique integer value identifying this email account.
 
+**Request Body** (`application/json`):
+
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
+
+**Request Body** (`application/x-www-form-urlencoded`):
+
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
+
+**Request Body** (`multipart/form-data`):
+
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
+
 **Response 200:**
 
 - **`pk`** (`integer`) _(required, read-only)_
+- **`aliased_from`** (`array`) _(required, read-only)_
 - **`created_at`** (`string`) _(required, read-only)_
 - **`deactivated`** (`boolean`) _(required, read-only)_ — If an account is deactivated it can still receive email. However it is no longer allowed to send email. Aliasing to other email accounts is allowed, but no forwarding to an email account not on on the system is allowed.
 - **`deactivated_reason`** (`string`) _(required, read-only)_ — Reason for the account being deactivated
@@ -510,6 +592,7 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 - **`modified_at`** (`string`) _(required, read-only)_
 - **`num_bounces`** (`integer`) _(required, read-only)_ — Every time this email account sends an email and it results in a bounce this counter will increment. The mail provider does not allow excessive bounced email and this is a check to make sure that does not happen. An asynchronous task will go through all accounts that have a non-zero number of bounces and reduce them by 1 once a day. If you have more than the limit your account will be deactivated until it goes under the limit.
 - **`owner`** (`string`) _(required, read-only)_
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
 - **`server`** (`string`) _(required, read-only)_
 - **`url`** (`string`) _(required, read-only)_
 
@@ -526,9 +609,22 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 
 - `id` (path, required) — A unique integer value identifying this email account.
 
+**Request Body** (`application/json`):
+
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
+
+**Request Body** (`application/x-www-form-urlencoded`):
+
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
+
+**Request Body** (`multipart/form-data`):
+
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
+
 **Response 200:**
 
 - **`pk`** (`integer`) _(required, read-only)_
+- **`aliased_from`** (`array`) _(required, read-only)_
 - **`created_at`** (`string`) _(required, read-only)_
 - **`deactivated`** (`boolean`) _(required, read-only)_ — If an account is deactivated it can still receive email. However it is no longer allowed to send email. Aliasing to other email accounts is allowed, but no forwarding to an email account not on on the system is allowed.
 - **`deactivated_reason`** (`string`) _(required, read-only)_ — Reason for the account being deactivated
@@ -538,6 +634,7 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 - **`modified_at`** (`string`) _(required, read-only)_
 - **`num_bounces`** (`integer`) _(required, read-only)_ — Every time this email account sends an email and it results in a bounce this counter will increment. The mail provider does not allow excessive bounced email and this is a check to make sure that does not happen. An asynchronous task will go through all accounts that have a non-zero number of bounces and reduce them by 1 once a day. If you have more than the limit your account will be deactivated until it goes under the limit.
 - **`owner`** (`string`) _(required, read-only)_
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
 - **`server`** (`string`) _(required, read-only)_
 - **`url`** (`string`) _(required, read-only)_
 
@@ -572,6 +669,30 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 
 ## Schemas
 
+### ASIMAPDelivery
+
+Fields shared by the MHDelivery and ASIMAPDelivery serializers.
+
+- **`url`** (`string`) _(required, read-only)_
+- **`pk`** (`integer`) _(required, read-only)_
+- **`delivery_type`** (`string`) _(required, read-only)_
+- **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
+- **`created_at`** (`string`) _(required, read-only)_
+- **`modified_at`** (`string`) _(required, read-only)_
+- **`maildir_path`** (`string`) _(required, read-only)_ — Root folder for the local MH mailbox. Left blank it will be auto-filled from the account's email address when first saved.
+- **`autofile_spam`** (`boolean`) — When enabled, messages above the spam score threshold are automatically filed in the spam delivery folder.
+- **`spam_delivery_folder`** (`string`) — Folder to deliver spam into when autofile_spam is enabled.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
+
+### ASIMAPDeliveryRequest
+
+Fields shared by the MHDelivery and ASIMAPDelivery serializers.
+
+- **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
+- **`autofile_spam`** (`boolean`) — When enabled, messages above the spam score threshold are automatically filed in the spam delivery folder.
+- **`spam_delivery_folder`** (`string`) — Folder to deliver spam into when autofile_spam is enabled.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
+
 ### ActionEnum
 
 - `folder` - folder
@@ -580,7 +701,7 @@ NOTE: The EmailAccount can not be created or deleted via the REST API.
 ### AliasToDelivery
 
 Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-concrete subclass name so clients can distinguish LocalDelivery from
+concrete subclass name so clients can distinguish MHDelivery from
 AliasToDelivery.
 
 - **`url`** (`string`) _(required, read-only)_
@@ -594,7 +715,7 @@ AliasToDelivery.
 ### AliasToDeliveryRequest
 
 Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-concrete subclass name so clients can distinguish LocalDelivery from
+concrete subclass name so clients can distinguish MHDelivery from
 AliasToDelivery.
 
 - **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
@@ -612,19 +733,24 @@ AliasToDelivery.
 
 One of:
 
-- `LocalDelivery`
+- `MHDelivery`
+- `ASIMAPDelivery`
 - `AliasToDelivery`
+- `ImapDelivery`
 
 ### DeliveryMethodPolymorphicRequest
 
 One of:
 
-- `LocalDeliveryRequest`
+- `MHDeliveryRequest`
+- `ASIMAPDeliveryRequest`
 - `AliasToDeliveryRequest`
+- `ImapDeliveryRequest`
 
 ### EmailAccount
 
 - **`pk`** (`integer`) _(required, read-only)_
+- **`aliased_from`** (`array`) _(required, read-only)_
 - **`created_at`** (`string`) _(required, read-only)_
 - **`deactivated`** (`boolean`) _(required, read-only)_ — If an account is deactivated it can still receive email. However it is no longer allowed to send email. Aliasing to other email accounts is allowed, but no forwarding to an email account not on on the system is allowed.
 - **`deactivated_reason`** (`string`) _(required, read-only)_ — Reason for the account being deactivated
@@ -634,8 +760,13 @@ One of:
 - **`modified_at`** (`string`) _(required, read-only)_
 - **`num_bounces`** (`integer`) _(required, read-only)_ — Every time this email account sends an email and it results in a bounce this counter will increment. The mail provider does not allow excessive bounced email and this is a check to make sure that does not happen. An asynchronous task will go through all accounts that have a non-zero number of bounces and reduce them by 1 once a day. If you have more than the limit your account will be deactivated until it goes under the limit.
 - **`owner`** (`string`) _(required, read-only)_
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
 - **`server`** (`string`) _(required, read-only)_
 - **`url`** (`string`) _(required, read-only)_
+
+### EmailAccountRequest
+
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
 
 ### HeaderEnum
 
@@ -653,11 +784,41 @@ One of:
 - `subject` - subject
 - `to` - to
 
-### LocalDelivery
+### ImapDelivery
 
-Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-concrete subclass name so clients can distinguish LocalDelivery from
-AliasToDelivery.
+Serializer for ImapDelivery. The `password` field is write-only — it is
+accepted on create and update but never returned in GET responses. On
+PATCH, omitting `password` leaves the stored value unchanged.
+
+- **`url`** (`string`) _(required, read-only)_
+- **`pk`** (`integer`) _(required, read-only)_
+- **`delivery_type`** (`string`) _(required, read-only)_
+- **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
+- **`created_at`** (`string`) _(required, read-only)_
+- **`modified_at`** (`string`) _(required, read-only)_
+- **`imap_host`** (`string`) _(required)_ — Hostname of the remote IMAP server.
+- **`imap_port`** (`integer`) — IMAP port (default 993 for IMAPS).
+- **`username`** (`string`) _(required)_ — IMAP login username. Stored encrypted at rest.
+- **`autofile_spam`** (`boolean`) — When enabled, messages whose spam score (from X-Spam-Status) meets or exceeds the threshold are filed in the server's Junk folder instead of INBOX.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
+
+### ImapDeliveryRequest
+
+Serializer for ImapDelivery. The `password` field is write-only — it is
+accepted on create and update but never returned in GET responses. On
+PATCH, omitting `password` leaves the stored value unchanged.
+
+- **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
+- **`imap_host`** (`string`) _(required)_ — Hostname of the remote IMAP server.
+- **`imap_port`** (`integer`) — IMAP port (default 993 for IMAPS).
+- **`username`** (`string`) _(required)_ — IMAP login username. Stored encrypted at rest.
+- **`password`** (`string`) — IMAP login password. Stored encrypted at rest.
+- **`autofile_spam`** (`boolean`) — When enabled, messages whose spam score (from X-Spam-Status) meets or exceeds the threshold are filed in the server's Junk folder instead of INBOX.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
+
+### MHDelivery
+
+Fields shared by the MHDelivery and ASIMAPDelivery serializers.
 
 - **`url`** (`string`) _(required, read-only)_
 - **`pk`** (`integer`) _(required, read-only)_
@@ -668,18 +829,16 @@ AliasToDelivery.
 - **`maildir_path`** (`string`) _(required, read-only)_ — Root folder for the local MH mailbox. Left blank it will be auto-filled from the account's email address when first saved.
 - **`autofile_spam`** (`boolean`) — When enabled, messages above the spam score threshold are automatically filed in the spam delivery folder.
 - **`spam_delivery_folder`** (`string`) — Folder to deliver spam into when autofile_spam is enabled.
-- **`spam_score_threshold`** (`integer`) — Messages with an X-Spam-Score at or above this value are considered spam. 15 is a reasonable default.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
 
-### LocalDeliveryRequest
+### MHDeliveryRequest
 
-Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-concrete subclass name so clients can distinguish LocalDelivery from
-AliasToDelivery.
+Fields shared by the MHDelivery and ASIMAPDelivery serializers.
 
 - **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
 - **`autofile_spam`** (`boolean`) — When enabled, messages above the spam score threshold are automatically filed in the spam delivery folder.
 - **`spam_delivery_folder`** (`string`) — Folder to deliver spam into when autofile_spam is enabled.
-- **`spam_score_threshold`** (`integer`) — Messages with an X-Spam-Score at or above this value are considered spam. 15 is a reasonable default.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
 
 ### MessageFilterRule
 
@@ -749,10 +908,19 @@ Serializer for password change endpoint on the EmailAccount.
 
 - **`password`** (`string`) _(required)_
 
+### PatchedASIMAPDeliveryRequest
+
+Fields shared by the MHDelivery and ASIMAPDelivery serializers.
+
+- **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
+- **`autofile_spam`** (`boolean`) — When enabled, messages above the spam score threshold are automatically filed in the spam delivery folder.
+- **`spam_delivery_folder`** (`string`) — Folder to deliver spam into when autofile_spam is enabled.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
+
 ### PatchedAliasToDeliveryRequest
 
 Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-concrete subclass name so clients can distinguish LocalDelivery from
+concrete subclass name so clients can distinguish MHDelivery from
 AliasToDelivery.
 
 - **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
@@ -762,19 +930,37 @@ AliasToDelivery.
 
 One of:
 
-- `PatchedLocalDeliveryRequest`
+- `PatchedMHDeliveryRequest`
+- `PatchedASIMAPDeliveryRequest`
 - `PatchedAliasToDeliveryRequest`
+- `PatchedImapDeliveryRequest`
 
-### PatchedLocalDeliveryRequest
+### PatchedEmailAccountRequest
 
-Base serializer for DeliveryMethod. The `delivery_type` field exposes the
-concrete subclass name so clients can distinguish LocalDelivery from
-AliasToDelivery.
+- **`scan_incoming_spam`** (`boolean`) — When enabled, incoming email is scanned by SpamAssassin and X-Spam-\* headers are added. When disabled, provider-injected spam headers are preserved without rescanning (if they exist).
+
+### PatchedImapDeliveryRequest
+
+Serializer for ImapDelivery. The `password` field is write-only — it is
+accepted on create and update but never returned in GET responses. On
+PATCH, omitting `password` leaves the stored value unchanged.
+
+- **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
+- **`imap_host`** (`string`) — Hostname of the remote IMAP server.
+- **`imap_port`** (`integer`) — IMAP port (default 993 for IMAPS).
+- **`username`** (`string`) — IMAP login username. Stored encrypted at rest.
+- **`password`** (`string`) — IMAP login password. Stored encrypted at rest.
+- **`autofile_spam`** (`boolean`) — When enabled, messages whose spam score (from X-Spam-Status) meets or exceeds the threshold are filed in the server's Junk folder instead of INBOX.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
+
+### PatchedMHDeliveryRequest
+
+Fields shared by the MHDelivery and ASIMAPDelivery serializers.
 
 - **`enabled`** (`boolean`) — When disabled, this delivery method is skipped during message delivery.
 - **`autofile_spam`** (`boolean`) — When enabled, messages above the spam score threshold are automatically filed in the spam delivery folder.
 - **`spam_delivery_folder`** (`string`) — Folder to deliver spam into when autofile_spam is enabled.
-- **`spam_score_threshold`** (`integer`) — Messages with an X-Spam-Score at or above this value are considered spam. 15 is a reasonable default.
+- **`spam_score_threshold`** (`integer`) — Messages with a spam score (from X-Spam-Status) at or above this value are considered spam. 5 is a reasonable default.
 
 ### PatchedMessageFilterRuleRequest
 
@@ -797,3 +983,24 @@ NOTE: this only works with DRF 3.1.0 and above.
 ### SetPasswordResponse
 
 - **`status`** (`string`) _(required)_
+
+### TestImapConnectionRequest
+
+Input for the `test_imap` action on DeliveryMethodViewSet.
+
+Validates connection parameters without touching the database.
+
+- **`imap_host`** (`string`) _(required)_
+- **`imap_port`** (`integer`) _(required)_
+- **`username`** (`string`) _(required)_
+- **`password`** (`string`) _(required)_
+
+### TestImapFail
+
+- **`success`** (`boolean`) _(required)_
+- **`message`** (`string`) _(required)_
+
+### TestImapOk
+
+- **`success`** (`boolean`) _(required)_
+- **`message`** (`string`) _(required)_

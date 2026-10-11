@@ -13,11 +13,12 @@ from polymorphic.admin import (
 #
 from .models import (
     AliasToDelivery,
+    ASIMAPDelivery,
     DeliveryMethod,
     EmailAccount,
     InactiveEmail,
-    LocalDelivery,
     MessageFilterRule,
+    MHDelivery,
     Provider,
     Server,
 )
@@ -164,9 +165,9 @@ class ServerAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
 
 
-@admin.register(LocalDelivery)
 class LocalDeliveryAdmin(PolymorphicChildModelAdmin):
-    base_model = LocalDelivery
+    """Admin settings shared by MHDelivery and ASIMAPDelivery."""
+
     list_display = (
         "id",
         "email_account",
@@ -177,6 +178,16 @@ class LocalDeliveryAdmin(PolymorphicChildModelAdmin):
         "created_at",
     )
     list_filter = ("enabled", "autofile_spam")
+
+
+@admin.register(MHDelivery)
+class MHDeliveryAdmin(LocalDeliveryAdmin):
+    base_model = MHDelivery
+
+
+@admin.register(ASIMAPDelivery)
+class ASIMAPDeliveryAdmin(LocalDeliveryAdmin):
+    base_model = ASIMAPDelivery
 
 
 @admin.register(AliasToDelivery)
@@ -195,7 +206,7 @@ class AliasToDeliveryAdmin(PolymorphicChildModelAdmin):
 @admin.register(DeliveryMethod)
 class DeliveryMethodAdmin(PolymorphicParentModelAdmin):
     base_model = DeliveryMethod
-    child_models = [LocalDelivery, AliasToDelivery]
+    child_models = [MHDelivery, ASIMAPDelivery, AliasToDelivery]
     list_display = (
         "id",
         "email_account",

@@ -6,16 +6,73 @@ independent — a failure on one does not prevent delivery via the others.
 
 ---
 
-## LocalDelivery
+## Local delivery: MHDelivery and ASIMAPDelivery
 
-Writes incoming mail to an MH mailbox on the local filesystem. The mailbox
-path is derived automatically from the email account address and `MAIL_DIRS`.
+Both deliver incoming mail to the account's MH mail store on the local
+filesystem, which [asimap](https://github.com/scanner/asimap) serves over
+IMAP. The mail store path is derived automatically from the email account
+address and `MAIL_DIRS`. An account may have at most one of them.
 
-**Spam auto-filing** — if `autofile_spam` is enabled and the `X-Spam-Status`
-score meets or exceeds `spam_score_threshold`, the message is filed into
-`spam_delivery_folder` instead of the inbox.
+They file a message the same way:
+
+1. **Filter rules** -- a matching rule delivers the message to its folder. A
+   rule whose folder does not exist is skipped.
+2. **Spam auto-filing** -- if no rule delivered the message, `autofile_spam`
+   is enabled, and the `X-Spam-Status` score meets or exceeds
+   `spam_score_threshold`, the message is filed into `spam_delivery_folder`
+   (created if missing).
+3. Otherwise the message goes to the inbox (created if missing).
+
+They differ in how the message is written:
+
+- **`MHDelivery`** writes the message straight into the MH folders. It does
+  not touch the folders' `.mh_sequences` files; asimap is their only writer
+  and treats a message in no sequence as unseen.
+- **`ASIMAPDelivery`** writes the message to asimap's delivery spool
+  (`.asimap-spool/` in the mail store root, using the
+  [`asimap-spool`](https://github.com/scanner/asimap/tree/main/packages/asimap-spool)
+  package), and asimap files it into the folders. This needs asimap 2.7.0 or
+  later. If the spool can not be written, the message is written straight
+  into the MH folders as `MHDelivery` does.
+
+  asimap imports the spool only while the user's asimap server process is
+  running, which it is while they are connected over IMAP. Until then the
+  message waits in the spool and is not in the MH folders, so anything that
+  reads the folders directly does not see it. SA training does exactly that,
+  so the spam and ham training accounts should stay on `MHDelivery`.
+
+Both are subclasses of the abstract `LocalDelivery` model, which holds the
+shared fields. `local_deliveries()` queries across both types.
 
 No configuration beyond the spam settings is required.
+
+### Default type and conversion
+
+`DEFAULT_LOCAL_DELIVERY` (`MHDelivery` or `ASIMAPDelivery`, default
+`MHDelivery`) sets the type created for the first account of a new server.
+The web UI's add menu offers both types and lists this one first, marked as
+the default.
+
+A user can switch an account's type themselves by deleting its local delivery
+and adding the other type; the mail store, and the mail in it, is kept. To
+convert accounts in bulk, or keep a delivery's settings, use the
+`convert_to_asimap_delivery` management command. A conversion keeps the
+delivery method's pk and settings. The command never converts
+`SPAM_TRAINING_ADDRESS` or `NOT_SPAM_TRAINING_ADDRESS`.
+
+```
+manage.py convert_to_asimap_delivery --list
+manage.py convert_to_asimap_delivery --all --dry-run
+manage.py convert_to_asimap_delivery user@example.com other@example.com
+manage.py convert_to_asimap_delivery --all --exclude bucket@example.com
+manage.py convert_to_asimap_delivery --revert user@example.com
+```
+
+`--list` shows each account that has a local delivery, its type, and whether
+it is disabled, then a count per type; give addresses to list only those.
+`--exclude` (repeatable, with `--all`) leaves an account alone; the command
+refuses to run if an excluded address is not an existing account, so a typo
+can not convert the account you meant to keep.
 
 ---
 
@@ -149,7 +206,7 @@ Credentials are tested against the live IMAP server in two situations:
 
 ## Retry tracking for failing methods
 
-`LocalDelivery` always succeeds (it writes to a local disk). Methods that
+`MHDelivery` and `ASIMAPDelivery` rarely fail (they write to a local disk). Methods that
 contact external services (`ImapDelivery`) can fail transiently. The service
 tracks these failures in Redis and retries automatically.
 

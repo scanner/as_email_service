@@ -11,7 +11,8 @@ FROM python:${PYTHON_VERSION}-slim AS builder
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 
-# Install build dependencies needed to compile Python packages with C extensions
+# Install build dependencies needed to compile Python packages with C extensions,
+# and git for dependencies installed from a git source (asimap-spool).
 # These will NOT be in the final image
 #
 RUN apt-get update && \
@@ -20,6 +21,7 @@ RUN apt-get update && \
     g++ \
     make \
     libpq-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -59,10 +61,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 
-# Provided at build time so collectstatic can load settings.
-# Never written to ENV so it is not present at runtime.
-ARG SALT_KEY
-
 # Install runtime dependencies + build tools + development tools
 RUN apt-get update && \
     apt-get install --assume-yes --no-install-recommends \
@@ -97,7 +95,10 @@ ENV PATH=/venv/bin:$PATH
 
 COPY ./app ./
 
-RUN /venv/bin/python /app/manage.py collectstatic --no-input
+# collectstatic encrypts nothing; the key and salt set on this RUN only let
+# settings load, and the real ones are injected at runtime.
+RUN DJANGO_SECRET_KEY=collectstatic-only SALT_KEY=collectstatic-only \
+    /venv/bin/python /app/manage.py collectstatic --no-input
 
 RUN addgroup --system --gid 900 app && \
     adduser --system --uid 900 --ingroup app app
@@ -125,10 +126,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 
-# Provided at build time so collectstatic/compile_pyc can load settings.
-# Never written to ENV so it is not present at runtime.
-ARG SALT_KEY
-
 # Install ONLY runtime dependencies needed by your Python packages
 # These are the shared libraries that compiled extensions link against
 # NO build tools (gcc, make, etc.) - only runtime libraries
@@ -153,8 +150,11 @@ ENV PATH=/venv/bin:$PATH
 COPY ./app ./
 
 # Run Django management commands as root (before USER app)
-# This generates .pyc files that will be readable by app user
-RUN /venv/bin/python /app/manage.py collectstatic --no-input && \
+# This generates .pyc files that will be readable by app user. Neither command
+# encrypts anything; the key and salt set on this RUN only let settings load,
+# and the real ones are injected at runtime.
+RUN export DJANGO_SECRET_KEY=collectstatic-only SALT_KEY=collectstatic-only && \
+    /venv/bin/python /app/manage.py collectstatic --no-input && \
     /venv/bin/python /app/manage.py compile_pyc && \
     /venv/bin/python -m compileall /venv
 

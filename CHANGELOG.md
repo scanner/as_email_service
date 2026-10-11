@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-11
+
+### Added
+
+- `ASIMAPDelivery` local delivery method: hands messages to asimap (2.7.0 or later) through its delivery spool, so asimap files them into the mail store itself; falls back to writing the MH folders directly if the spool can not be written
+- `convert_to_asimap_delivery` management command to convert `MHDelivery` methods to `ASIMAPDelivery` (one account, a list, or `--all` with optional `--exclude`), and back with `--revert`; `--list` shows each account's local delivery type
+- `DEFAULT_LOCAL_DELIVERY` setting selects the default local delivery type: the one given to new server admin accounts and listed first in the web UI's add menu, which offers both (default `MHDelivery`)
+
+### Changed
+
+- `LocalDelivery` is renamed `MHDelivery`; API clients must use `delivery_type` `"MHDelivery"` instead of `"LocalDelivery"`
+- Published Docker images no longer carry a build-time `SALT_KEY` in their layer history; building an image needs no secret (`docker build` takes no `SALT_KEY` build argument)
+- Documentation and the web UI describe "MH Delivery" and "ASIMAP Delivery" instead of a single "Local Delivery"; the SA training account must use MH Delivery
+
+### Fixed
+
+- Adding or deleting a local delivery updates the IMAP password file right away, so an account that switches between MH Delivery and ASIMAP Delivery keeps its IMAP login
+- Local delivery no longer writes the MH folder's `.mh_sequences` file. asimap is its only writer and marks unsequenced messages unseen itself; two processes rewriting it in place could corrupt it and wedge the mailbox (ASIMAP-68)
+
 ## [0.9.3] - 2026-07-19
 
 ### Fixed

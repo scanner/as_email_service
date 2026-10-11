@@ -21,9 +21,12 @@ contexts where per-method failure tracking is not needed:
 
 This module provides the lower-level helpers called by those delivery methods:
 
-- `deliver_message_locally(local_delivery, msg)` — called by
-  `LocalDelivery.deliver()`. Applies message filter rules, spam auto-filing,
+- `deliver_message_via_mh(mh_delivery, msg)` — called by
+  `MHDelivery.deliver()`. Applies message filter rules, spam auto-filing,
   and writes the message to the MH mailbox.
+- `deliver_message_via_spool(asimap_delivery, msg)` — called by
+  `ASIMAPDelivery.deliver()`. Applies the same rules and hands the message
+  to asimap through its delivery spool.
 
   NOTE: https://www.iana.org/assignments/message-headers/message-headers.xhtml
 """
@@ -33,17 +36,38 @@ This module provides the lower-level helpers called by those delivery methods:
 import email.utils
 import logging
 import time
+from collections.abc import Iterable
 from contextlib import contextmanager
 from email.message import EmailMessage
 from email.mime.text import MIMEText
 from mailbox import MH, ExternalClashError, NoSuchMailboxError
 
+# 3rd party imports
+#
+from asimap_spool import (
+    Delivery,
+    SpoolFormatError,
+    SpoolUnavailableError,
+    validate_flags,
+)
+from asimap_spool import deliver as spool_deliver
+
 # Project imports
 #
-from .models import EmailAccount, LocalDelivery, MessageFilterRule
+from .models import (
+    ASIMAPDelivery,
+    EmailAccount,
+    LocalDelivery,
+    MessageFilterRule,
+    MHDelivery,
+)
 from .utils import get_spam_score, message_as_bytes
 
 logger = logging.getLogger(__name__)
+
+# Producer name recorded in each spool entry, for asimap's logs.
+#
+SPOOL_SOURCE = "as_email_service"
 
 
 ####################################################################
@@ -123,44 +147,50 @@ def lock_folder(folder: MH, timeout: int | float = 20, fail: bool = False):
 
 ####################################################################
 #
-def _add_msg_to_folder(folder: MH, msg: EmailMessage):
+def _add_msg_to_folder(folder: MH, msg: EmailMessage) -> None:
     """
-    Adding a message to a MH folder requires several simple steps. This
-    wraps those steps.
+    Write the message into the MH folder.
+
+    The folder lock covers key allocation: `MH.add` picks `max(keys) + 1`, so
+    two deliveries running at once would otherwise choose the same key.
+
+    We leave `.mh_sequences` alone. asimap is its only writer and treats a
+    message that is in no sequence as unseen. `MH.add` does not touch the file
+    either -- it only writes sequences for an `MHMessage`, and we hand it
+    bytes.
     """
     msg_bytes = message_as_bytes(msg)
 
     with lock_folder(folder):
-        msg_id = int(folder.add(msg_bytes))
-        sequences = folder.get_sequences()
-        if "unseen" in sequences:
-            sequences["unseen"].append(msg_id)
-        else:
-            sequences["unseen"] = [msg_id]
-        folder.set_sequences(sequences)
+        folder.add(msg_bytes)
 
 
 ####################################################################
 #
-def deliver_message_locally(
-    local_delivery: LocalDelivery, msg: EmailMessage
-) -> None:
+def _local_destinations(
+    local_delivery: LocalDelivery, mh: MH, msg: EmailMessage
+) -> list[tuple[str, bool]]:
     """
-    Deliver the email message to the MH mailbox for the given LocalDelivery
-    method. Applies message filter rules first; if none match, delivers to the
-    inbox (or the spam folder if autofile_spam is enabled and the score is high
-    enough).
+    Decide which folders of the local mail store the message is filed in.
+
+    Filter rules come first; a rule whose folder does not exist is skipped.
+    If no rule delivers the message it goes to the inbox, or to the spam
+    folder when `autofile_spam` is on and the spam score is high enough.
+
+    Args:
+        local_delivery: The delivery method whose settings apply.
+        mh: The account's MH mail store.
+        msg: The message being delivered.
+
+    Returns:
+        A list of `(folder, create)` pairs. `create` is True for the inbox
+        and the spam folder, which are created if they are missing.
     """
     email_account = local_delivery.email_account
-    deliver_to = apply_message_filter_rules(email_account, msg)
-    delivered_to = []
-
-    mh = local_delivery.MH()
-    for mbox in deliver_to:
+    destinations = []
+    for mbox in apply_message_filter_rules(email_account, msg):
         try:
-            folder = mh.get_folder(mbox)
-            _add_msg_to_folder(folder, msg)
-            delivered_to.append(mbox)
+            mh.get_folder(mbox)
         except NoSuchMailboxError:
             logger.warning(
                 "for email account %s, attempted to deliver message to "
@@ -168,30 +198,100 @@ def deliver_message_locally(
                 email_account.email_address,
                 mbox,
             )
+            continue
+        destinations.append((mbox, False))
 
-    # If no filter rule matched, deliver to inbox — unless the message looks
-    # like spam and autofile_spam is on.
-    #
+    if destinations:
+        return destinations
+
     # XXX Do we want to consider auto-filing spam no matter which mailbox it is
     #     delivered to?
     #
-    if not delivered_to:
-        if (
-            local_delivery.autofile_spam
-            and get_spam_score(msg) >= local_delivery.spam_score_threshold
-        ):
-            junk = local_delivery.spam_delivery_folder
-            try:
-                folder = mh.get_folder(junk)
-            except NoSuchMailboxError:
-                folder = mh.add_folder(junk)
-            _add_msg_to_folder(folder, msg)
-        else:
-            try:
-                folder = mh.get_folder("inbox")
-            except NoSuchMailboxError:
-                folder = mh.add_folder("inbox")
-            _add_msg_to_folder(folder, msg)
+    if (
+        local_delivery.autofile_spam
+        and get_spam_score(msg) >= local_delivery.spam_score_threshold
+    ):
+        return [(local_delivery.spam_delivery_folder, True)]
+    return [("inbox", True)]
+
+
+####################################################################
+#
+def _write_to_mh_folders(
+    mh: MH, destinations: list[tuple[str, bool]], msg: EmailMessage
+) -> None:
+    """Write the message into each destination folder of the MH store."""
+    for folder_name, create in destinations:
+        folder = (
+            mh.add_folder(folder_name) if create else mh.get_folder(folder_name)
+        )
+        _add_msg_to_folder(folder, msg)
+
+
+####################################################################
+#
+def deliver_message_via_mh(mh_delivery: MHDelivery, msg: EmailMessage) -> None:
+    """
+    Deliver the email message by writing it straight into the MH mail store
+    of the given MHDelivery.
+    """
+    mh = mh_delivery.MH()
+    destinations = _local_destinations(mh_delivery, mh, msg)
+    _write_to_mh_folders(mh, destinations, msg)
+
+
+####################################################################
+#
+def deliver_message_via_spool(
+    asimap_delivery: ASIMAPDelivery,
+    msg: EmailMessage,
+    flags: Iterable[str] = (),
+) -> None:
+    """
+    Deliver the email message by writing it to asimap's delivery spool in
+    the account's mail store. asimap files it into the destination folders.
+
+    If the message can not be spooled it is written straight into the MH
+    folders instead, without its flags.
+
+    Args:
+        asimap_delivery: The delivery method whose mail store and settings
+            apply.
+        msg: The message to deliver.
+        flags: IMAP flags (system flags such as '\\Seen', or keywords) to
+            set on the message in every destination folder. The default, no
+            flags, delivers it unread.
+
+    Raises:
+        SpoolFormatError: if any of `flags` is not a settable IMAP flag.
+    """
+    # NOTE: Sieve's imap4flags can set different flags per destination; when
+    #       Sieve rules choose the destinations, the flags move into them.
+    #
+    flags = validate_flags(flags)
+    assert asimap_delivery.maildir_path is not None
+    mh = asimap_delivery.MH()
+    destinations = _local_destinations(asimap_delivery, mh, msg)
+    try:
+        deliveries = [
+            Delivery(folder=folder_name, flags=flags, create=create)
+            for folder_name, create in destinations
+        ]
+        spool_deliver(
+            asimap_delivery.maildir_path,
+            message_as_bytes(msg),
+            deliveries,
+            source=SPOOL_SOURCE,
+        )
+    except (SpoolFormatError, SpoolUnavailableError) as exc:
+        logger.warning(
+            "for email account %s, unable to spool message, writing it to "
+            "the MH folders instead without flags %r: %r",
+            asimap_delivery.email_account.email_address,
+            flags,
+            exc,
+        )
+        _write_to_mh_folders(mh, destinations, msg)
 
 
 ####################################################################

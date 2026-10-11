@@ -14,10 +14,18 @@ import ImapDeliveryForm from "as-email/imap-delivery-form";
 
 ////////////////////////////////////////////////////////////////////////////
 //
+// The delivery types that write to the account's local mail store. They share
+// one form, and an account may have at most one of them.
+//
+export const LOCAL_DELIVERY_TYPES = ["MHDelivery", "ASIMAPDelivery"];
+
+////////////////////////////////////////////////////////////////////////////
+//
 // Maps delivery_type → Vue component that renders the type-specific fields.
 //
 export const DELIVERY_TYPE_COMPONENTS = {
-  LocalDelivery: LocalDeliveryForm,
+  MHDelivery: LocalDeliveryForm,
+  ASIMAPDelivery: LocalDeliveryForm,
   AliasToDelivery: AliasToDeliveryForm,
   ImapDelivery: ImapDeliveryForm,
 };
@@ -27,7 +35,8 @@ export const DELIVERY_TYPE_COMPONENTS = {
 // Human-readable labels for each delivery type, used in the UI.
 //
 export const DELIVERY_TYPE_LABELS = {
-  LocalDelivery: "Local Delivery",
+  MHDelivery: "MH Delivery",
+  ASIMAPDelivery: "ASIMAP Delivery",
   AliasToDelivery: "Alias-To",
   ImapDelivery: "IMAP Delivery",
 };
@@ -37,7 +46,8 @@ export const DELIVERY_TYPE_LABELS = {
 // Emoji icons for each delivery type, shown in the card header.
 //
 export const DELIVERY_TYPE_ICONS = {
-  LocalDelivery: "📁",
+  MHDelivery: "📁",
+  ASIMAPDelivery: "📁",
   AliasToDelivery: "↪️",
   ImapDelivery: "📧",
 };
@@ -66,8 +76,15 @@ export const DELIVERY_TYPE_ICONS = {
 //   the UI handles the always-empty password field.
 //
 export const DELIVERY_TYPE_DEFAULTS = {
-  LocalDelivery: {
-    delivery_type: "LocalDelivery",
+  MHDelivery: {
+    delivery_type: "MHDelivery",
+    enabled: true,
+    autofile_spam: true,
+    spam_delivery_folder: "Spam",
+    spam_score_threshold: 15,
+  },
+  ASIMAPDelivery: {
+    delivery_type: "ASIMAPDelivery",
     enabled: true,
     autofile_spam: true,
     spam_delivery_folder: "Spam",

@@ -74,29 +74,50 @@
     </tbody>
   </table>
 
-  <h2 class="subtitle" id="local-delivery">Local Delivery
+  <h2 class="subtitle" id="local-delivery">MH Delivery and ASIMAP Delivery
     <a class="header-anchor" href="#local-delivery" title="Link to this section">#</a>
   </h2>
   <p>
-    Local delivery stores incoming mail in directories on this server. This is the
-    simplest delivery method and requires no external accounts or services. All
-    email accounts start with a local delivery method by default.
+    MH Delivery and ASIMAP Delivery store incoming mail in your mail folders on this
+    server. They need no external accounts or services. An email account can have
+    one of them, not both. The "Add Delivery Method" menu lists this server's
+    default first.
+  </p>
+  <ul>
+    <li><strong>MH Delivery</strong> writes each message straight into your mail
+      folders.</li>
+    <li><strong>ASIMAP Delivery</strong> hands each message to this server's IMAP
+      service, which files it into your mail folders. New mail is filed while you are
+      connected with IMAP or POP3S, and otherwise when you next connect.</li>
+  </ul>
+  <p>
+    Both file mail the same way: a matching message filter rule sends it to that
+    rule's folder; otherwise, with spam auto-filing on, a message whose spam score
+    reaches your threshold goes to your spam folder; everything else goes to your
+    inbox. Your email client sees the same folders either way.
+  </p>
+  <p>
+    To switch, delete the one you have and add the other from the "Add Delivery
+    Method" menu. Mail already in your folders is kept. If it is your only
+    delivery method, mail that arrives between the delete and the add is dropped,
+    so add the new one right away.
   </p>
   <div class="notification is-warning is-light">
     <p>
       <strong>Not to be confused with the "IMAP Delivery" method below.</strong>
       "IMAP Delivery" forwards incoming mail to a different, <em>external</em> mailbox.
-      The instructions on this page are for reading mail that Local Delivery already
-      stored on <em>this</em> server, using IMAP only as the read-access protocol.
+      The instructions on this page are for reading mail that MH Delivery or ASIMAP
+      Delivery stored on <em>this</em> server, using IMAP only as the read-access
+      protocol.
     </p>
   </div>
 
-  <h3 id="reading-local-delivery-mail">Reading your Local Delivery mail via IMAP or POP3S
+  <h3 id="reading-local-delivery-mail">Reading your MH Delivery or ASIMAP Delivery mail via IMAP or POP3S
     <a class="header-anchor" href="#reading-local-delivery-mail" title="Link to this section">#</a>
   </h3>
   <p>
-    This server also runs IMAP and POP3S services that provide access to those local
-    mail directories. To read your email directly from this service, configure your
+    This server also runs IMAP and POP3S services that provide access to those mail
+    folders. To read your email directly from this service, configure your
     email client with whichever protocol it supports — use the IMAP port for IMAP, or
     the POP3S port for POP3S — along with your email account's address and password:
   </p>

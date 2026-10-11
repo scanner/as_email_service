@@ -1,7 +1,6 @@
 # system imports
 #
 import email
-import mailbox
 from collections.abc import Callable
 from email.message import EmailMessage
 from pathlib import Path
@@ -21,11 +20,14 @@ from pytest_mock import MockerFixture
 #
 from as_email.models import (
     AliasToDelivery,
+    ASIMAPDelivery,
     EmailAccount,
     InactiveEmail,
     LocalDelivery,
     MessageFilterRule,
+    MHDelivery,
     Server,
+    local_deliveries,
 )
 from tests.conftest import assert_email_equal
 
@@ -62,19 +64,27 @@ def test_server(server_factory: Callable[..., Server]) -> None:
 
 ####################################################################
 #
+@pytest.mark.parametrize(
+    "default_local_delivery,expected_type",
+    [("MHDelivery", MHDelivery), ("ASIMAPDelivery", ASIMAPDelivery)],
+)
 def test_server_creates_admin_emailaccounts(
     user_factory: Callable,
     server_factory: Callable[..., Server],
     settings: LazySettings,
+    default_local_delivery: str,
+    expected_type: type[LocalDelivery],
 ) -> None:
     """
     With the defaults from django settings, if a user account with the
     username 'admin' exists, then EmailAccounts defined by the list
     settings.EMAIL_SERVICE_ACCOUNTS will be created and aliased together.
+    The first one gets a local delivery of the DEFAULT_LOCAL_DELIVERY type.
 
     This will happen when the server account is saved for the first time.
     """
     settings.EMAIL_SERVICE_ACCOUNTS_OWNER = "admin"
+    settings.DEFAULT_LOCAL_DELIVERY = default_local_delivery
     admin = user_factory(username="admin")
     admin.save()
     server = server_factory()
@@ -86,6 +96,7 @@ def test_server_creates_admin_emailaccounts(
     ]
     eas = [EmailAccount.objects.get(email_address=x) for x in email_addrs]
     first = eas[0]
+    assert type(local_deliveries().get(email_account=first)) is expected_type
     for ea in eas[1:]:
         atd = AliasToDelivery.objects.get(email_account=ea)
         assert atd.target_account == first
@@ -146,33 +157,6 @@ def test_email_account_valid_email_address(
     ea.email_address = "foo@example.org"
     with pytest.raises(ValidationError):
         ea.clean()
-
-
-####################################################################
-#
-def test_email_account_mail_dir(
-    settings: LazySettings, email_account_factory: Callable[..., EmailAccount]
-) -> None:
-    """
-    make sure the mailbox.MH directory for the email account exists
-    """
-    ea = email_account_factory()
-    ea.save()
-
-    ld = LocalDelivery.objects.get(email_account=ea)
-    assert ld.maildir_path is not None
-    assert Path(ld.maildir_path).is_dir()
-
-    # By setting `create=False` this will fail with an exception if
-    # the mailbox does not exist. It should exist.
-    #
-    try:
-        mh = ld.MH(create=False)
-        assert mh._path == ld.maildir_path
-        for folder in settings.DEFAULT_FOLDERS:
-            mh.get_folder(folder)
-    except mailbox.NoSuchMailboxError as exc:
-        pytest.fail(str(exc))
 
 
 ####################################################################

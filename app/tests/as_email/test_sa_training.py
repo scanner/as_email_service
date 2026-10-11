@@ -22,7 +22,7 @@ from django.core.management.base import CommandError
 
 # Project imports
 #
-from as_email.models import EmailAccount, LocalDelivery
+from as_email.models import EmailAccount, MHDelivery
 from as_email.sa_training import (
     TrainingResult,
     determine_classification,
@@ -81,9 +81,9 @@ def _make_inner_msg() -> EmailMessage:
 
 ########################################################################
 #
-def _deposit_message(local_delivery: LocalDelivery, msg: EmailMessage) -> str:
+def _deposit_message(local_delivery: MHDelivery, msg: EmailMessage) -> str:
     """
-    Add a message to the inbox of the given LocalDelivery's MH
+    Add a message to the inbox of the given MHDelivery's MH
     mailbox.  Returns the MH key as a string.
     """
     mh = local_delivery.MH()
@@ -104,7 +104,7 @@ def training_accounts(
 ) -> dict[str, Any]:
     """
     Create the spam and not-spam training EmailAccounts with
-    LocalDelivery and configure the settings.
+    MHDelivery and configure the settings.
     """
     with django_capture_on_commit_callbacks(execute=True):
         spam_ea = email_account_factory(
@@ -119,7 +119,7 @@ def training_accounts(
     settings.SPAM_TRAINING_ADDRESS = spam_ea.email_address
     settings.NOT_SPAM_TRAINING_ADDRESS = not_spam_ea.email_address
 
-    ld = LocalDelivery.objects.get(email_account=spam_ea)
+    ld = MHDelivery.objects.get(email_account=spam_ea)
 
     return {
         "spam_ea": spam_ea,
@@ -224,13 +224,13 @@ class TestFindTrainingLocalDelivery:
         training_accounts: dict[str, Any],
     ) -> None:
         """
-        Given only NOT_SPAM_TRAINING_ADDRESS has a LocalDelivery
+        Given only NOT_SPAM_TRAINING_ADDRESS has an MHDelivery
         When find_training_local_delivery is called
-        Then it returns that LocalDelivery
+        Then it returns that MHDelivery
         """
         ld = training_accounts["local_delivery"]
         ld.delete()
-        new_ld = LocalDelivery.objects.create(
+        new_ld = MHDelivery.objects.create(
             email_account=training_accounts["not_spam_ea"]
         )
 
@@ -245,15 +245,15 @@ class TestFindTrainingLocalDelivery:
         training_accounts: dict[str, Any],
     ) -> None:
         """
-        Given the training accounts exist but have no LocalDelivery
+        Given the training accounts exist but have no MHDelivery
         When find_training_local_delivery is called
         Then CommandError is raised
         """
-        LocalDelivery.objects.filter(
+        MHDelivery.objects.filter(
             email_account=training_accounts["spam_ea"]
         ).delete()
 
-        with pytest.raises(CommandError, match="No enabled LocalDelivery"):
+        with pytest.raises(CommandError, match="No enabled local delivery"):
             find_training_local_delivery()
 
 
