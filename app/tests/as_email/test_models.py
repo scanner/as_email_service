@@ -1,7 +1,6 @@
 # system imports
 #
 import email
-import mailbox
 from collections.abc import Callable
 from email.message import EmailMessage
 from pathlib import Path
@@ -158,33 +157,6 @@ def test_email_account_valid_email_address(
     ea.email_address = "foo@example.org"
     with pytest.raises(ValidationError):
         ea.clean()
-
-
-####################################################################
-#
-def test_email_account_mail_dir(
-    settings: LazySettings, email_account_factory: Callable[..., EmailAccount]
-) -> None:
-    """
-    make sure the mailbox.MH directory for the email account exists
-    """
-    ea = email_account_factory()
-    ea.save()
-
-    ld = MHDelivery.objects.get(email_account=ea)
-    assert ld.maildir_path is not None
-    assert Path(ld.maildir_path).is_dir()
-
-    # By setting `create=False` this will fail with an exception if
-    # the mailbox does not exist. It should exist.
-    #
-    try:
-        mh = ld.MH(create=False)
-        assert mh._path == ld.maildir_path
-        for folder in settings.DEFAULT_FOLDERS:
-            mh.get_folder(folder)
-    except mailbox.NoSuchMailboxError as exc:
-        pytest.fail(str(exc))
 
 
 ####################################################################

@@ -145,38 +145,41 @@ def test_deliver_message_via_mh_malformed_encoding(
 
 ####################################################################
 #
-def test_deliver_spam_locally(
+@pytest.mark.parametrize(
+    "autofile_spam,spam_status,expected_folder",
+    [
+        (True, "No, score=4.0 required=5.0 tests=NONE", "inbox"),
+        (True, "Yes, score=5.0 required=5.0 tests=NONE", "Junk"),
+        (False, "Yes, score=99.0 required=5.0 tests=NONE", "inbox"),
+    ],
+    ids=["below-threshold", "at-threshold", "autofile-off"],
+)
+def test_deliver_message_via_mh_spam_filing(
     email_account_factory: Callable[..., EmailAccount],
     email_factory: Callable[..., EmailMessage],
+    autofile_spam: bool,
+    spam_status: str,
+    expected_folder: str,
 ) -> None:
+    """
+    GIVEN an MHDelivery with a spam threshold of 5 and no filter rules
+    WHEN  a message with the given X-Spam-Status is delivered
+    THEN  it is filed in the spam folder only when autofile_spam is on and
+          the score meets the threshold, and in the inbox otherwise
+    """
     ea = email_account_factory()
     ld = MHDelivery.objects.get(email_account=ea)
-
-    # Low spam score — should be delivered to inbox.
-    #
+    ld.autofile_spam = autofile_spam
+    ld.spam_score_threshold = 5
+    ld.spam_delivery_folder = "Junk"
+    ld.save()
     msg = email_factory()
-    msg["X-Spam-Status"] = "No, score=-0.0 required=5.0 tests=NONE"
+    msg["X-Spam-Status"] = spam_status
 
     deliver_message_via_mh(ld, msg)
 
-    mh = ld.MH()
-    folder = mh.get_folder("inbox")
-    stored_msg = cast(EmailMessage, folder.get(str(1)))
-    assert_email_equal(msg, stored_msg)
-
-    # Set the spam score over the limit configured on the MHDelivery.
-    #
-    msg.replace_header(
-        "X-Spam-Status",
-        f"Yes, score={ld.spam_score_threshold}.0 required=5.0 tests=NONE",
-    )
-    deliver_message_via_mh(ld, msg)
-
-    # The message should land in the spam folder.
-    #
-    folder = mh.get_folder(ld.spam_delivery_folder)
-    stored_msg = cast(EmailMessage, folder.get(str(1)))
-    assert_email_equal(msg, stored_msg)
+    folder = ld.MH().get_folder(expected_folder)
+    assert_email_equal(msg, cast(EmailMessage, folder.get("1")))
 
 
 ####################################################################

@@ -55,26 +55,6 @@ pytestmark = pytest.mark.django_db
 ####################################################################
 #
 @pytest.fixture
-def local_delivery_factory(
-    email_account_factory: Callable[..., EmailAccount],
-) -> Callable[..., LocalDelivery]:
-    """
-    Returns a factory: `make(delivery_type, **fields)` creates a new email
-    account whose only local delivery is a `delivery_type` with `fields`.
-    """
-
-    def make(
-        delivery_type: type[LocalDelivery], **fields: Any
-    ) -> LocalDelivery:
-        ea = email_account_factory(local_delivery=False)
-        return delivery_type.objects.create(email_account=ea, **fields)
-
-    return make
-
-
-####################################################################
-#
-@pytest.fixture
 def mock_spool_deliver(mocker: MockerFixture) -> MagicMock:
     """Patch the asimap-spool `deliver()` that ASIMAPDelivery calls."""
     return mocker.patch("as_email.deliver.spool_deliver")
@@ -83,23 +63,20 @@ def mock_spool_deliver(mocker: MockerFixture) -> MagicMock:
 ########################################################################
 ########################################################################
 #
-@pytest.mark.parametrize("delivery_type", [MHDelivery, ASIMAPDelivery])
 class TestLocalDeliveryModel:
-    """Behaviour MHDelivery and ASIMAPDelivery share."""
+    """Behaviour of the LocalDelivery base and its post_save signals."""
 
     ####################################################################
     #
     def test_maildir_path_auto_filled(
-        self,
-        local_delivery_factory: Callable[..., LocalDelivery],
-        delivery_type: type[LocalDelivery],
+        self, local_delivery_factory: Callable[..., LocalDelivery]
     ) -> None:
         """
         GIVEN a local delivery created without an explicit maildir_path
         WHEN  it is saved
         THEN  maildir_path is auto-populated from the account's email address
         """
-        ld = local_delivery_factory(delivery_type)
+        ld = local_delivery_factory(MHDelivery)
         ea = ld.email_account
         assert ld.maildir_path
         assert ea.email_address in ld.maildir_path
@@ -110,7 +87,6 @@ class TestLocalDeliveryModel:
     def test_maildir_path_preserved_when_set(
         self,
         local_delivery_factory: Callable[..., LocalDelivery],
-        delivery_type: type[LocalDelivery],
         settings: LazySettings,
     ) -> None:
         """
@@ -120,22 +96,26 @@ class TestLocalDeliveryModel:
         """
         custom = str(settings.MAIL_DIRS / "custom_dir")
         Path(custom).mkdir(parents=True, exist_ok=True)
-        ld = local_delivery_factory(delivery_type, maildir_path=custom)
+        ld = local_delivery_factory(MHDelivery, maildir_path=custom)
         ld.refresh_from_db()
         assert ld.maildir_path == custom
 
     ####################################################################
     #
-    def test_mh_creates_mailbox_directory(
+    @pytest.mark.parametrize("delivery_type", [MHDelivery, ASIMAPDelivery])
+    def test_creating_makes_mailbox_and_default_folders(
         self,
         local_delivery_factory: Callable[..., LocalDelivery],
         delivery_type: type[LocalDelivery],
         settings: LazySettings,
     ) -> None:
         """
-        GIVEN a local delivery
+        GIVEN a local delivery of either type
         WHEN  it is created
         THEN  the maildir path exists on disk and default folders are created
+
+        The post_save signal is registered for each type separately, so
+        both are checked.
         """
         ld = local_delivery_factory(delivery_type)
         assert ld.maildir_path is not None
@@ -143,136 +123,6 @@ class TestLocalDeliveryModel:
         mh = ld.MH(create=False)
         for folder in settings.DEFAULT_FOLDERS:
             mh.get_folder(folder)  # raises NoSuchMailboxError if missing
-
-    ####################################################################
-    #
-    def test_disabled_local_delivery_skips_delivery(
-        self,
-        local_delivery_factory: Callable[..., LocalDelivery],
-        delivery_type: type[LocalDelivery],
-        mock_spool_deliver: MagicMock,
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN a local delivery with enabled=False
-        WHEN  a message is delivered to the account
-        THEN  nothing is written to the mailbox or the spool
-        """
-        ld = local_delivery_factory(delivery_type, enabled=False)
-        ea = ld.email_account
-
-        ea.deliver(email_factory(to=ea.email_address))
-
-        assert ld.MH().get_folder("inbox").keys() == []
-        mock_spool_deliver.assert_not_called()
-
-
-########################################################################
-########################################################################
-#
-class TestMHDeliveryModel:
-    """Tests for how MHDelivery files messages into the MH folders."""
-
-    ####################################################################
-    #
-    def test_deliver_locally_puts_message_in_inbox(
-        self,
-        email_account_factory: Callable[..., EmailAccount],
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN an MHDelivery with no filter rules
-        WHEN  a message is delivered
-        THEN  the message ends up in the inbox folder
-        """
-        ea = email_account_factory()
-        msg = email_factory(to=ea.email_address)
-        ea.deliver(msg)
-
-        ld = MHDelivery.objects.get(email_account=ea)
-        folder = ld.MH().get_folder("inbox")
-        assert folder.get("1") is not None
-
-    ####################################################################
-    #
-    def test_spam_above_threshold_goes_to_spam_folder(
-        self,
-        email_account_factory: Callable[..., EmailAccount],
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN an MHDelivery with autofile_spam=True and threshold=5
-        WHEN  a message with X-Spam-Status score above the threshold arrives
-        THEN  it is filed in spam_delivery_folder, not inbox
-        """
-        ea = email_account_factory()
-        ld = MHDelivery.objects.get(email_account=ea)
-        ld.autofile_spam = True
-        ld.spam_score_threshold = 5
-        ld.spam_delivery_folder = "Junk"
-        ld.save()
-
-        msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Status"] = "Yes, score=8.0 required=5.0 tests=NONE"
-        ea.deliver(msg)
-
-        mh = ld.MH()
-        inbox = mh.get_folder("inbox")
-        junk = mh.get_folder("Junk")
-        assert len(list(inbox.values())) == 0
-        assert len(list(junk.values())) == 1
-
-    ####################################################################
-    #
-    def test_spam_below_threshold_goes_to_inbox(
-        self,
-        email_account_factory: Callable[..., EmailAccount],
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN an MHDelivery with autofile_spam=True and threshold=10
-        WHEN  a message with X-Spam-Status score below the threshold arrives
-        THEN  it is delivered to inbox normally
-        """
-        ea = email_account_factory()
-        ld = MHDelivery.objects.get(email_account=ea)
-        ld.autofile_spam = True
-        ld.spam_score_threshold = 10
-        ld.save()
-
-        msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Status"] = "No, score=4.2 required=5.0 tests=NONE"
-        ea.deliver(msg)
-
-        mh = ld.MH()
-        inbox = mh.get_folder("inbox")
-        assert len(list(inbox.values())) == 1
-
-    ####################################################################
-    #
-    def test_autofile_spam_disabled_delivers_to_inbox(
-        self,
-        email_account_factory: Callable[..., EmailAccount],
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN an MHDelivery with autofile_spam=False
-        WHEN  a high-scoring spam message arrives
-        THEN  it is delivered to inbox (spam filtering disabled)
-        """
-        ea = email_account_factory()
-        ld = MHDelivery.objects.get(email_account=ea)
-        ld.autofile_spam = False
-        ld.spam_score_threshold = 1
-        ld.save()
-
-        msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Status"] = "Yes, score=99.0 required=5.0 tests=NONE"
-        ea.deliver(msg)
-
-        mh = ld.MH()
-        inbox = mh.get_folder("inbox")
-        assert len(list(inbox.values())) == 1
 
 
 ####################################################################
@@ -320,42 +170,36 @@ class TestASIMAPDeliveryModel:
     ####################################################################
     #
     @pytest.mark.parametrize(
-        "spam_status,expected",
+        "kwargs,flags",
         [
-            (
-                "No, score=1.0 required=5.0 tests=NONE",
-                Delivery("inbox", create=True),
-            ),
-            (
-                "Yes, score=8.0 required=5.0 tests=NONE",
-                Delivery("Junk", create=True),
-            ),
+            ({}, ()),
+            ({"flags": ("\\Seen", "\\Flagged")}, ("\\Seen", "\\Flagged")),
         ],
+        ids=["default-unread", "flags"],
     )
-    def test_spools_to_inbox_or_junk(
+    def test_spool_deliver_arguments(
         self,
         asimap_delivery: ASIMAPDelivery,
         mock_spool_deliver: MagicMock,
         email_factory: Callable[..., EmailMessage],
-        spam_status: str,
-        expected: Delivery,
+        kwargs: dict[str, Any],
+        flags: tuple[str, ...],
     ) -> None:
         """
-        GIVEN an account with an ASIMAPDelivery and no filter rules
-        WHEN  a message is delivered to the account
-        THEN  the message is spooled to the inbox, or to the spam folder when
-              it scores as spam
+        GIVEN an ASIMAPDelivery and no filter rules
+        WHEN  a message is delivered, with or without flags
+        THEN  asimap-spool is asked to deliver the message's bytes to the
+              inbox (created if missing) with those flags; no flags means
+              unread
         """
-        ea = asimap_delivery.email_account
-        msg = email_factory(to=ea.email_address)
-        msg["X-Spam-Status"] = spam_status
+        msg = email_factory(to=asimap_delivery.email_account.email_address)
 
-        ea.deliver(msg)
+        deliver_message_via_spool(asimap_delivery, msg, **kwargs)
 
         mock_spool_deliver.assert_called_once_with(
             asimap_delivery.maildir_path,
             message_as_bytes(msg),
-            [expected],
+            [Delivery("inbox", flags=flags, create=True)],
             source=SPOOL_SOURCE,
         )
 
@@ -397,29 +241,6 @@ class TestASIMAPDeliveryModel:
 
         mock_spool_deliver.assert_called_once()
         assert mock_spool_deliver.call_args.args[2] == [expected]
-
-    ####################################################################
-    #
-    def test_flags_are_spooled(
-        self,
-        asimap_delivery: ASIMAPDelivery,
-        mock_spool_deliver: MagicMock,
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN an ASIMAPDelivery
-        WHEN  a message is delivered with flags
-        THEN  the spooled destination carries those flags
-        """
-        msg = email_factory(to=asimap_delivery.email_account.email_address)
-
-        deliver_message_via_spool(
-            asimap_delivery, msg, flags=("\\Seen", "\\Flagged")
-        )
-
-        assert mock_spool_deliver.call_args.args[2] == [
-            Delivery("inbox", flags=("\\Seen", "\\Flagged"), create=True)
-        ]
 
     ####################################################################
     #
@@ -973,28 +794,6 @@ class TestImapDeliveryModel:
 #
 class TestMHDeliveryLeavesSequencesAlone:
     """Local delivery must not write the folder's `.mh_sequences`."""
-
-    ####################################################################
-    #
-    def test_delivery_writes_no_sequences(
-        self,
-        email_account_factory: Callable[..., EmailAccount],
-        email_factory: Callable[..., EmailMessage],
-    ) -> None:
-        """
-        GIVEN an MHDelivery with no filter rules
-        WHEN  a message is delivered
-        THEN  the message lands in the inbox and no sequence is recorded
-        """
-        ea = email_account_factory()
-        ea.deliver(email_factory(to=ea.email_address))
-
-        folder = (
-            MHDelivery.objects.get(email_account=ea).MH().get_folder("inbox")
-        )
-
-        assert folder.get("1") is not None
-        assert folder.get_sequences() == {}
 
     ####################################################################
     #

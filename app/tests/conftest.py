@@ -38,7 +38,7 @@ from rest_framework.test import APIClient, RequestsClient
 # Project imports
 #
 import as_email.utils
-from as_email.models import EmailAccount, InactiveEmail, Server
+from as_email.models import EmailAccount, InactiveEmail, LocalDelivery, Server
 from tests.as_email.factories import (
     DummyProviderBackend,
     EmailAccountFactory,
@@ -326,6 +326,27 @@ def email_account_factory(
         return email_account
 
     yield make_email_account
+
+
+####################################################################
+#
+@pytest.fixture
+def local_delivery_factory(
+    email_account_factory: Callable[..., EmailAccount],
+) -> Callable[..., LocalDelivery]:
+    """
+    Returns a factory: `make(delivery_type, **fields)` creates a new email
+    account whose only local delivery is a `delivery_type` (MHDelivery or
+    ASIMAPDelivery) with `fields`.
+    """
+
+    def make(
+        delivery_type: type[LocalDelivery], **fields: Any
+    ) -> LocalDelivery:
+        ea = email_account_factory(local_delivery=False)
+        return delivery_type.objects.create(email_account=ea, **fields)
+
+    return make
 
 
 ####################################################################

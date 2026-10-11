@@ -191,8 +191,17 @@ def test_index(
     api_client: type[APIClient],
     user_factory: Callable,
     email_account_factory: Callable[..., EmailAccount],
+    settings: LazySettings,
     faker: Faker,
 ) -> None:
+    """
+    GIVEN a user with email accounts, and DEFAULT_LOCAL_DELIVERY set to the
+          non-default ASIMAPDelivery
+    WHEN  the index page is loaded, logged out and then logged in
+    THEN  it redirects to login, then renders with the "Local Delivery" add
+          button creating an ASIMAPDelivery
+    """
+    settings.DEFAULT_LOCAL_DELIVERY = "ASIMAPDelivery"
     password = faker.pystr(min_chars=8, max_chars=32)
     user = user_factory(password=password)
     user.save()
@@ -212,35 +221,7 @@ def test_index(
     assert resp
     resp = client.get(url)
     assert resp.status_code == 200
-
-
-####################################################################
-#
-@pytest.mark.parametrize(
-    "default_local_delivery", ["MHDelivery", "ASIMAPDelivery"]
-)
-def test_index_adds_default_local_delivery_type(
-    api_client: type[APIClient],
-    user_factory: Callable,
-    settings: LazySettings,
-    faker: Faker,
-    default_local_delivery: str,
-) -> None:
-    """
-    GIVEN DEFAULT_LOCAL_DELIVERY is set to a local delivery type
-    WHEN  a logged in user loads the index page
-    THEN  the "Local Delivery" add button creates that type
-    """
-    settings.DEFAULT_LOCAL_DELIVERY = default_local_delivery
-    password = faker.pystr(min_chars=8, max_chars=32)
-    user = user_factory(password=password)
-    user.save()
-    client = api_client()
-    assert client.login(username=user.username, password=password)
-
-    resp = client.get(reverse("as_email:index"))
-
-    assert f"startAdd('{default_local_delivery}')" in resp.content.decode()
+    assert "startAdd('ASIMAPDelivery')" in resp.content.decode()
 
 
 ####################################################################

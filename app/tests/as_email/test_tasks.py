@@ -907,7 +907,7 @@ def test_delete_email_account_removes_pwfile_entry(
 @pytest.mark.parametrize("local_delivery_type", [MHDelivery, ASIMAPDelivery])
 def test_sync_pwfile_creates_new_entry(
     settings: LazySettings,
-    email_account_factory: Callable[..., EmailAccount],
+    local_delivery_factory: Callable[..., LocalDelivery],
     faker: Faker,
     django_capture_on_commit_callbacks: Callable,
     local_delivery_type: type[LocalDelivery],
@@ -921,8 +921,8 @@ def test_sync_pwfile_creates_new_entry(
     # test transaction (which never commits) must be flushed explicitly.
     #
     with django_capture_on_commit_callbacks(execute=True):
-        ea = email_account_factory(local_delivery=False)
-        ld = local_delivery_type.objects.create(email_account=ea)
+        ld = local_delivery_factory(local_delivery_type)
+        ea = ld.email_account
         ea.set_password(faker.password())
 
     # Verify the account was added to pwfile
