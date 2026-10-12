@@ -20,7 +20,7 @@ from django.conf import settings
 
 # Project imports
 #
-from as_email.models import Server, local_deliveries
+from as_email.models import Server, local_delivery_values
 
 REPORT_FOLDERS = ("inbox", "Deleted Messages", "Junk", "Archive")
 
@@ -71,28 +71,26 @@ def _report_active_accounts(lines: list[str]) -> set[Path]:
     Append per-account usage lines for all active local delivery accounts.
     Returns the set of maildir paths that are accounted for.
     """
-    deliveries = (
-        local_deliveries()
-        .select_related("email_account", "email_account__server")
-        .order_by(
-            "email_account__server__domain_name", "email_account__email_address"
+    deliveries = sorted(
+        local_delivery_values(
+            "email_account__server__domain_name",
+            "email_account__email_address",
+            "maildir_path",
         )
     )
 
     known_paths: set[Path] = set()
 
-    if not deliveries.exists():
+    if not deliveries:
         lines.append("No local delivery accounts found.")
         return known_paths
 
     current_domain = None
 
-    for ld in deliveries:
-        ea = ld.email_account
-        domain = ea.server.domain_name
-        if not ld.maildir_path:
+    for domain, email_address, maildir_path in deliveries:
+        if not maildir_path:
             continue
-        maildir = Path(ld.maildir_path)
+        maildir = Path(maildir_path)
         known_paths.add(maildir)
 
         if domain != current_domain:
@@ -102,7 +100,7 @@ def _report_active_accounts(lines: list[str]) -> set[Path]:
             current_domain = domain
 
         total_bytes = _disk_usage(maildir)
-        lines.append(f"\n  {ea.email_address}  ({_format_size(total_bytes)})")
+        lines.append(f"\n  {email_address}  ({_format_size(total_bytes)})")
 
         for folder_name in REPORT_FOLDERS:
             folder_path = maildir / folder_name

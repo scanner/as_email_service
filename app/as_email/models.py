@@ -1287,10 +1287,37 @@ def local_deliveries() -> "QuerySet[LocalDelivery]":
     """
     Return every local delivery (MHDelivery or ASIMAPDelivery), each as its
     concrete type.
+
+    django-polymorphic loads these in two queries. If a local delivery
+    changes type between them (convert_to_asimap_delivery), it comes back
+    as a plain DeliveryMethod. Use `local_delivery_values()` to read
+    LocalDelivery fields across every account.
     """
     return cast(
         "QuerySet[LocalDelivery]",
         DeliveryMethod.objects.instance_of(MHDelivery, ASIMAPDelivery),
+    )
+
+
+####################################################################
+#
+def local_delivery_values(*fields: str) -> QuerySet:
+    """
+    Return the given fields of every local delivery, as tuples, from one
+    SQL statement (a UNION of the MHDelivery and ASIMAPDelivery tables), so
+    a local delivery changing type meanwhile is read as one type or the
+    other.
+
+    Args:
+        fields: Field lookups, as for `values_list()`.
+    """
+    return (
+        MHDelivery.objects.non_polymorphic()
+        .values_list(*fields)
+        .union(
+            ASIMAPDelivery.objects.non_polymorphic().values_list(*fields),
+            all=True,
+        )
     )
 
 

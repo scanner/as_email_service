@@ -35,7 +35,7 @@ from .models import (
     InactiveEmail,
     Provider,
     Server,
-    local_deliveries,
+    local_delivery_values,
 )
 from .providers import get_backend
 from .providers.base import BounceEvent, BounceType, Capability
@@ -928,16 +928,17 @@ def sync_pwfile() -> None:
     r = redis_client()
     with r.lock(PWFILE_SYNC_LOCK_KEY, timeout=PWFILE_SYNC_LOCK_TIMEOUT):
         expected: dict[str, PWUser] = {}
-        for ld in local_deliveries().select_related("email_account"):
-            if not ld.maildir_path:
+        for address, maildir_path, pw_hash in local_delivery_values(
+            "email_account__email_address",
+            "maildir_path",
+            "email_account__password",
+        ):
+            if not maildir_path:
                 continue
-            ea = ld.email_account
-            ea_mail_dir = Path(ld.maildir_path).relative_to(
+            ea_mail_dir = Path(maildir_path).relative_to(
                 settings.EXT_PW_FILE.parent
             )
-            expected[ea.email_address] = PWUser(
-                ea.email_address, ea_mail_dir, ea.password
-            )
+            expected[address] = PWUser(address, ea_mail_dir, pw_hash)
 
         current = read_emailaccount_pwfile(settings.EXT_PW_FILE)
         if expected == current:

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-11
+
+### Fixed
+
+- The IMAP password file sync no longer fails with `AttributeError: 'DeliveryMethod' object has no attribute 'maildir_path'` when it runs while `convert_to_asimap_delivery` is converting accounts (AS-EMAIL-SERVICE-5P); the daily usage report reads local deliveries the same way
+
 ## [0.10.0] - 2026-10-11
 
 ### Added

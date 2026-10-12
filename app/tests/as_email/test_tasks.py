@@ -24,6 +24,7 @@ import requests_mock as rm_module
 from _pytest.logging import LogCaptureFixture
 from dirty_equals import Contains
 from django.conf import LazySettings
+from django.contrib.contenttypes.models import ContentType
 from faker import Faker
 from pytest_mock import MockerFixture
 
@@ -31,6 +32,7 @@ from pytest_mock import MockerFixture
 #
 from as_email.models import (
     ASIMAPDelivery,
+    DeliveryMethod,
     EmailAccount,
     InactiveEmail,
     LocalDelivery,
@@ -68,6 +70,7 @@ from as_email.utils import (
     read_emailaccount_pwfile,
     redis_client,
     spool_message,
+    write_emailaccount_pwfile,
     write_spooled_email,
 )
 from tests.as_email.factories import DummyProviderBackend
@@ -984,6 +987,36 @@ def test_switching_local_delivery_type_keeps_pwfile_entry(
         Path(old.maildir_path).relative_to(settings.EXT_PW_FILE.parent),
         "entry points at the mail store",
     )
+
+
+####################################################################
+#
+def test_sync_pwfile_during_a_conversion(
+    settings: LazySettings,
+    local_delivery_factory: Callable[..., LocalDelivery],
+    faker: Faker,
+    django_capture_on_commit_callbacks: Callable,
+) -> None:
+    """
+    GIVEN an account whose local delivery is caught mid-conversion: its
+          polymorphic type already names ASIMAPDelivery but its row is still
+          the MHDelivery one, as a sync sees when convert_to_asimap_delivery
+          commits between two of the sync's queries
+    WHEN  the pwfile is synced
+    THEN  the sync succeeds and the account keeps its entry
+    """
+    with django_capture_on_commit_callbacks(execute=True):
+        ld = local_delivery_factory(MHDelivery)
+        ld.email_account.set_password(faker.password())
+    DeliveryMethod.objects.filter(pk=ld.pk).update(
+        polymorphic_ctype=ContentType.objects.get_for_model(ASIMAPDelivery)
+    )
+    write_emailaccount_pwfile(settings.EXT_PW_FILE, {})
+
+    sync_pwfile()
+
+    accounts = read_emailaccount_pwfile(settings.EXT_PW_FILE)
+    assert ld.email_account.email_address in accounts
 
 
 ####################################################################
