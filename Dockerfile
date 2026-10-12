@@ -137,7 +137,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the cleaned venv from builder
-# This venv was built in python:3.13-slim so it's compatible
 COPY --from=builder /venv /venv
 
 # Copy pyproject.toml for package metadata

@@ -154,21 +154,26 @@ development. See [https://github.com/FiloSottile/mkcert](https://github.com/Filo
 
 ### Python Version Management
 
-The canonical Python version is defined in `.python-version` at the project root.
-`uv` and `make build` read it automatically.
+`.python-version` at the project root is the canonical declaration of the
+Python version. `uv` reads it when it creates the venv, and `make build` passes
+it to `docker build` as the `PYTHON_VERSION` build argument.
 
-To bump the Python version:
+A few places cannot read that file and repeat the version. To move to a new
+`x.y.z`:
 
-1. Update `requires-python` in `pyproject.toml` to the new `x.y.z` version
-2. Update the `image:` field in `.drone.yml` to `python:<x.y.z>`
-3. Run `make uv-sync` to rebuild the local venv
+1. Set `.python-version` to `x.y.z`
+2. Set `requires-python` in `pyproject.toml` to `>=x.y.z`
+3. Set the default of `ARG PYTHON_VERSION` in the `Dockerfile` to `x.y.z`, so
+   that CI's image build, which passes no build arguments, uses it
+4. Set the test step's `image:` in `.drone.yml` to `python:x.y.z`
+5. Run `make uv-sync` to rebuild the local venv
 
 ### Required Installed Packages
 
 Even if you are not going to download new python and node modules you need at
 least these packages installed for local development:
 
-- python (3.13 or greater)
+- uv (it installs the Python version in `.python-version` if it is missing)
 - npm
 - docker
 
