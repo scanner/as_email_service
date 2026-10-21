@@ -135,3 +135,7 @@ staticfiles/
 mail_dirs/
 /app/pyproject.toml
 spama/
+
+# Secret files for a Docker Compose deployment
+deployment/compose/secrets/*
+!deployment/compose/secrets/.gitkeep

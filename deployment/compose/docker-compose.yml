@@ -1,0 +1,139 @@
+# Docker Compose deployment of as_email_service for production, staging and
+# integration hosts.  Copy this directory to the host, create .env from
+# dot-env.example, write the secret files under secrets/, then:
+#   docker compose up -d
+#
+# Required in .env:
+#   VERSION          -- release to run (e.g. "0.10.1"; there is no "latest" tag)
+#   HOST_DB_DIR      -- host directory holding the sqlite database
+#   HOST_SPOOL_ROOT  -- host directory for the incoming/outgoing mail spool
+#   HOST_MAIL_ROOT   -- host directory holding every account's mail directory
+#                       and the IMAP password file (shared with asimap)
+#   HOST_SSL_DIR     -- host directory holding ssl_crt.pem and ssl_key.pem
+#                       for the SMTP submission service
+#   HOST_SPAMA_DIR   -- host directory holding SpamAssassin's configuration,
+#                       state and training mail
+#   HOST_LOG_DIR     -- host directory for the security log fail2ban reads
+#
+# Required secret files under secrets/ (one value per file, no trailing
+# newline):
+#   secrets/django_secret_key    -- Django SECRET_KEY
+#   secrets/salt_key             -- SALT_KEY (encryption key derivation;
+#                                   comma-separated for key rotation)
+#   secrets/email_server_tokens  -- EMAIL_SERVER_TOKENS, the provider API
+#                                   keys as JSON
+#   secrets/anymail              -- ANYMAIL, e.g. POSTMARK_SERVER_TOKEN=...
+#   secrets/sentry_dsn           -- SENTRY_DSN; an empty file disables Sentry
+#
+# External network that must exist before starting this stack:
+#   redis_network    -- created by the redis stack; its redis service must be
+#                       reachable as "redis"
+name: as_email_service
+
+secrets:
+  django_secret_key:
+    file: ./secrets/django_secret_key
+  salt_key:
+    file: ./secrets/salt_key
+  email_server_tokens:
+    file: ./secrets/email_server_tokens
+  anymail:
+    file: ./secrets/anymail
+  sentry_dsn:
+    file: ./secrets/sentry_dsn
+
+# x- prefix is a Compose extension field -- ignored as a service definition.
+x-app: &app
+  image: "ghcr.io/scanner/as_email_service:${VERSION}"
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    # django-environ's FileAwareEnv reads KEY_FILE vars from disk at startup.
+    DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+    SALT_KEY_FILE: /run/secrets/salt_key
+    EMAIL_SERVER_TOKENS_FILE: /run/secrets/email_server_tokens
+    ANYMAIL_FILE: /run/secrets/anymail
+    SENTRY_DSN_FILE: /run/secrets/sentry_dsn
+  secrets:
+    - django_secret_key
+    - salt_key
+    - email_server_tokens
+    - anymail
+    - sentry_dsn
+  networks:
+    - default
+    - redis_network
+
+services:
+  # Runs the migrations, then gunicorn.  Plain HTTP: publish it on localhost
+  # for the host's TLS reverse proxy.
+  web:
+    <<: *app
+    command: /app/scripts/start_app.sh
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs"
+
+  # SMTP submission (587, STARTTLS) for mail clients.
+  smtpd:
+    <<: *app
+    command: /app/scripts/start_smtpd.sh
+    ports:
+      - "587:587"
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool"
+      - "${HOST_SSL_DIR}:/mnt/ssl:ro"
+      - "${HOST_LOG_DIR}:/var/log/as_email"
+
+  # huey: delivery, retries, and the periodic tasks.
+  worker:
+    <<: *app
+    command: /app/scripts/start_worker.sh
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db"
+      - "${HOST_SPOOL_ROOT}:/mnt/spool"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs"
+
+  # Stages user-reported spam and ham for sa-learn; run on demand with
+  #   docker compose run --rm sa-training
+  # See docs/sa-training.md.
+  sa-training:
+    <<: *app
+    restart: "no"
+    profiles:
+      - tools
+    command: /app/manage.py as_email_sa_training /mnt/training
+    volumes:
+      - "${HOST_DB_DIR}:/mnt/db"
+      - "${HOST_MAIL_ROOT}:/mnt/mail_dirs"
+      - "${HOST_SPAMA_DIR}/training:/mnt/training"
+
+  # smtpd scans mail through spamd at spamassassin:783 on the stack's own
+  # network; it is not published.
+  spamassassin:
+    image: instantlinux/spamassassin:4.0.1-1
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+    expose:
+      - 783
+    volumes:
+      - "${HOST_SPAMA_DIR}/local.cf:/etc/mail/spamassassin/local.cf:ro"
+      - "${HOST_SPAMA_DIR}/local.pre:/etc/mail/spamassassin/local.pre:ro"
+      - "${HOST_SPAMA_DIR}/home:/var/lib/spamassassin"
+      - "${HOST_SPAMA_DIR}/logs:/var/log"
+      - "${HOST_SPAMA_DIR}/training:/mnt/training"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "10"
+
+networks:
+  redis_network:
+    name: redis_network
+    external: true
