@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Docker images for `linux/arm64` alongside `linux/amd64`, under the same tags
+
 ## [0.10.1] - 2026-10-11
 
 ### Fixed

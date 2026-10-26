@@ -28,7 +28,14 @@ steps:
 
 ---
 kind: pipeline
-name: Build and Publish Docker Image
+name: Build linux/amd64
+
+# Each architecture builds natively on a runner of that architecture and
+# pushes one tag per target.  'Publish multi-arch manifests' joins them under
+# the release tags.  ${DRONE_TAG##v} drops the tag's 'v', as auto_tag does.
+platform:
+  os: linux
+  arch: amd64
 
 depends_on:
   - AS Email Django App Tests
@@ -43,7 +50,8 @@ steps:
         from_secret: GHCR_PAT
       repo: ghcr.io/scanner/as_email_service
       registry: ghcr.io
-      auto_tag: true
+      tags:
+        - ${DRONE_TAG##v}-linux-amd64
       target: prod
 
   - name: Build dev
@@ -55,9 +63,87 @@ steps:
         from_secret: GHCR_PAT
       repo: ghcr.io/scanner/as_email_service
       registry: ghcr.io
-      auto_tag: true
-      auto_tag_suffix: dev
+      tags:
+        - ${DRONE_TAG##v}-dev-linux-amd64
       target: dev
+
+trigger:
+  event:
+    - tag
+
+---
+kind: pipeline
+name: Build linux/arm64
+
+# Each architecture builds natively on a runner of that architecture and
+# pushes one tag per target.  'Publish multi-arch manifests' joins them under
+# the release tags.  ${DRONE_TAG##v} drops the tag's 'v', as auto_tag does.
+platform:
+  os: linux
+  arch: arm64
+
+depends_on:
+  - AS Email Django App Tests
+
+steps:
+  - name: Build prod
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: GHCR_USER
+      password:
+        from_secret: GHCR_PAT
+      repo: ghcr.io/scanner/as_email_service
+      registry: ghcr.io
+      tags:
+        - ${DRONE_TAG##v}-linux-arm64
+      target: prod
+
+  - name: Build dev
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: GHCR_USER
+      password:
+        from_secret: GHCR_PAT
+      repo: ghcr.io/scanner/as_email_service
+      registry: ghcr.io
+      tags:
+        - ${DRONE_TAG##v}-dev-linux-arm64
+      target: dev
+
+trigger:
+  event:
+    - tag
+
+---
+kind: pipeline
+name: Publish multi-arch manifests
+
+depends_on:
+  - Build linux/amd64
+  - Build linux/arm64
+
+steps:
+  - name: Publish prod
+    image: plugins/manifest
+    settings:
+      username:
+        from_secret: GHCR_USER
+      password:
+        from_secret: GHCR_PAT
+      spec: ci/manifest.tmpl
+      auto_tag: true
+
+  - name: Publish dev
+    image: plugins/manifest
+    settings:
+      username:
+        from_secret: GHCR_USER
+      password:
+        from_secret: GHCR_PAT
+      spec: ci/manifest-dev.tmpl
+      auto_tag: true
 
 trigger:
   event:
@@ -69,7 +155,9 @@ name: Build Notify
 
 depends_on:
   - AS Email Django App Tests
-  - Build and Publish Docker Image
+  - Build linux/amd64
+  - Build linux/arm64
+  - Publish multi-arch manifests
 
 trigger:
   status:
