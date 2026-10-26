@@ -6,7 +6,8 @@ fill in `.env` and `secrets/`, and start it. Nothing here is used by local
 development, which uses `docker-compose.yml` at the repo root.
 
 The stack pulls the pre-built image from GHCR
-(`ghcr.io/scanner/as_email_service`) and runs:
+(`ghcr.io/scanner/as_email_service`), published for `linux/amd64` and
+`linux/arm64`, and runs:
 
 - `web` -- runs the migrations, then the web UI, the REST API and the
   providers' webhooks, published on localhost for a TLS reverse proxy
