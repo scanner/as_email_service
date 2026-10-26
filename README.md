@@ -24,6 +24,9 @@ A Django app and smtp relay service for working with 3rd party email services (w
 
 ## Configuration
 
+To deploy on a server with Docker Compose, see
+[`deployment/compose/README.md`](deployment/compose/README.md).
+
 The `docker-compose.yml` file in this repo has all that is necessary to run the system services. Most configuration for dealing with postmark and users is handled directly within the django-admin. For setting up the service itself you will need a `.env` file with the necessary values filled in.
 
 Here is a minimal set of env. vars you will need to set in the .env for your services:

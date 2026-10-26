@@ -1,0 +1,92 @@
+# Non-secret configuration for a Docker Compose deployment of
+# as_email_service.  Copy to .env and fill in values before starting the
+# stack.
+#
+# Keys and tokens (DJANGO_SECRET_KEY, SALT_KEY, EMAIL_SERVER_TOKENS, ANYMAIL,
+# SENTRY_DSN) are not set here -- they are delivered as Docker Compose
+# secrets; see secrets/ and docker-compose.yml.
+
+# Image
+# ------------------------------------------------------------------------------
+# The release to run; images have no "latest" tag.  A "-dev" suffix (e.g.
+# 0.10.1-dev) selects the image with the development tools installed.
+VERSION=0.10.1
+
+# localhost port gunicorn is published on, for the host's reverse proxy.
+PORT=8000
+
+# Host directories
+# ------------------------------------------------------------------------------
+# Mounted into the containers.  Everything in them must be owned by UID 900,
+# the 'app' user the services run as.
+HOST_DB_DIR=/srv/as_email/dbs
+HOST_SPOOL_ROOT=/srv/as_email/spool
+# Every account's mail directory and the IMAP password file
+# (asimapd_passwords.txt).  asimap mounts the same directory.
+HOST_MAIL_ROOT=/srv/as_email/mail_dirs
+# ssl_crt.pem (full chain) and ssl_key.pem for SMTP submission.
+HOST_SSL_DIR=/srv/as_email/ssl
+# SpamAssassin: local.cf, local.pre, home/, logs/, training/.
+HOST_SPAMA_DIR=/srv/as_email/spama
+# The security log, security.log, that fail2ban reads.
+HOST_LOG_DIR=/var/log/as_email
+
+# Container paths
+# ------------------------------------------------------------------------------
+# Where the directories above are mounted.  These match docker-compose.yml.
+DATABASE_URL=sqlite:////mnt/db/as_email_service.db
+EMAIL_SPOOL_DIR=/mnt/spool
+MAIL_DIRS=/mnt/mail_dirs
+
+# Site
+# ------------------------------------------------------------------------------
+SITE_NAME=mail.example.com
+# Host names the web UI answers to (comma-separated).  Each one is also
+# trusted for CSRF over https.
+ALLOWED_HOSTS=mail.example.com
+TZ=America/Los_Angeles
+DEBUG=False
+
+# Email
+# ------------------------------------------------------------------------------
+# The backend the service sends its own mail (invitations, reports) through.
+# Its credentials are the ANYMAIL secret.
+EMAIL_BACKEND=anymail.backends.postmark.EmailBackend
+DEFAULT_FROM_EMAIL=AS Email Service <noreply@example.com>
+SERVER_EMAIL=AS Email Service <noreply@example.com>
+ADMINISTRATIVE_EMAIL_ADDRESS=admin@example.com
+
+# The local delivery type for new accounts: MHDelivery or ASIMAPDelivery.
+# ASIMAPDelivery needs asimap 2.7.0 or later.  See docs/delivery-methods.md.
+DEFAULT_LOCAL_DELIVERY=ASIMAPDelivery
+
+# The service accounts created for a new server (comma-separated), and the
+# user that owns them.  Defaults shown.
+# EMAIL_SERVICE_ACCOUNTS=admin,abuse,postmaster,security,hostmaster,webmaster,support,www,noc
+EMAIL_SERVICE_ACCOUNTS_OWNER=admin
+
+# Spam training
+# ------------------------------------------------------------------------------
+# Users forward misclassified mail to these addresses.  See
+# docs/sa-training.md.
+# SPAM_TRAINING_ADDRESS=spam@example.com
+# NOT_SPAM_TRAINING_ADDRESS=not-spam@example.com
+
+# fail2ban
+# ------------------------------------------------------------------------------
+# Accounts banned on the first wrong password (comma-separated).  See
+# docs/fail2ban-integration.md.
+PROTECTED_ACCOUNTS=admin@example.com,postmaster@example.com
+
+# Redis
+# ------------------------------------------------------------------------------
+# The host name "redis" is fixed in the start scripts, and huey always uses
+# database 1, so give the cache another database.
+REDIS_SERVER=redis
+CACHE_URL=redis://redis:6379/0
+
+# Sentry
+# ------------------------------------------------------------------------------
+# Sentry is enabled when secrets/sentry_dsn is not empty.
+SENTRY_TRACES_SAMPLE_RATE=0
+SENTRY_PROFILES_SAMPLE_RATE=0
